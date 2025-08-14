@@ -37,7 +37,7 @@ jobs:
         run: cd frontend && npm ci
         
       - name: Build
-        run: cd frontend && npx vite build
+        run: cd frontend && npm run build
         env:
           NODE_ENV: production
           GITHUB_PAGES_CUSTOM_DOMAIN: true
