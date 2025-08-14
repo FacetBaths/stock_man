@@ -36,6 +36,33 @@ jobs:
       - name: Install dependencies
         run: cd frontend && npm ci
         
+      - name: Auto-increment version and set build info
+        run: |
+          cd frontend
+          # Get current version
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          echo "Current version: $CURRENT_VERSION"
+          
+          # Increment patch version (1.0.0 -> 1.0.1)
+          npm version patch --no-git-tag-version
+          
+          # Get new version and build info
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          BUILD_TIME=$(date -u +"%Y%m%d-%H%M%S")
+          GIT_COMMIT=$(git rev-parse --short HEAD)
+          BUILD_NUMBER=${GITHUB_RUN_NUMBER}
+          
+          echo "New version: $NEW_VERSION"
+          echo "Git commit: $GIT_COMMIT"
+          echo "Build number: $BUILD_NUMBER"
+          echo "Build timestamp: $BUILD_TIME"
+          
+          # Set environment variables for build
+          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+          echo "BUILD_TIME=$BUILD_TIME" >> $GITHUB_ENV
+          echo "GIT_COMMIT=$GIT_COMMIT" >> $GITHUB_ENV
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> $GITHUB_ENV
+        
       - name: Build
         run: cd frontend && npm run build-only
         env:

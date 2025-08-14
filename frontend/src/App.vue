@@ -2,6 +2,7 @@
 import { onMounted, ref, onUnmounted } from "vue";
 import { RouterView, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
+import packageInfo from '../../package.json';
 
 const authStore = useAuthStore();
 const router = useRouter();
@@ -40,6 +41,18 @@ const navTabs = [
   { path: "/inventory", label: "Inventory", icon: "inventory_2" },
   { path: "/tags", label: "Tags", icon: "local_offer" },
 ];
+
+// Build info (can be injected during build process)
+const buildInfo = {
+  version: packageInfo.version,
+  buildTime: import.meta.env.VITE_BUILD_TIME || 'Unknown',
+  gitCommit: import.meta.env.VITE_GIT_COMMIT || 'Unknown',
+  buildNumber: import.meta.env.VITE_BUILD_NUMBER || 'Unknown'
+};
+
+const getVersionTooltip = () => {
+  return `Version: ${buildInfo.version}\nBuild: #${buildInfo.buildNumber}\nCommit: ${buildInfo.gitCommit}\nBuilt: ${buildInfo.buildTime}`
+};
 </script>
 
 <template>
@@ -65,7 +78,10 @@ const navTabs = [
                   size="sm"
                   class="version-chip"
                 >
-                  v1.0.0
+                  v{{ packageInfo.version }}
+                  <q-tooltip class="bg-dark text-white" :delay="500">
+                    {{ getVersionTooltip() }}
+                  </q-tooltip>
                 </q-chip>
               </div>
               <div class="text-caption text-white opacity-80">
