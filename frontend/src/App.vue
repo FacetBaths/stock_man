@@ -55,8 +55,18 @@ const navTabs = [
               class="nav-logo q-mr-md"
             />
             <div class="nav-title">
-              <div class="text-h6 text-white text-weight-bold q-mb-none">
-                Stock Manager
+              <div class="row items-center q-gutter-xs">
+                <div class="text-h6 text-white text-weight-bold q-mb-none">
+                  Stock Manager
+                </div>
+                <q-chip 
+                  color="rgba(255, 255, 255, 0.2)" 
+                  text-color="white" 
+                  size="sm"
+                  class="version-chip"
+                >
+                  v1.0.0
+                </q-chip>
               </div>
               <div class="text-caption text-white opacity-80">
                 Facet Renovations
@@ -610,6 +620,20 @@ body {
   opacity: 0.8;
 }
 
+/* Version chip styling */
+.version-chip {
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(10px);
+  font-weight: 500;
+  font-size: 11px;
+  transition: all 0.3s ease;
+}
+
+.version-chip:hover {
+  background: rgba(255, 255, 255, 0.3) !important;
+  transform: scale(1.05);
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .nav-logo {
@@ -620,6 +644,10 @@ body {
     min-height: 60px;
     padding-left: 16px;
     padding-right: 16px;
+  }
+  
+  .version-chip {
+    font-size: 10px;
   }
 }
 </style>
