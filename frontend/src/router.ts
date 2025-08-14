@@ -2,6 +2,8 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import Login from '@/views/Login.vue'
 import Dashboard from '@/views/Dashboard.vue'
+import Inventory from '@/views/Inventory.vue'
+import Tags from '@/views/Tags.vue'
 
 const routes = [
   {
@@ -18,6 +20,18 @@ const routes = [
     path: '/dashboard',
     name: 'Dashboard',
     component: Dashboard,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/inventory',
+    name: 'Inventory',
+    component: Inventory,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/tags',
+    name: 'Tags',
+    component: Tags,
     meta: { requiresAuth: true }
   }
 ]
