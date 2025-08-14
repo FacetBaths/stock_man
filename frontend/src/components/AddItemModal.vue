@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useAuthStore } from '@/stores/auth'
 import { useInventoryStore } from '@/stores/inventory'
 import { PRODUCT_TYPES } from '@/types'
 import type { CreateItemRequest, WallDetails, ProductDetails } from '@/types'
@@ -9,6 +10,7 @@ const emit = defineEmits<{
   success: []
 }>()
 
+const authStore = useAuthStore()
 const inventoryStore = useInventoryStore()
 
 const formData = ref<CreateItemRequest>({
@@ -21,10 +23,12 @@ const formData = ref<CreateItemRequest>({
   } as WallDetails,
   quantity: 0,
   location: '',
-  notes: ''
+  notes: '',
+  cost: undefined
 })
 
 const isWallProduct = computed(() => formData.value.product_type === 'wall')
+const canEditCost = computed(() => authStore.user?.role === 'admin' || authStore.user?.role === 'warehouse_manager')
 
 // Reset product details when product type changes
 watch(() => formData.value.product_type, (newType) => {
@@ -229,6 +233,19 @@ const handleClose = () => {
                   class="form-control"
                   min="0"
                   required
+                />
+              </div>
+
+              <div v-if="canEditCost" class="form-group">
+                <label for="cost" class="form-label">Cost (USD)</label>
+                <input
+                  id="cost"
+                  v-model.number="formData.cost"
+                  type="number"
+                  class="form-control"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
                 />
               </div>
 

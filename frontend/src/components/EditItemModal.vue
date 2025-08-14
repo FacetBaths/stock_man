@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useAuthStore } from '@/stores/auth'
 import { useInventoryStore } from '@/stores/inventory'
 import type { Item, UpdateItemRequest, WallDetails, ProductDetails } from '@/types'
 
@@ -14,22 +15,26 @@ const emit = defineEmits<{
   success: []
 }>()
 
+const authStore = useAuthStore()
 const inventoryStore = useInventoryStore()
 
 const formData = ref<UpdateItemRequest>({
   quantity: 0,
   location: '',
   notes: '',
+  cost: undefined,
   product_details: {}
 })
 
 const isWallProduct = computed(() => props.item.product_type === 'wall')
+const canEditCost = computed(() => authStore.user?.role === 'admin' || authStore.user?.role === 'warehouse_manager')
 
 const initializeForm = () => {
   formData.value = {
     quantity: props.item.quantity,
     location: props.item.location || '',
     notes: props.item.notes || '',
+    cost: props.item.cost,
     product_details: { ...props.item.product_details }
   }
 }
@@ -216,6 +221,19 @@ onMounted(() => {
                   class="form-control"
                   min="0"
                   required
+                />
+              </div>
+
+              <div v-if="canEditCost" class="form-group">
+                <label for="cost" class="form-label">Cost (USD)</label>
+                <input
+                  id="cost"
+                  v-model.number="formData.cost"
+                  type="number"
+                  class="form-control"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
                 />
               </div>
 

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useAuthStore } from '@/stores/auth'
 import type { Item, WallDetails, ProductDetails } from '@/types'
 
 interface Props {
@@ -7,6 +8,7 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+const authStore = useAuthStore()
 
 const emit = defineEmits<{
   edit: [item: Item]
@@ -49,6 +51,16 @@ const getStockStatus = (quantity: number) => {
 const formatDate = (dateString: string) => {
   return new Date(dateString).toLocaleDateString()
 }
+
+const formatCost = (cost?: number) => {
+  if (cost === undefined || cost === null) return '-'
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD'
+  }).format(cost)
+}
+
+const canViewCost = (authStore.user?.role === 'admin' || authStore.user?.role === 'warehouse_manager')
 </script>
 
 <template>
@@ -64,6 +76,7 @@ const formatDate = (dateString: string) => {
             <th>Product Type</th>
             <th>Details</th>
             <th>Quantity</th>
+            <th v-if="canViewCost">Cost</th>
             <th>Status</th>
             <th>Location</th>
             <th>Last Updated</th>
@@ -90,6 +103,10 @@ const formatDate = (dateString: string) => {
             
             <td class="quantity">
               <span class="quantity-value">{{ item.quantity }}</span>
+            </td>
+            
+            <td v-if="canViewCost" class="cost">
+              <span class="cost-value">{{ formatCost(item.cost) }}</span>
             </td>
             
             <td class="status">
@@ -235,6 +252,21 @@ const formatDate = (dateString: string) => {
   padding: 0.25rem 0.5rem;
   background-color: #f8f9fa;
   border-radius: 0.25rem;
+}
+
+.cost {
+  text-align: right;
+  font-weight: 600;
+  font-size: 1rem;
+  color: #28a745;
+}
+
+.cost-value {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  background-color: rgba(40, 167, 69, 0.1);
+  border-radius: 0.25rem;
+  color: #28a745;
 }
 
 .status {
