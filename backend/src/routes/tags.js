@@ -85,7 +85,7 @@ router.post('/', [auth, requireWriteAccess], [
   body('item_id').isMongoId().withMessage('Valid item ID is required'),
   body('customer_name').notEmpty().trim().withMessage('Customer name is required'),
   body('quantity').isInt({ min: 1 }).withMessage('Quantity must be at least 1'),
-  body('tag_type').optional().isIn(['stock', 'customer', 'project', 'hold', 'reserved'])
+  body('tag_type').optional().isIn(['stock', 'reserved', 'broken', 'imperfect'])
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -146,7 +146,7 @@ router.post('/', [auth, requireWriteAccess], [
 router.put('/:id', [auth, requireWriteAccess], [
   body('quantity').optional().isInt({ min: 1 }),
   body('customer_name').optional().notEmpty().trim(),
-  body('tag_type').optional().isIn(['stock', 'customer', 'project', 'hold', 'reserved']),
+  body('tag_type').optional().isIn(['stock', 'reserved', 'broken', 'imperfect']),
   body('status').optional().isIn(['active', 'fulfilled', 'cancelled'])
 ], async (req, res) => {
   try {
