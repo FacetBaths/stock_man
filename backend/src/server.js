@@ -56,10 +56,17 @@ app.use('/api/tags', tagRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
+  res.set({
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0'
+  });
   res.json({ 
     status: 'OK', 
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    cors_origin: req.get('Origin'),
+    allowed_origins: allowedOrigins
   });
 });
 
