@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 # Allow one concurrent deployment
 concurrency:
   group: "pages"
@@ -33,7 +38,7 @@ jobs:
         run: cd frontend && npm ci
         
       - name: Build
-        run: cd frontend && npm run build
+        run: cd frontend && npx vite build
         env:
           # Update this with your Railway backend URL once deployed
           VITE_API_URL: https://stock-manager-backend.up.railway.app/api
