@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import { Quasar, Loading, Notify, Dialog } from 'quasar'
+import materialIcons from 'quasar/icon-set/material-icons'
 import '@quasar/extras/material-icons/material-icons.css'
 import '@quasar/extras/fontawesome-v6/fontawesome-v6.css'
 import '@quasar/extras/material-symbols-outlined/material-symbols-outlined.css'
@@ -30,7 +31,8 @@ app.use(Quasar, {
       info: '#31CCEC',
       warning: '#F2C037'
     }
-  }
+  },
+  iconSet: materialIcons
 })
 
 app.use(createPinia())

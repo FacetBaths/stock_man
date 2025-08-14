@@ -22,6 +22,9 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    fs: {
+      allow: ['..', '../node_modules']
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:5000',

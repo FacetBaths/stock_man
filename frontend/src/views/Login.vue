@@ -88,7 +88,7 @@ const quickLoginAsSales = async () => {
               color="primary"
             >
               <template v-slot:prepend>
-                <q-icon name="person" color="primary" />
+                <q-icon name="contact" color="primary" />
               </template>
             </q-select>
           </div>
@@ -112,7 +112,6 @@ const quickLoginAsSales = async () => {
           <!-- Login Button -->
           <q-btn
             type="submit"
-           
             flat
             text-color="primary"
             size="lg"
