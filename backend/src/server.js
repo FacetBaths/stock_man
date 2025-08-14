@@ -16,7 +16,10 @@ connectDB();
 // Middleware
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? ['https://stock.facetrenovations.us'] 
+    ? [
+        'https://facetbaths.github.io',
+        'https://stock.facetrenovations.us'
+      ] 
     : ['http://localhost:3000', 'http://127.0.0.1:3000'],
   credentials: true
 }));

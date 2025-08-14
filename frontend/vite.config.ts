@@ -5,6 +5,8 @@ import { resolve } from 'path'
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  // Set base path for GitHub Pages
+  base: process.env.NODE_ENV === 'production' ? '/stock_man/' : '/',
   plugins: [
     vue({
       template: { transformAssetUrls }
