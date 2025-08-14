@@ -9,9 +9,14 @@ const authStore = useAuthStore();
 const $q = useQuasar();
 
 const credentials = ref({
-  username: "",
+  username: "admin", // Default to admin
   password: "",
 });
+
+const userOptions = [
+  { label: "Admin", value: "admin" },
+  { label: "Warehouse Manager", value: "warehouse" },
+];
 
 const handleLogin = async () => {
   try {
@@ -68,20 +73,24 @@ const quickLoginAsSales = async () => {
 
         <!-- Login Form -->
         <form @submit.prevent="handleLogin" class="login-form">
-          <!-- Username Input -->
+          <!-- Username Select -->
           <div class="input-group">
-            <label for="username" class="input-label">Username</label>
-            <div class="input-wrapper">
-              <q-icon name="person" class="input-icon" />
-              <input
-                id="username"
-                v-model="credentials.username"
-                type="text"
-                class="login-input"
-                placeholder="Enter your username"
-                required
-              />
-            </div>
+            <label for="username" class="input-label">Select User Type</label>
+            <q-select
+              v-model="credentials.username"
+              :options="userOptions"
+              option-label="label"
+              option-value="value"
+              emit-value
+              map-options
+              class="login-select"
+              filled
+              color="primary"
+            >
+              <template v-slot:prepend>
+                <q-icon name="person" color="primary" />
+              </template>
+            </q-select>
           </div>
 
           <!-- Password Input -->
@@ -342,6 +351,39 @@ const quickLoginAsSales = async () => {
   border: 1px solid rgba(0, 0, 0, 0.1) !important;
   backdrop-filter: blur(10px);
   transition: all 0.3s ease;
+}
+
+/* Select dropdown styling */
+.login-select :deep(.q-field__control) {
+  background: rgba(255, 255, 255, 0.8) !important;
+  border-radius: 12px !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+  backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
+  min-height: 56px;
+}
+
+.login-select :deep(.q-field__control):hover {
+  background: rgba(255, 255, 255, 0.9) !important;
+  border-color: rgba(0, 0, 0, 0.2) !important;
+}
+
+.login-select :deep(.q-field--focused .q-field__control) {
+  background: rgba(255, 255, 255, 0.95) !important;
+  border-color: var(--q-primary) !important;
+  box-shadow: 0 0 0 2px rgba(153, 69, 255, 0.2) !important;
+}
+
+.login-select :deep(.q-field__native) {
+  color: #333 !important;
+  font-family: "Tomorrow", sans-serif !important;
+  font-weight: 500;
+}
+
+.login-select :deep(.q-field__label) {
+  color: rgba(0, 0, 0, 0.7) !important;
+  font-family: "Tomorrow", sans-serif !important;
+  font-weight: 500;
 }
 
 .login-input :deep(.q-field__control):hover {
