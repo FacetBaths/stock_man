@@ -3,8 +3,7 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -40,8 +39,18 @@ jobs:
       - name: Build
         run: cd frontend && npx vite build
         env:
-          # Update this with your Railway backend URL once deployed
+          NODE_ENV: production
+          GITHUB_PAGES_CUSTOM_DOMAIN: true
           VITE_API_URL: https://stock-manager-backend.up.railway.app/api
+          
+      - name: Verify build output
+        run: |
+          echo "Build output contents:"
+          ls -la frontend/dist/
+          echo "CNAME file contents:"
+          cat frontend/dist/CNAME || echo "CNAME file not found"
+          echo "Index.html exists:"
+          ls -la frontend/dist/index.html || echo "index.html not found"
           
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v2
