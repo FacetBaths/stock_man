@@ -85,7 +85,7 @@ export interface Tag {
   item_id: string | Item
   customer_name: string
   quantity: number
-  tag_type: 'stock' | 'customer' | 'project' | 'hold' | 'reserved'
+  tag_type: 'stock' | 'reserved' | 'broken' | 'imperfect'
   notes?: string
   created_by: string
   status: 'active' | 'fulfilled' | 'cancelled'
@@ -139,9 +139,8 @@ export const PRODUCT_TYPES = [
 ] as const
 
 export const TAG_TYPES = [
-  { value: 'stock', label: 'Stock', color: '#28a745' },
-  { value: 'customer', label: 'Customer', color: '#007bff' },
-  { value: 'project', label: 'Project', color: '#6f42c1' },
-  { value: 'hold', label: 'Hold', color: '#ffc107' },
-  { value: 'reserved', label: 'Reserved', color: '#dc3545' }
+  { value: 'stock', label: 'Available Stock', color: '#28a745' },
+  { value: 'reserved', label: 'Reserved', color: '#007bff' },
+  { value: 'broken', label: 'Broken', color: '#dc3545' },
+  { value: 'imperfect', label: 'Imperfect', color: '#fd7e14' }
 ] as const

@@ -18,7 +18,7 @@ const tagSchema = new mongoose.Schema({
   },
   tag_type: {
     type: String,
-    enum: ['stock', 'customer', 'project', 'hold', 'reserved'],
+    enum: ['stock', 'reserved', 'broken', 'imperfect'],
     default: 'stock'
   },
   notes: {

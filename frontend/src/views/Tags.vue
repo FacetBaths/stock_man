@@ -4,6 +4,8 @@ import { useAuthStore } from '@/stores/auth'
 import { tagApi } from '@/utils/api'
 import type { Tag, Item } from '@/types'
 import { TAG_TYPES } from '@/types'
+import CreateTagModal from '@/components/CreateTagModal.vue'
+import EditTagModal from '@/components/EditTagModal.vue'
 
 const authStore = useAuthStore()
 
@@ -91,6 +93,19 @@ const loadStats = async () => {
 const handleEditTag = (tag: Tag) => {
   tagToEdit.value = tag
   showEditModal.value = true
+}
+
+const handleCreateSuccess = async () => {
+  showCreateModal.value = false
+  await loadTags()
+  await loadStats()
+}
+
+const handleEditSuccess = async () => {
+  showEditModal.value = false
+  tagToEdit.value = null
+  await loadTags()
+  await loadStats()
 }
 
 const handleDeleteTag = async (tag: Tag) => {
@@ -405,37 +420,19 @@ const tableColumns = [
       </div>
     </div>
 
-    <!-- Create/Edit Modal Placeholders -->
-    <!-- TODO: Create TagModal components for creating and editing tags -->
-    <q-dialog v-model="showCreateModal">
-      <q-card style="min-width: 400px">
-        <q-card-section>
-          <div class="text-h6">Create Tag</div>
-        </q-card-section>
-        <q-card-section class="q-pt-none">
-          <p>Tag creation modal would go here.</p>
-          <p>This would include forms to select inventory items, set quantities, choose tag types, etc.</p>
-        </q-card-section>
-        <q-card-actions align="right">
-          <q-btn flat label="Cancel" @click="showCreateModal = false" />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+    <!-- Tag Management Modals -->
+    <CreateTagModal
+      v-if="showCreateModal"
+      @close="showCreateModal = false"
+      @success="handleCreateSuccess"
+    />
 
-    <q-dialog v-model="showEditModal">
-      <q-card style="min-width: 400px">
-        <q-card-section>
-          <div class="text-h6">Edit Tag</div>
-        </q-card-section>
-        <q-card-section class="q-pt-none">
-          <p>Tag editing modal would go here.</p>
-          <p v-if="tagToEdit">Editing tag for: {{ tagToEdit.customer_name }}</p>
-        </q-card-section>
-        <q-card-actions align="right">
-          <q-btn flat label="Cancel" @click="showEditModal = false" />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+    <EditTagModal
+      v-if="showEditModal && tagToEdit"
+      :tag="tagToEdit"
+      @close="showEditModal = false"
+      @success="handleEditSuccess"
+    />
   </q-page>
 </template>
 
