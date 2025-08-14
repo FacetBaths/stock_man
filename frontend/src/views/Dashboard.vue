@@ -146,6 +146,16 @@ const formatLastUpdated = (dateString?: string) => {
   return date.toLocaleDateString()
 }
 
+const formatTotalValue = (value?: number) => {
+  if (!value || value === 0) return '$0.00'
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD'
+  }).format(value)
+}
+
+const canViewCost = computed(() => authStore.user?.role === 'admin' || authStore.user?.role === 'warehouse_manager')
+
 onMounted(async () => {
   await loadItems()
   await inventoryStore.loadStats()
@@ -200,7 +210,7 @@ watch([searchQuery, showInStockOnly], () => {
       <!-- Stats Overview -->
       <div v-if="inventoryStore.stats" class="stats-section q-mb-lg" data-aos="fade-up" data-aos-delay="100">
         <div class="row q-gutter-md">
-          <div class="col-4">
+          <div :class="canViewCost ? 'col-3' : 'col-4'">
             <q-card class="glass-card stat-card text-center">
               <q-card-section class="q-pa-md">
                 <q-icon name="inventory" class="text-h4 text-primary q-mb-xs" />
@@ -209,7 +219,7 @@ watch([searchQuery, showInStockOnly], () => {
               </q-card-section>
             </q-card>
           </div>
-          <div class="col-4">
+          <div :class="canViewCost ? 'col-3' : 'col-4'">
             <q-card class="glass-card stat-card text-center">
               <q-card-section class="q-pa-md">
                 <q-icon name="check_circle" class="text-h4 text-positive q-mb-xs" />
@@ -218,7 +228,19 @@ watch([searchQuery, showInStockOnly], () => {
               </q-card-section>
             </q-card>
           </div>
-          <div class="col-4">
+          <div v-if="canViewCost" class="col-3">
+            <q-card class="glass-card stat-card text-center total-value-card">
+              <q-card-section class="q-pa-md">
+                <q-icon name="attach_money" class="text-h4 text-accent q-mb-xs" />
+                <div class="text-h4 text-dark text-weight-bold">{{ formatTotalValue(inventoryStore.stats.totalValue) }}</div>
+                <div class="text-body2 text-dark opacity-80">Total Value</div>
+                <div v-if="inventoryStore.stats.itemsWithCost" class="text-caption text-dark opacity-60 q-mt-xs">
+                  {{ inventoryStore.stats.itemsWithCost }} items with cost
+                </div>
+              </q-card-section>
+            </q-card>
+          </div>
+          <div :class="canViewCost ? 'col-3' : 'col-4'">
             <q-card class="glass-card stat-card text-center">
               <q-card-section class="q-pa-md">
                 <q-icon name="schedule" class="text-h4 text-info q-mb-xs" />
@@ -419,6 +441,18 @@ watch([searchQuery, showInStockOnly], () => {
 
 .stat-card:hover {
   transform: scale(1.02);
+}
+
+/* Total Value Card Special Styling */
+.total-value-card {
+  background: linear-gradient(135deg, rgba(255, 193, 7, 0.15), rgba(255, 152, 0, 0.15));
+  border: 2px solid rgba(255, 193, 7, 0.3);
+}
+
+.total-value-card:hover {
+  background: linear-gradient(135deg, rgba(255, 193, 7, 0.25), rgba(255, 152, 0, 0.25));
+  border-color: rgba(255, 193, 7, 0.5);
+  box-shadow: 0 12px 40px rgba(255, 193, 7, 0.2);
 }
 
 /* Controls Section */

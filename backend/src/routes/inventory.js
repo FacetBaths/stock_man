@@ -110,13 +110,42 @@ router.get('/stats', auth, async (req, res) => {
     const lastUpdatedItem = await Item.findOne().sort({ updatedAt: -1 }).lean();
     const lastUpdated = lastUpdatedItem ? lastUpdatedItem.updatedAt : null;
     
+    // Calculate total monetary value of inventory
+    const totalValueAggregation = await Item.aggregate([
+      {
+        $match: {
+          cost: { $exists: true, $ne: null, $gt: 0 }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalValue: {
+            $sum: {
+              $multiply: ['$cost', '$quantity']
+            }
+          },
+          itemsWithCost: { $sum: 1 },
+          totalQuantityWithCost: { $sum: '$quantity' }
+        }
+      }
+    ]);
+    
+    const totalValue = totalValueAggregation.length > 0 ? totalValueAggregation[0].totalValue : 0;
+    const itemsWithCost = totalValueAggregation.length > 0 ? totalValueAggregation[0].itemsWithCost : 0;
+    const totalQuantityWithCost = totalValueAggregation.length > 0 ? totalValueAggregation[0].totalQuantityWithCost : 0;
+    
     console.log('Total items:', totalItems, 'In stock:', totalInStock, 'Last updated:', lastUpdated);
+    console.log('Total monetary value:', totalValue, 'Items with cost:', itemsWithCost);
 
     res.json({
       totalItems,
       totalInStock,
       byProductType: stats,
-      lastUpdated
+      lastUpdated,
+      totalValue,
+      itemsWithCost,
+      totalQuantityWithCost
     });
 
   } catch (error) {

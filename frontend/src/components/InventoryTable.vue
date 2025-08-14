@@ -60,6 +60,15 @@ const formatCost = (cost?: number) => {
   }).format(cost)
 }
 
+const formatTotalInvested = (item: Item) => {
+  if (!item.cost || item.cost === null) return '-'
+  const total = item.cost * item.quantity
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD'
+  }).format(total)
+}
+
 const canViewCost = (authStore.user?.role === 'admin' || authStore.user?.role === 'warehouse_manager')
 </script>
 
@@ -77,6 +86,7 @@ const canViewCost = (authStore.user?.role === 'admin' || authStore.user?.role ==
             <th>Details</th>
             <th>Quantity</th>
             <th v-if="canViewCost">Cost</th>
+            <th v-if="canViewCost">Total Invested</th>
             <th>Status</th>
             <th>Location</th>
             <th>Last Updated</th>
@@ -107,6 +117,10 @@ const canViewCost = (authStore.user?.role === 'admin' || authStore.user?.role ==
             
             <td v-if="canViewCost" class="cost">
               <span class="cost-value">{{ formatCost(item.cost) }}</span>
+            </td>
+            
+            <td v-if="canViewCost" class="total-invested">
+              <span class="total-invested-value">{{ formatTotalInvested(item) }}</span>
             </td>
             
             <td class="status">
@@ -267,6 +281,22 @@ const canViewCost = (authStore.user?.role === 'admin' || authStore.user?.role ==
   background-color: rgba(40, 167, 69, 0.1);
   border-radius: 0.25rem;
   color: #28a745;
+}
+
+.total-invested {
+  text-align: right;
+  font-weight: 700;
+  font-size: 1rem;
+  color: #0056b3;
+}
+
+.total-invested-value {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  background-color: rgba(0, 86, 179, 0.1);
+  border-radius: 0.25rem;
+  color: #0056b3;
+  font-weight: 700;
 }
 
 .status {

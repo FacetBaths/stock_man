@@ -48,6 +48,9 @@ export interface InventoryStats {
   totalItems: number
   totalInStock: number
   lastUpdated?: string
+  totalValue?: number
+  itemsWithCost?: number
+  totalQuantityWithCost?: number
   byProductType: Array<{
     _id: string
     count: number
