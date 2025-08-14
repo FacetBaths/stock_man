@@ -44,14 +44,19 @@ const navTabs = [
 
 // Build info (can be injected during build process)
 const buildInfo = {
-  version: packageInfo.version,
+  version: import.meta.env.VITE_APP_VERSION || packageInfo.version,
   buildTime: import.meta.env.VITE_BUILD_TIME || 'Unknown',
   gitCommit: import.meta.env.VITE_GIT_COMMIT || 'Unknown',
+  gitBranch: import.meta.env.VITE_GIT_BRANCH || 'Unknown',
   buildNumber: import.meta.env.VITE_BUILD_NUMBER || 'Unknown'
 };
 
 const getVersionTooltip = () => {
-  return `Version: ${buildInfo.version}\nBuild: #${buildInfo.buildNumber}\nCommit: ${buildInfo.gitCommit}\nBuilt: ${buildInfo.buildTime}`
+  const buildDate = buildInfo.buildTime !== 'Unknown' 
+    ? new Date(buildInfo.buildTime).toLocaleString() 
+    : buildInfo.buildTime;
+  
+  return `Version: ${buildInfo.version}\nBuild: #${buildInfo.buildNumber.slice(-6)}\nCommit: ${buildInfo.gitCommit}\nBranch: ${buildInfo.gitBranch}\nBuilt: ${buildDate}`
 };
 </script>
 

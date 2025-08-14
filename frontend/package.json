@@ -1,13 +1,14 @@
 {
   "name": "stock-manager-frontend",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Vue3 TypeScript frontend for inventory management",
   "scripts": {
-    "dev": "vite",
-    "build": "vue-tsc && vite build",
-    "build-only": "vite build",
+    "dev": "node generate-build-info.js && vite",
+    "build": "node generate-build-info.js && vue-tsc && vite build",
+    "build-only": "node generate-build-info.js && vite build",
     "preview": "vite preview",
-    "serve": "vite preview"
+    "serve": "vite preview",
+    "generate-build-info": "node generate-build-info.js"
   },
   "dependencies": {
     "@quasar/extras": "^1.17.0",
