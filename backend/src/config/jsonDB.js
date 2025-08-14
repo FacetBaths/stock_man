@@ -51,8 +51,20 @@ const generateId = () => {
   return id.toString();
 };
 
+// Initialize JSON database
+const initJSONDB = () => {
+  if (!fs.existsSync(DB_FILE)) {
+    console.log('📁 Creating JSON database file...');
+    fs.writeFileSync(DB_FILE, JSON.stringify(defaultData, null, 2));
+    console.log('✅ JSON database initialized');
+  } else {
+    console.log('📁 JSON database file found');
+  }
+};
+
 module.exports = {
   readData,
   writeData,
-  generateId
+  generateId,
+  initJSONDB
 };

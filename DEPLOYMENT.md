@@ -6,7 +6,10 @@ This application is configured for deployment with Railway (backend) and GitHub 
 
 ### Prerequisites
 - Railway account at [railway.app](https://railway.app)
-- MongoDB Atlas database or Railway PostgreSQL addon
+- **Database (Optional):** Choose one option:
+  - **None** - Uses built-in JSON file database (simplest)
+  - **Railway MongoDB** - One-click addon (recommended) 
+  - **MongoDB Atlas** - External cloud database (advanced)
 
 ### Deployment Steps
 
@@ -16,13 +19,18 @@ This application is configured for deployment with Railway (backend) and GitHub 
    - Select this repository (`FacetBaths/stock_man`)
 
 2. **Configure Environment Variables:**
-   Add these environment variables in Railway dashboard:
+   **Minimum Required Variables (Railway dashboard):**
    ```bash
    NODE_ENV=production
-   MONGODB_URI=your-mongodb-connection-string
    JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
-   ADMIN_PASSWORD=your-admin-password
-   WAREHOUSE_PASSWORD=your-warehouse-password
+   ADMIN_PASSWORD=your-secure-admin-password
+   WAREHOUSE_PASSWORD=your-secure-warehouse-password
+   ```
+   
+   **Optional Variables:**
+   ```bash
+   # Only needed if using MongoDB (Options B or C below)
+   MONGODB_URI=your-mongodb-connection-string
    ```
 
 3. **Railway Configuration:**
@@ -30,9 +38,25 @@ This application is configured for deployment with Railway (backend) and GitHub 
    - Railway will automatically detect the Node.js backend in the `/backend` directory
    - The service will start on the port provided by Railway's `$PORT` environment variable
 
-4. **Database Setup:**
-   - For MongoDB: Use MongoDB Atlas (recommended) or Railway's MongoDB addon
-   - Update `MONGODB_URI` with your database connection string
+4. **Database Options (Choose One):**
+
+   **Option A: JSON File Database (Simplest) ✅**
+   - **No setup required!** Just deploy without setting `MONGODB_URI`
+   - Data stored in `backend/data.json` file
+   - Perfect for development, testing, and small applications
+   - Automatically initialized on first run
+
+   **Option B: Railway MongoDB Addon (Recommended for Production)**
+   - In your Railway project: Add "MongoDB" service
+   - Railway automatically provides `MONGODB_URI` environment variable
+   - One-click setup, no external accounts needed
+   - Scales with your Railway project
+
+   **Option C: MongoDB Atlas (Advanced)**
+   - Create account at [MongoDB Atlas](https://cloud.mongodb.com)
+   - Create a new cluster (free tier available)
+   - Get connection string and set as `MONGODB_URI`
+   - Most robust option for large-scale applications
 
 ### Backend URL
 After deployment, your backend will be available at:
