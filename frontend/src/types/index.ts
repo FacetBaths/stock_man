@@ -42,6 +42,14 @@ export interface Item {
   cost?: number
   createdAt: string
   updatedAt: string
+  tagSummary?: {
+    reserved: number
+    broken: number
+    imperfect: number
+    stock: number
+    totalTagged: number
+  }
+  tags?: Tag[]
 }
 
 export interface InventoryStats {
@@ -57,6 +65,23 @@ export interface InventoryStats {
     totalQuantity: number
     inStock: number
   }>
+  tagStatus?: {
+    broken: {
+      count: number
+      totalQuantity: number
+      uniqueItemCount: number
+    }
+    imperfect: {
+      count: number
+      totalQuantity: number
+      uniqueItemCount: number
+    }
+    reserved: {
+      count: number
+      totalQuantity: number
+      uniqueItemCount: number
+    }
+  }
 }
 
 export interface InventoryResponse {

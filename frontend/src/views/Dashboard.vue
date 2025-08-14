@@ -209,46 +209,81 @@ watch([searchQuery, showInStockOnly], () => {
 
       <!-- Stats Overview -->
       <div v-if="inventoryStore.stats" class="stats-section q-mb-lg" data-aos="fade-up" data-aos-delay="100">
-        <div class="row q-gutter-md">
-          <div :class="canViewCost ? 'col-3' : 'col-4'">
-            <q-card class="glass-card stat-card text-center">
-              <q-card-section class="q-pa-md">
-                <q-icon name="inventory" class="text-h4 text-primary q-mb-xs" />
-                <div class="text-h4 text-dark text-weight-bold">{{ inventoryStore.stats.totalItems }}</div>
-                <div class="text-body2 text-dark opacity-80">Total Items</div>
-              </q-card-section>
-            </q-card>
-          </div>
-          <div :class="canViewCost ? 'col-3' : 'col-4'">
-            <q-card class="glass-card stat-card text-center">
-              <q-card-section class="q-pa-md">
-                <q-icon name="check_circle" class="text-h4 text-positive q-mb-xs" />
-                <div class="text-h4 text-dark text-weight-bold">{{ inventoryStore.stats.totalInStock }}</div>
-                <div class="text-body2 text-dark opacity-80">In Stock</div>
-              </q-card-section>
-            </q-card>
-          </div>
-          <div v-if="canViewCost" class="col-3">
-            <q-card class="glass-card stat-card text-center total-value-card">
-              <q-card-section class="q-pa-md">
-                <q-icon name="attach_money" class="text-h4 text-accent q-mb-xs" />
-                <div class="text-h4 text-dark text-weight-bold">{{ formatTotalValue(inventoryStore.stats.totalValue) }}</div>
-                <div class="text-body2 text-dark opacity-80">Total Value</div>
-                <div v-if="inventoryStore.stats.itemsWithCost" class="text-caption text-dark opacity-60 q-mt-xs">
-                  {{ inventoryStore.stats.itemsWithCost }} items with cost
-                </div>
-              </q-card-section>
-            </q-card>
-          </div>
-          <div :class="canViewCost ? 'col-3' : 'col-4'">
-            <q-card class="glass-card stat-card text-center">
-              <q-card-section class="q-pa-md">
-                <q-icon name="schedule" class="text-h4 text-info q-mb-xs" />
-                <div class="text-h6 text-dark text-weight-bold">{{ formatLastUpdated(inventoryStore.stats.lastUpdated) }}</div>
-                <div class="text-body2 text-dark opacity-80">Last Updated</div>
-              </q-card-section>
-            </q-card>
-          </div>
+        <div class="stats-cards-container">
+          <!-- Total Items Card -->
+          <q-card class="glass-card stat-card text-center">
+            <q-card-section class="q-pa-md">
+              <q-icon name="inventory" class="text-h4 text-primary q-mb-xs" />
+              <div class="text-h4 text-dark text-weight-bold">{{ inventoryStore.stats.totalItems }}</div>
+              <div class="text-body2 text-dark opacity-80">Total Items</div>
+            </q-card-section>
+          </q-card>
+          
+          <!-- In Stock Card -->
+          <q-card class="glass-card stat-card text-center">
+            <q-card-section class="q-pa-md">
+              <q-icon name="check_circle" class="text-h4 text-positive q-mb-xs" />
+              <div class="text-h4 text-dark text-weight-bold">{{ inventoryStore.stats.totalInStock }}</div>
+              <div class="text-body2 text-dark opacity-80">In Stock</div>
+            </q-card-section>
+          </q-card>
+          
+          <!-- Total Value Card (only for admin/warehouse_manager) -->
+          <q-card v-if="canViewCost" class="glass-card stat-card text-center total-value-card">
+            <q-card-section class="q-pa-md">
+              <q-icon name="attach_money" class="text-h4 text-accent q-mb-xs" />
+              <div class="text-h4 text-dark text-weight-bold">{{ formatTotalValue(inventoryStore.stats.totalValue) }}</div>
+              <div class="text-body2 text-dark opacity-80">Total Value</div>
+              <div v-if="inventoryStore.stats.itemsWithCost" class="text-caption text-dark opacity-60 q-mt-xs">
+                {{ inventoryStore.stats.itemsWithCost }} items with cost
+              </div>
+            </q-card-section>
+          </q-card>
+          
+          <!-- Reserved Card -->
+          <q-card v-if="inventoryStore.stats.tagStatus" class="glass-card stat-card text-center reserved-card">
+            <q-card-section class="q-pa-md">
+              <q-icon name="bookmark" class="text-h4 text-info q-mb-xs" />
+              <div class="text-h4 text-dark text-weight-bold">{{ inventoryStore.stats.tagStatus.reserved.uniqueItemCount }}</div>
+              <div class="text-body2 text-dark opacity-80">Reserved Items</div>
+              <div v-if="inventoryStore.stats.tagStatus.reserved.totalQuantity > 0" class="text-caption text-dark opacity-60 q-mt-xs">
+                {{ inventoryStore.stats.tagStatus.reserved.totalQuantity }} total quantity
+              </div>
+            </q-card-section>
+          </q-card>
+          
+          <!-- Imperfect Card -->
+          <q-card v-if="inventoryStore.stats.tagStatus" class="glass-card stat-card text-center imperfect-card">
+            <q-card-section class="q-pa-md">
+              <q-icon name="warning" class="text-h4 text-warning q-mb-xs" />
+              <div class="text-h4 text-dark text-weight-bold">{{ inventoryStore.stats.tagStatus.imperfect.uniqueItemCount }}</div>
+              <div class="text-body2 text-dark opacity-80">Imperfect Items</div>
+              <div v-if="inventoryStore.stats.tagStatus.imperfect.totalQuantity > 0" class="text-caption text-dark opacity-60 q-mt-xs">
+                {{ inventoryStore.stats.tagStatus.imperfect.totalQuantity }} total quantity
+              </div>
+            </q-card-section>
+          </q-card>
+          
+          <!-- Broken Card -->
+          <q-card v-if="inventoryStore.stats.tagStatus" class="glass-card stat-card text-center broken-card">
+            <q-card-section class="q-pa-md">
+              <q-icon name="broken_image" class="text-h4 text-negative q-mb-xs" />
+              <div class="text-h4 text-dark text-weight-bold">{{ inventoryStore.stats.tagStatus.broken.uniqueItemCount }}</div>
+              <div class="text-body2 text-dark opacity-80">Broken Items</div>
+              <div v-if="inventoryStore.stats.tagStatus.broken.totalQuantity > 0" class="text-caption text-dark opacity-60 q-mt-xs">
+                {{ inventoryStore.stats.tagStatus.broken.totalQuantity }} total quantity
+              </div>
+            </q-card-section>
+          </q-card>
+          
+          <!-- Last Updated Card -->
+          <q-card class="glass-card stat-card text-center">
+            <q-card-section class="q-pa-md">
+              <q-icon name="schedule" class="text-h4 text-grey-6 q-mb-xs" />
+              <div class="text-h6 text-dark text-weight-bold">{{ formatLastUpdated(inventoryStore.stats.lastUpdated) }}</div>
+              <div class="text-body2 text-dark opacity-80">Last Updated</div>
+            </q-card-section>
+          </q-card>
         </div>
       </div>
 
@@ -434,6 +469,20 @@ watch([searchQuery, showInStockOnly], () => {
   filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.4));
 }
 
+/* Stats Cards Container */
+.stats-cards-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: space-evenly;
+}
+
+.stats-cards-container > * {
+  flex: 1;
+  min-width: 200px;
+  max-width: 280px;
+}
+
 /* Stats Cards */
 .stat-card {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -453,6 +502,42 @@ watch([searchQuery, showInStockOnly], () => {
   background: linear-gradient(135deg, rgba(255, 193, 7, 0.25), rgba(255, 152, 0, 0.25));
   border-color: rgba(255, 193, 7, 0.5);
   box-shadow: 0 12px 40px rgba(255, 193, 7, 0.2);
+}
+
+/* Reserved Card Special Styling */
+.reserved-card {
+  background: linear-gradient(135deg, rgba(0, 123, 255, 0.15), rgba(0, 86, 179, 0.15));
+  border: 2px solid rgba(0, 123, 255, 0.3);
+}
+
+.reserved-card:hover {
+  background: linear-gradient(135deg, rgba(0, 123, 255, 0.25), rgba(0, 86, 179, 0.25));
+  border-color: rgba(0, 123, 255, 0.5);
+  box-shadow: 0 12px 40px rgba(0, 123, 255, 0.2);
+}
+
+/* Imperfect Card Special Styling */
+.imperfect-card {
+  background: linear-gradient(135deg, rgba(255, 193, 7, 0.15), rgba(255, 152, 0, 0.15));
+  border: 2px solid rgba(255, 152, 0, 0.3);
+}
+
+.imperfect-card:hover {
+  background: linear-gradient(135deg, rgba(255, 193, 7, 0.25), rgba(255, 152, 0, 0.25));
+  border-color: rgba(255, 152, 0, 0.5);
+  box-shadow: 0 12px 40px rgba(255, 152, 0, 0.2);
+}
+
+/* Broken Card Special Styling */
+.broken-card {
+  background: linear-gradient(135deg, rgba(220, 53, 69, 0.15), rgba(176, 42, 55, 0.15));
+  border: 2px solid rgba(220, 53, 69, 0.3);
+}
+
+.broken-card:hover {
+  background: linear-gradient(135deg, rgba(220, 53, 69, 0.25), rgba(176, 42, 55, 0.25));
+  border-color: rgba(220, 53, 69, 0.5);
+  box-shadow: 0 12px 40px rgba(220, 53, 69, 0.2);
 }
 
 /* Controls Section */

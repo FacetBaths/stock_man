@@ -36,6 +36,43 @@ router.get('/', auth, async (req, res) => {
       .limit(limit * 1)
       .skip((page - 1) * limit)
       .lean();
+    
+    // Add tag information to each item
+    const Tag = require('../models/Tag');
+    const itemIds = items.map(item => item._id);
+    const activeTags = await Tag.find({
+      item_id: { $in: itemIds },
+      status: 'active'
+    }).lean();
+    
+    // Group tags by item ID
+    const tagsByItem = activeTags.reduce((acc, tag) => {
+      const itemId = tag.item_id.toString();
+      if (!acc[itemId]) acc[itemId] = [];
+      acc[itemId].push(tag);
+      return acc;
+    }, {});
+    
+    // Add tag info to each item
+    items = items.map(item => {
+      const itemId = item._id.toString();
+      const tags = tagsByItem[itemId] || [];
+      
+      // Calculate tag summary
+      const tagSummary = {
+        reserved: tags.filter(tag => tag.tag_type === 'reserved').reduce((sum, tag) => sum + tag.quantity, 0),
+        broken: tags.filter(tag => tag.tag_type === 'broken').reduce((sum, tag) => sum + tag.quantity, 0),
+        imperfect: tags.filter(tag => tag.tag_type === 'imperfect').reduce((sum, tag) => sum + tag.quantity, 0),
+        stock: tags.filter(tag => tag.tag_type === 'stock').reduce((sum, tag) => sum + tag.quantity, 0),
+        totalTagged: tags.reduce((sum, tag) => sum + tag.quantity, 0)
+      };
+      
+      return {
+        ...item,
+        tagSummary,
+        tags: tags.length > 0 ? tags : undefined
+      };
+    });
 
     // If search query is provided, filter results
     if (search && search.trim()) {
@@ -135,8 +172,43 @@ router.get('/stats', auth, async (req, res) => {
     const itemsWithCost = totalValueAggregation.length > 0 ? totalValueAggregation[0].itemsWithCost : 0;
     const totalQuantityWithCost = totalValueAggregation.length > 0 ? totalValueAggregation[0].totalQuantityWithCost : 0;
     
+    // Calculate tag-based status counts
+    const Tag = require('../models/Tag');
+    const tagStats = await Tag.aggregate([
+      {
+        $match: {
+          status: 'active'
+        }
+      },
+      {
+        $group: {
+          _id: '$tag_type',
+          count: { $sum: 1 },
+          totalQuantity: { $sum: '$quantity' },
+          uniqueItems: { $addToSet: '$item_id' }
+        }
+      },
+      {
+        $addFields: {
+          uniqueItemCount: { $size: '$uniqueItems' }
+        }
+      },
+      {
+        $project: {
+          uniqueItems: 0
+        }
+      }
+    ]);
+    
+    const tagStatusSummary = {
+      broken: tagStats.find(stat => stat._id === 'broken') || { count: 0, totalQuantity: 0, uniqueItemCount: 0 },
+      imperfect: tagStats.find(stat => stat._id === 'imperfect') || { count: 0, totalQuantity: 0, uniqueItemCount: 0 },
+      reserved: tagStats.find(stat => stat._id === 'reserved') || { count: 0, totalQuantity: 0, uniqueItemCount: 0 }
+    };
+    
     console.log('Total items:', totalItems, 'In stock:', totalInStock, 'Last updated:', lastUpdated);
     console.log('Total monetary value:', totalValue, 'Items with cost:', itemsWithCost);
+    console.log('Tag status summary:', tagStatusSummary);
 
     res.json({
       totalItems,
@@ -145,7 +217,8 @@ router.get('/stats', auth, async (req, res) => {
       lastUpdated,
       totalValue,
       itemsWithCost,
-      totalQuantityWithCost
+      totalQuantityWithCost,
+      tagStatus: tagStatusSummary
     });
 
   } catch (error) {

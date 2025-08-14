@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useAuthStore } from '@/stores/auth'
 import type { Item, WallDetails, ProductDetails } from '@/types'
+import { TAG_TYPES } from '@/types'
 
 interface Props {
   items: Item[]
@@ -70,6 +71,50 @@ const formatTotalInvested = (item: Item) => {
 }
 
 const canViewCost = (authStore.user?.role === 'admin' || authStore.user?.role === 'warehouse_manager')
+
+// Helper function to get tag status badges
+const getTagStatusBadges = (item: Item) => {
+  if (!item.tagSummary) return []
+  
+  const badges = []
+  if (item.tagSummary.reserved > 0) {
+    badges.push({
+      type: 'reserved',
+      quantity: item.tagSummary.reserved,
+      label: 'Reserved',
+      color: '#007bff'
+    })
+  }
+  if (item.tagSummary.broken > 0) {
+    badges.push({
+      type: 'broken',
+      quantity: item.tagSummary.broken,
+      label: 'Broken',
+      color: '#dc3545'
+    })
+  }
+  if (item.tagSummary.imperfect > 0) {
+    badges.push({
+      type: 'imperfect',
+      quantity: item.tagSummary.imperfect,
+      label: 'Imperfect',
+      color: '#fd7e14'
+    })
+  }
+  return badges
+}
+
+// Calculate available quantity (total - tagged)
+const getAvailableQuantity = (item: Item) => {
+  if (!item.tagSummary) return item.quantity
+  return item.quantity - item.tagSummary.totalTagged
+}
+
+// Check if item has any quality issues
+const hasQualityIssues = (item: Item) => {
+  if (!item.tagSummary) return false
+  return item.tagSummary.broken > 0 || item.tagSummary.imperfect > 0
+}
 </script>
 
 <template>
@@ -112,7 +157,20 @@ const canViewCost = (authStore.user?.role === 'admin' || authStore.user?.role ==
             </td>
             
             <td class="quantity">
-              <span class="quantity-value">{{ item.quantity }}</span>
+              <div class="quantity-container">
+                <span class="quantity-value">{{ item.quantity }}</span>
+                <div v-if="getTagStatusBadges(item).length > 0" class="tag-badges">
+                  <span 
+                    v-for="badge in getTagStatusBadges(item)" 
+                    :key="badge.type" 
+                    class="tag-badge" 
+                    :style="{ backgroundColor: badge.color }"
+                    :title="`${badge.quantity} ${badge.label}`"
+                  >
+                    {{ badge.quantity }}
+                  </span>
+                </div>
+              </div>
             </td>
             
             <td v-if="canViewCost" class="cost">
@@ -168,6 +226,8 @@ const canViewCost = (authStore.user?.role === 'admin' || authStore.user?.role ==
   border-radius: 0 0 0.5rem 0.5rem;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   overflow: hidden;
+  width: 60%;
+  margin: 0 auto;
 }
 
 .no-items {
@@ -260,12 +320,38 @@ const canViewCost = (authStore.user?.role === 'admin' || authStore.user?.role ==
   font-size: 1.1rem;
 }
 
+.quantity-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
 .quantity-value {
   display: inline-block;
   min-width: 2rem;
   padding: 0.25rem 0.5rem;
   background-color: #f8f9fa;
   border-radius: 0.25rem;
+}
+
+.tag-badges {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.tag-badge {
+  display: inline-block;
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.75rem;
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: white;
+  min-width: 1.25rem;
+  text-align: center;
+  line-height: 1;
 }
 
 .cost {
@@ -357,7 +443,17 @@ const canViewCost = (authStore.user?.role === 'admin' || authStore.user?.role ==
 }
 
 /* Responsive adjustments */
+@media (max-width: 1200px) {
+  .inventory-table-container {
+    width: 80%;
+  }
+}
+
 @media (max-width: 768px) {
+  .inventory-table-container {
+    width: 95%;
+  }
+  
   .inventory-table th,
   .inventory-table td {
     padding: 0.5rem;
