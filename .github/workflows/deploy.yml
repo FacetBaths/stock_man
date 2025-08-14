@@ -41,7 +41,7 @@ jobs:
         env:
           NODE_ENV: production
           GITHUB_PAGES_CUSTOM_DOMAIN: true
-          VITE_API_URL: https://stock-manager-backend.up.railway.app/api
+          VITE_API_URL: https://stockman-production-e4e4.up.railway.app/api
           
       - name: Verify build output
         run: |
