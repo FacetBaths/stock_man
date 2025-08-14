@@ -39,6 +39,7 @@ export interface Item {
   quantity: number
   location?: string
   notes?: string
+  cost?: number
   createdAt: string
   updatedAt: string
 }
@@ -46,6 +47,7 @@ export interface Item {
 export interface InventoryStats {
   totalItems: number
   totalInStock: number
+  lastUpdated?: string
   byProductType: Array<{
     _id: string
     count: number
@@ -67,12 +69,14 @@ export interface CreateItemRequest {
   quantity: number
   location?: string
   notes?: string
+  cost?: number
 }
 
 export interface UpdateItemRequest {
   quantity?: number
   location?: string
   notes?: string
+  cost?: number
   product_details?: Partial<WallDetails | ProductDetails>
 }
 

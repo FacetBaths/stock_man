@@ -32,6 +32,11 @@ const itemSchema = new mongoose.Schema({
     type: String,
     trim: true,
     default: ''
+  },
+  cost: {
+    type: Number,
+    min: 0,
+    default: 0
   }
 }, {
   timestamps: true

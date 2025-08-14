@@ -84,6 +84,9 @@ router.get('/', auth, async (req, res) => {
 // Get inventory statistics
 router.get('/stats', auth, async (req, res) => {
   try {
+    console.log('Fetching inventory stats...');
+    console.log('MongoDB connection state:', require('mongoose').connection.readyState);
+    
     const stats = await Item.aggregate([
       {
         $group: {
@@ -98,19 +101,36 @@ router.get('/stats', auth, async (req, res) => {
         }
       }
     ]);
+    console.log('Stats aggregation result:', stats);
 
     const totalItems = await Item.countDocuments();
     const totalInStock = await Item.countDocuments({ quantity: { $gt: 0 } });
+    
+    // Get the most recently updated item for "Last Updated" timestamp
+    const lastUpdatedItem = await Item.findOne().sort({ updatedAt: -1 }).lean();
+    const lastUpdated = lastUpdatedItem ? lastUpdatedItem.updatedAt : null;
+    
+    console.log('Total items:', totalItems, 'In stock:', totalInStock, 'Last updated:', lastUpdated);
 
     res.json({
       totalItems,
       totalInStock,
-      byProductType: stats
+      byProductType: stats,
+      lastUpdated
     });
 
   } catch (error) {
     console.error('Get stats error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Error stack:', error.stack);
+    console.error('MongoDB connection state:', require('mongoose').connection.readyState);
+    res.status(500).json({ 
+      message: 'Server error',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
+      debug: {
+        mongoState: require('mongoose').connection.readyState,
+        timestamp: new Date().toISOString()
+      }
+    });
   }
 });
 
@@ -125,7 +145,7 @@ router.post('/', [auth, requireWriteAccess], [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { product_type, product_details, quantity, location, notes } = req.body;
+    const { product_type, product_details, quantity, location, notes, cost } = req.body;
 
     // Create the product details first
     let productDetailsDoc;
@@ -183,7 +203,9 @@ router.post('/', [auth, requireWriteAccess], [
       product_type_model: typeMapping[product_type],
       quantity,
       location: location || '',
-      notes: notes || ''
+      notes: notes || '',
+      // Only allow admin and warehouse_manager to set cost
+      cost: (req.user.role === 'admin' || req.user.role === 'warehouse_manager') ? (cost || 0) : 0
     });
 
     await item.save();
@@ -225,6 +247,11 @@ router.put('/:id', [auth, requireWriteAccess], [
     if (updates.quantity !== undefined) item.quantity = updates.quantity;
     if (updates.location !== undefined) item.location = updates.location;
     if (updates.notes !== undefined) item.notes = updates.notes;
+    
+    // Only allow admin and warehouse_manager to update cost
+    if (updates.cost !== undefined && (req.user.role === 'admin' || req.user.role === 'warehouse_manager')) {
+      item.cost = updates.cost;
+    }
 
     // Update product details if provided
     if (updates.product_details) {

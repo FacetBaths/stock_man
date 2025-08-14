@@ -127,6 +127,25 @@ const getRoleColor = (role?: string) => {
   }
 }
 
+const formatLastUpdated = (dateString?: string) => {
+  if (!dateString) return 'Never'
+  
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60))
+  
+  if (diffInMinutes < 1) return 'Just now'
+  if (diffInMinutes < 60) return `${diffInMinutes}m ago`
+  
+  const diffInHours = Math.floor(diffInMinutes / 60)
+  if (diffInHours < 24) return `${diffInHours}h ago`
+  
+  const diffInDays = Math.floor(diffInHours / 24)
+  if (diffInDays < 7) return `${diffInDays}d ago`
+  
+  return date.toLocaleDateString()
+}
+
 onMounted(async () => {
   await loadItems()
   await inventoryStore.loadStats()
@@ -181,7 +200,7 @@ watch([searchQuery, showInStockOnly], () => {
       <!-- Stats Overview -->
       <div v-if="inventoryStore.stats" class="stats-section q-mb-lg" data-aos="fade-up" data-aos-delay="100">
         <div class="row q-gutter-md">
-          <div class="col-6">
+          <div class="col-4">
             <q-card class="glass-card stat-card text-center">
               <q-card-section class="q-pa-md">
                 <q-icon name="inventory" class="text-h4 text-primary q-mb-xs" />
@@ -190,12 +209,21 @@ watch([searchQuery, showInStockOnly], () => {
               </q-card-section>
             </q-card>
           </div>
-          <div class="col-6">
+          <div class="col-4">
             <q-card class="glass-card stat-card text-center">
               <q-card-section class="q-pa-md">
                 <q-icon name="check_circle" class="text-h4 text-positive q-mb-xs" />
                 <div class="text-h4 text-dark text-weight-bold">{{ inventoryStore.stats.totalInStock }}</div>
                 <div class="text-body2 text-dark opacity-80">In Stock</div>
+              </q-card-section>
+            </q-card>
+          </div>
+          <div class="col-4">
+            <q-card class="glass-card stat-card text-center">
+              <q-card-section class="q-pa-md">
+                <q-icon name="schedule" class="text-h4 text-info q-mb-xs" />
+                <div class="text-h6 text-dark text-weight-bold">{{ formatLastUpdated(inventoryStore.stats.lastUpdated) }}</div>
+                <div class="text-body2 text-dark opacity-80">Last Updated</div>
               </q-card-section>
             </q-card>
           </div>
