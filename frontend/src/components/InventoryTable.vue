@@ -238,6 +238,7 @@ const hasQualityIssues = (item: Item) => {
 
 .table-responsive {
   overflow-x: auto;
+  width: 100%;
 }
 
 .inventory-table {
