@@ -386,6 +386,16 @@ const quickLoginAsSales = async () => {
   font-weight: 500;
 }
 
+.login-select :deep(.q-field__input) {
+  color: #333 !important;
+  font-family: "Tomorrow", sans-serif !important;
+  font-weight: 500;
+}
+
+.login-select :deep(.q-icon) {
+  color: #9945ff !important;
+}
+
 .login-input :deep(.q-field__control):hover {
   background: rgba(255, 255, 255, 0.9) !important;
   border-color: rgba(0, 0, 0, 0.2) !important;
@@ -412,12 +422,19 @@ const quickLoginAsSales = async () => {
 /* Button styling */
 .login-btn {
   border-radius: 12px;
-  /* background-color: rgba(0, 0, 0, 0.1); */
+  background: rgba(153, 69, 255, 0.8) !important;
   font-weight: 600;
   font-family: "Tomorrow", sans-serif;
   letter-spacing: 0.5px;
-  /* box-shadow: 0 4px 5px rgba(153, 69, 255, 0.3); */
   transition: all 0.3s ease;
+}
+
+.login-btn :deep(.q-btn__content) {
+  color: white !important;
+}
+
+.login-btn :deep(.q-icon) {
+  color: white !important;
 }
 
 .login-btn:hover {
