@@ -423,8 +423,9 @@ watch([searchQuery, showInStockOnly], () => {
 }
 
 .container {
-  max-width: 1200px;
-  margin: 0 auto;
+  width: 70%;
+  margin: 0 15%;
+  max-width: none;
 }
 
 /* Glassmorphism Cards */
