@@ -263,22 +263,19 @@ const handleTagStatusClick = (item: Item) => {
             <!-- Quantity Section -->
             <div class="item-section quantity-section">
               <div class="quantity-display">
+                <!-- Total Quantity Badge -->
                 <q-badge 
                   :color="getStockStatus(item.quantity).color" 
                   :label="item.quantity.toString()"
-                  class="quantity-badge"
+                  class="total-quantity-badge"
+                  :title="`Total: ${item.quantity} items`"
                 />
-                <div v-if="getTagStatusBadges(item).length > 0" class="tag-badges-container">
-                  <q-chip
-                    v-for="badge in getTagStatusBadges(item)"
-                    :key="badge.type"
-                    :color="badge.color"
-                    text-color="white"
-                    size="xs"
-                    :label="badge.quantity.toString()"
-                    :title="`${badge.quantity} ${badge.label}`"
-                    class="tag-chip"
-                  />
+                
+                <!-- Reserved/Available Breakdown -->
+                <div v-if="item.tagSummary && item.tagSummary.totalTagged > 0" class="quantity-breakdown">
+                  <div class="breakdown-text">
+                    {{ item.tagSummary.totalTagged }} reserved / {{ getAvailableQuantity(item) }} free
+                  </div>
                 </div>
               </div>
             </div>
@@ -604,20 +601,36 @@ const handleTagStatusClick = (item: Item) => {
   gap: 8px;
 }
 
-.quantity-badge {
+/* Total Quantity Badge */
+.total-quantity-badge {
   font-weight: 700;
-  font-size: 16px;
+  font-size: 18px;
   border-radius: 12px;
   user-select: none;
   cursor: default;
+  margin-bottom: 4px;
+}
+
+/* Quantity Breakdown */
+.quantity-breakdown {
+  margin: 4px 0;
+}
+
+.breakdown-text {
+  color: rgba(33, 37, 41, 0.75);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  user-select: none;
 }
 
 .tag-badges-container {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 2px;
   justify-content: center;
-  max-width: 80px;
+  max-width: 90px;
+  margin-top: 4px;
 }
 
 .tag-chip {
