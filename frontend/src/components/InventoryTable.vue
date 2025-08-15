@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import type { Item, WallDetails, ProductDetails } from '@/types'
 import { TAG_TYPES } from '@/types'
@@ -15,6 +16,10 @@ const emit = defineEmits<{
   edit: [item: Item]
   delete: [item: Item]
 }>()
+
+// Dialog state for tag details
+const showTagDialog = ref(false)
+const selectedItem = ref<Item | null>(null)
 
 const formatProductDetails = (item: Item) => {
   const details = item.product_details
@@ -131,6 +136,52 @@ const hasQualityIssues = (item: Item) => {
   if (!item.tagSummary) return false
   return item.tagSummary.broken > 0 || item.tagSummary.imperfect > 0
 }
+
+// Get primary tag status for an item
+const getPrimaryTagStatus = (item: Item) => {
+  // If no tags or all quantities are 0, default to in-stock
+  if (!item.tagSummary || item.tagSummary.totalTagged === 0) {
+    return { text: 'In Stock', color: 'positive', clickable: false }
+  }
+  
+  const availableQty = item.quantity - item.tagSummary.totalTagged
+  
+  if (availableQty === 0) {
+    // All items are tagged - no "Partially" prefix
+    if (item.tagSummary.broken > 0) {
+      return { text: 'Broken', color: 'negative', clickable: true }
+    }
+    if (item.tagSummary.imperfect > 0) {
+      return { text: 'Imperfect', color: 'warning', clickable: true }
+    }
+    if (item.tagSummary.reserved > 0) {
+      return { text: 'Reserved', color: 'info', clickable: true }
+    }
+  } else {
+    // Some items available, some tagged - show "Partially"
+    if (item.tagSummary.broken > 0) {
+      return { text: 'Partially Broken', color: 'negative', clickable: true }
+    }
+    if (item.tagSummary.imperfect > 0) {
+      return { text: 'Partially Imperfect', color: 'warning', clickable: true }
+    }
+    if (item.tagSummary.reserved > 0) {
+      return { text: 'Partially Reserved', color: 'info', clickable: true }
+    }
+  }
+  
+// Default fallback
+  return { text: 'In Stock', color: 'positive', clickable: false }
+}
+
+// Handle tag status click
+const handleTagStatusClick = (item: Item) => {
+  const status = getPrimaryTagStatus(item)
+  if (status.clickable) {
+    selectedItem.value = item
+    showTagDialog.value = true
+  }
+}
 </script>
 
 <template>
@@ -145,145 +196,271 @@ const hasQualityIssues = (item: Item) => {
     <div v-else>
       <!-- Header Section -->
       <div class="list-header glass-header q-pa-md q-mb-sm">
-        <div class="row items-center no-wrap">
-          <div class="col-auto header-section type-header">
+        <div class="header-row">
+          <div class="header-section type-header">
             <q-icon name="category" class="q-mr-xs" />
             Type
           </div>
-          <div class="col header-section details-header">
+          <div class="header-section details-header">
             <q-icon name="inventory" class="q-mr-xs" />
             Product Details
           </div>
-          <div class="col-auto header-section quantity-header">
+          <div class="header-section quantity-header">
             <q-icon name="tag" class="q-mr-xs" />
             Qty
           </div>
-          <div v-if="canViewCost" class="col-auto header-section cost-header">
+          <div class="header-section tag-header">
+            <q-icon name="label" class="q-mr-xs" />
+            Tag Status
+          </div>
+          <div v-if="canViewCost" class="header-section cost-header">
             <q-icon name="attach_money" class="q-mr-xs" />
             Cost
           </div>
-          <div class="col-auto header-section status-header">
+          <div class="header-section status-header">
             <q-icon name="info" class="q-mr-xs" />
             Status & Info
           </div>
-          <div v-if="canWrite" class="col-auto header-section actions-header">
+          <div v-if="canWrite" class="header-section actions-header">
             <q-icon name="settings" class="q-mr-xs" />
             Actions
           </div>
         </div>
       </div>
       
-      <q-list class="inventory-list" separator>
-      <q-item 
-        v-for="item in items" 
-        :key="item._id" 
-        class="inventory-item glass-item"
-        clickable
-        v-ripple
-      >
-        <!-- Main Item Section -->
-        <q-item-section avatar>
-          <q-chip 
-            :color="getTypeColor(item.product_type)"
-            text-color="white"
-            size="sm"
-            class="type-chip"
-          >
-            {{ item.product_type.replace('_', ' ') }}
-          </q-chip>
-        </q-item-section>
-
-        <q-item-section>
-          <q-item-label class="item-title">
-            {{ formatProductDetails(item).primary }}
-          </q-item-label>
-          <q-item-label v-if="formatProductDetails(item).secondary" caption class="item-subtitle">
-            {{ formatProductDetails(item).secondary }}
-          </q-item-label>
-          <q-item-label v-if="item.notes" caption class="item-notes">
-            <q-icon name="note" size="xs" class="q-mr-xs" />{{ item.notes }}
-          </q-item-label>
-        </q-item-section>
-
-        <!-- Quantity Section -->
-        <q-item-section side class="quantity-section">
-          <div class="quantity-display">
-            <q-badge 
-              :color="getStockStatus(item.quantity).color" 
-              :label="item.quantity.toString()"
-              class="quantity-badge"
-            />
-            <div v-if="getTagStatusBadges(item).length > 0" class="tag-badges-container">
-              <q-chip
-                v-for="badge in getTagStatusBadges(item)"
-                :key="badge.type"
-                :color="badge.color"
+      <div class="inventory-list">
+        <div 
+          v-for="item in items" 
+          :key="item._id" 
+          class="inventory-item"
+        >
+          <div class="item-row">
+            <!-- Type Section -->
+            <div class="item-section type-section">
+              <q-chip 
+                :color="getTypeColor(item.product_type)"
                 text-color="white"
-                size="xs"
-                :label="badge.quantity.toString()"
-                :title="`${badge.quantity} ${badge.label}`"
-                class="tag-chip"
+                size="sm"
+                class="type-chip"
+              >
+                {{ item.product_type.replace('_', ' ') }}
+              </q-chip>
+            </div>
+
+            <!-- Details Section -->
+            <div class="item-section details-section">
+              <div class="item-title">
+                {{ formatProductDetails(item).primary }}
+              </div>
+              <div v-if="formatProductDetails(item).secondary" class="item-subtitle">
+                {{ formatProductDetails(item).secondary }}
+              </div>
+              <div v-if="item.notes" class="item-notes">
+                <q-icon name="note" size="xs" class="q-mr-xs" />{{ item.notes }}
+              </div>
+            </div>
+
+            <!-- Quantity Section -->
+            <div class="item-section quantity-section">
+              <div class="quantity-display">
+                <q-badge 
+                  :color="getStockStatus(item.quantity).color" 
+                  :label="item.quantity.toString()"
+                  class="quantity-badge"
+                />
+                <div v-if="getTagStatusBadges(item).length > 0" class="tag-badges-container">
+                  <q-chip
+                    v-for="badge in getTagStatusBadges(item)"
+                    :key="badge.type"
+                    :color="badge.color"
+                    text-color="white"
+                    size="xs"
+                    :label="badge.quantity.toString()"
+                    :title="`${badge.quantity} ${badge.label}`"
+                    class="tag-chip"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <!-- Tag Status Section -->
+            <div class="item-section tag-section">
+              <q-chip 
+                :color="getPrimaryTagStatus(item).color"
+                text-color="white"
+                size="sm"
+                :label="getPrimaryTagStatus(item).text"
+                :class="[
+                  'tag-status-chip',
+                  { 'clickable': getPrimaryTagStatus(item).clickable }
+                ]"
+                :clickable="getPrimaryTagStatus(item).clickable"
+                @click="handleTagStatusClick(item)"
+              >
+                <q-tooltip v-if="getPrimaryTagStatus(item).clickable">
+                  Click to view details
+                </q-tooltip>
+              </q-chip>
+            </div>
+
+            <!-- Cost Section (if can view cost) -->
+            <div v-if="canViewCost" class="item-section cost-section">
+              <div class="cost-label">{{ formatCost(item.cost) }}</div>
+              <div class="total-invested-label">
+                Total: {{ formatTotalInvested(item) }}
+              </div>
+            </div>
+
+            <!-- Status & Info Section -->
+            <div class="item-section status-section">
+              <q-chip 
+                :color="getStockStatus(item.quantity).color"
+                text-color="white"
+                size="sm"
+                :label="getStockStatus(item.quantity).text"
+                class="status-chip"
               />
+              <div class="location-label">
+                <q-icon name="place" size="xs" class="q-mr-xs" />
+                {{ item.location || 'No location' }}
+              </div>
+              <div class="date-label">
+                {{ formatDate(item.updatedAt) }}
+              </div>
+            </div>
+
+            <!-- Actions Section -->
+            <div v-if="canWrite" class="item-section actions-section">
+              <div class="action-buttons">
+                <q-btn
+                  @click.stop="emit('edit', item)"
+                  color="primary"
+                  icon="edit"
+                  size="sm"
+                  round
+                  flat
+                  class="action-btn"
+                >
+                  <q-tooltip>Edit item</q-tooltip>
+                </q-btn>
+                <q-btn
+                  @click.stop="emit('delete', item)"
+                  color="negative"
+                  icon="delete"
+                  size="sm"
+                  round
+                  flat
+                  class="action-btn"
+                >
+                  <q-tooltip>Delete item</q-tooltip>
+                </q-btn>
+              </div>
             </div>
           </div>
-        </q-item-section>
-
-        <!-- Cost Section (if can view cost) -->
-        <q-item-section v-if="canViewCost" side class="cost-section">
-          <q-item-label class="cost-label">{{ formatCost(item.cost) }}</q-item-label>
-          <q-item-label caption class="total-invested-label">
-            Total: {{ formatTotalInvested(item) }}
-          </q-item-label>
-        </q-item-section>
-
-        <!-- Status & Info Section -->
-        <q-item-section side class="status-section">
-          <q-chip 
-            :color="getStockStatus(item.quantity).color"
-            text-color="white"
-            size="sm"
-            :label="getStockStatus(item.quantity).text"
-            class="status-chip"
-          />
-          <q-item-label caption class="location-label">
-            <q-icon name="place" size="xs" class="q-mr-xs" />
-            {{ item.location || 'No location' }}
-          </q-item-label>
-          <q-item-label caption class="date-label">
-            {{ formatDate(item.updatedAt) }}
-          </q-item-label>
-        </q-item-section>
-
-        <!-- Actions Section -->
-        <q-item-section v-if="canWrite" side class="actions-section">
-          <div class="action-buttons">
-            <q-btn
-              @click.stop="emit('edit', item)"
-              color="primary"
-              icon="edit"
-              size="sm"
-              round
-              flat
-              class="action-btn"
-            >
-              <q-tooltip>Edit item</q-tooltip>
-            </q-btn>
-            <q-btn
-              @click.stop="emit('delete', item)"
-              color="negative"
-              icon="delete"
-              size="sm"
-              round
-              flat
-              class="action-btn"
-            >
-              <q-tooltip>Delete item</q-tooltip>
-            </q-btn>
-          </div>
-        </q-item-section>
-      </q-item>
-    </q-list>
+        </div>
+      </div>
     </div>
+
+    <!-- Tag Details Dialog -->
+    <q-dialog v-model="showTagDialog" persistent>
+      <q-card class="tag-details-dialog" style="min-width: 500px">
+        <q-card-section class="row items-center q-pb-none">
+          <div class="text-h6">Tag Details</div>
+          <q-space />
+          <q-btn icon="close" flat round dense v-close-popup />
+        </q-card-section>
+
+        <q-card-section v-if="selectedItem">
+          <!-- Item Summary -->
+          <div class="q-mb-md">
+            <div class="text-subtitle1 text-weight-bold">
+              {{ formatProductDetails(selectedItem).primary }}
+            </div>
+            <div class="text-body2 text-grey-7" v-if="formatProductDetails(selectedItem).secondary">
+              {{ formatProductDetails(selectedItem).secondary }}
+            </div>
+          </div>
+
+          <!-- Overall Summary -->
+          <div class="summary-section q-mb-md">
+            <q-separator class="q-mb-md" />
+            <div class="row q-gutter-md">
+              <div class="col">
+                <div class="text-body2 text-grey-7">Total Quantity</div>
+                <div class="text-h6">{{ selectedItem.quantity }}</div>
+              </div>
+              <div class="col" v-if="selectedItem.tagSummary">
+                <div class="text-body2 text-grey-7">Total Tagged</div>
+                <div class="text-h6 text-negative">{{ selectedItem.tagSummary.totalTagged }}</div>
+              </div>
+              <div class="col">
+                <div class="text-body2 text-grey-7">Available</div>
+                <div class="text-h6 text-positive">{{ getAvailableQuantity(selectedItem) }}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tag Breakdown -->
+          <div v-if="selectedItem.tagSummary && selectedItem.tagSummary.totalTagged > 0">
+            <q-separator class="q-mb-md" />
+            <div class="text-subtitle2 q-mb-md">Tag Breakdown:</div>
+            
+            <!-- Reserved Items -->
+            <div v-if="selectedItem.tagSummary.reserved > 0" class="tag-detail-section q-mb-md">
+              <q-chip color="info" text-color="white" icon="bookmark" class="q-mr-sm">
+                Reserved: {{ selectedItem.tagSummary.reserved }}
+              </q-chip>
+              <div class="q-mt-sm">
+                <div v-if="selectedItem.tags" class="reservation-details">
+                  <div 
+                    v-for="tag in selectedItem.tags.filter(tag => tag.tag_type === 'reserved')"
+                    :key="tag._id"
+                    class="reservation-item q-mb-xs"
+                  >
+                    <div class="text-body2">
+                      <strong>{{ tag.customer_name }}</strong> - {{ tag.quantity }} item{{ tag.quantity !== 1 ? 's' : '' }}
+                    </div>
+                    <div v-if="tag.due_date" class="text-caption text-grey-6">
+                      Due: {{ new Date(tag.due_date).toLocaleDateString() }}
+                    </div>
+                    <div v-if="tag.notes" class="text-caption text-grey-6">
+                      {{ tag.notes }}
+                    </div>
+                  </div>
+                </div>
+                <div v-else class="text-body2 text-grey-7">
+                  Items currently reserved for reserving parties
+                </div>
+              </div>
+            </div>
+
+            <!-- Broken Items -->
+            <div v-if="selectedItem.tagSummary.broken > 0" class="tag-detail-section q-mb-md">
+              <q-chip color="negative" text-color="white" icon="broken_image" class="q-mr-sm">
+                Broken: {{ selectedItem.tagSummary.broken }}
+              </q-chip>
+              <div class="q-mt-sm text-body2 text-grey-7">
+                Items marked as damaged or broken
+              </div>
+            </div>
+
+            <!-- Imperfect Items -->
+            <div v-if="selectedItem.tagSummary.imperfect > 0" class="tag-detail-section q-mb-md">
+              <q-chip color="warning" text-color="white" icon="warning" class="q-mr-sm">
+                Imperfect: {{ selectedItem.tagSummary.imperfect }}
+              </q-chip>
+              <div class="q-mt-sm text-body2 text-grey-7">
+                Items with minor defects or imperfections
+              </div>
+            </div>
+          </div>
+        </q-card-section>
+
+        <q-card-actions align="right">
+          <q-btn flat label="Close" color="primary" v-close-popup />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </div>
 </template>
 
@@ -313,6 +490,13 @@ const hasQualityIssues = (item: Item) => {
   margin-bottom: 12px;
 }
 
+.header-row {
+  display: flex;
+  justify-content: space-evenly;
+  align-items: center;
+  width: 100%;
+}
+
 .header-section {
   color: rgba(33, 37, 41, 0.8);
   font-weight: 600;
@@ -321,38 +505,13 @@ const hasQualityIssues = (item: Item) => {
   letter-spacing: 0.5px;
   display: flex;
   align-items: center;
-}
-
-.type-header {
-  min-width: 100px;
-}
-
-.details-header {
+  justify-content: center;
   flex: 1;
 }
 
-.quantity-header {
-  min-width: 80px;
-  text-align: center;
-  justify-content: center;
-}
-
-.cost-header {
-  min-width: 120px;
-  text-align: right;
-  justify-content: flex-end;
-}
-
-.status-header {
-  min-width: 140px;
-  text-align: center;
-  justify-content: center;
-}
-
-.actions-header {
-  min-width: 100px;
-  text-align: center;
-  justify-content: center;
+.details-header {
+  flex: 2;
+  justify-content: flex-start;
 }
 
 /* List Styling */
@@ -366,9 +525,11 @@ const hasQualityIssues = (item: Item) => {
   backdrop-filter: blur(10px);
   border-radius: 15px;
   border: 1px solid rgba(255, 255, 255, 0.15);
-  margin-bottom: 8px;
+  margin-bottom: 12px;
   transition: all 0.3s ease;
-  padding: 16px;
+  padding: 20px;
+  min-height: 80px;
+  align-items: center;
 }
 
 .inventory-item:hover {
@@ -377,12 +538,36 @@ const hasQualityIssues = (item: Item) => {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
 }
 
+/* Item Row Layout */
+.item-row {
+  display: flex;
+  justify-content: space-evenly;
+  align-items: center;
+  width: 100%;
+}
+
+.item-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+}
+
+.details-section {
+  flex: 2;
+  align-items: flex-start;
+  text-align: left;
+}
+
 /* Type Chip */
 .type-chip {
   text-transform: capitalize;
   font-weight: 600;
   font-size: 11px;
   border-radius: 12px;
+  user-select: none;
+  cursor: default;
 }
 
 /* Item Content */
@@ -423,6 +608,8 @@ const hasQualityIssues = (item: Item) => {
   font-weight: 700;
   font-size: 16px;
   border-radius: 12px;
+  user-select: none;
+  cursor: default;
 }
 
 .tag-badges-container {
@@ -438,6 +625,22 @@ const hasQualityIssues = (item: Item) => {
   font-size: 10px;
   border-radius: 10px;
   min-width: 20px;
+  user-select: none;
+  cursor: default;
+}
+
+/* Tag Status Section */
+.tag-section {
+  min-width: 120px;
+  text-align: center;
+}
+
+.tag-status-chip {
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-radius: 12px;
 }
 
 /* Cost Section */
@@ -472,6 +675,8 @@ const hasQualityIssues = (item: Item) => {
   letter-spacing: 0.5px;
   border-radius: 12px;
   margin-bottom: 6px;
+  user-select: none;
+  cursor: default;
 }
 
 .location-label {
@@ -581,5 +786,25 @@ const hasQualityIssues = (item: Item) => {
   .status-chip {
     font-size: 11px;
   }
+}
+
+/* Modal Styling */
+.reservation-details {
+  border-left: 3px solid #007bff;
+  padding-left: 12px;
+  margin-left: 8px;
+}
+
+.reservation-item {
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.reservation-item:last-child {
+  border-bottom: none;
+}
+
+.tag-detail-section .q-chip {
+  margin-bottom: 8px;
 }
 </style>
