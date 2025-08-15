@@ -423,8 +423,8 @@ watch([searchQuery, showInStockOnly], () => {
 }
 
 .container {
-  width: 70%;
-  margin: 0 15%;
+  width: 95%;
+  margin: 0 2.5%;
   max-width: none;
 }
 

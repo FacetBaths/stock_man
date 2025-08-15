@@ -44,9 +44,25 @@ const formatProductDetails = (item: Item) => {
 }
 
 const getStockStatus = (quantity: number) => {
-  if (quantity === 0) return { class: 'out-of-stock', text: 'Out of Stock' }
-  if (quantity <= 5) return { class: 'low-stock', text: 'Low Stock' }
-  return { class: 'in-stock', text: 'In Stock' }
+  if (quantity === 0) return { class: 'out-of-stock', text: 'Out of Stock', color: 'negative' }
+  if (quantity <= 5) return { class: 'low-stock', text: 'Low Stock', color: 'warning' }
+  return { class: 'in-stock', text: 'In Stock', color: 'positive' }
+}
+
+// Helper function to get type colors
+const getTypeColor = (productType: string) => {
+  const colorMap: { [key: string]: string } = {
+    'wall': 'primary',
+    'toilet': 'positive',
+    'base': 'amber',
+    'tub': 'cyan',
+    'vanity': 'deep-purple',
+    'shower_door': 'deep-orange',
+    'raw_material': 'brown',
+    'accessory': 'pink',
+    'miscellaneous': 'grey'
+  }
+  return colorMap[productType] || 'grey'
 }
 
 const formatDate = (dateString: string) => {
@@ -118,359 +134,452 @@ const hasQualityIssues = (item: Item) => {
 </script>
 
 <template>
-  <div class="inventory-table-container">
-    <div v-if="items.length === 0" class="no-items">
-      <p>No items found matching your criteria.</p>
-    </div>
+  <div class="inventory-list-container">
+    <q-banner v-if="items.length === 0" class="no-items-banner" rounded>
+      <template v-slot:avatar>
+        <q-icon name="inventory_2" color="grey-6" />
+      </template>
+      No items found matching your criteria.
+    </q-banner>
     
-    <div v-else class="table-responsive">
-      <table class="inventory-table">
-        <thead>
-          <tr>
-            <th>Product Type</th>
-            <th>Details</th>
-            <th>Quantity</th>
-            <th v-if="canViewCost">Cost</th>
-            <th v-if="canViewCost">Total Invested</th>
-            <th>Status</th>
-            <th>Location</th>
-            <th>Last Updated</th>
-            <th v-if="canWrite" class="actions-column">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="item in items" :key="item._id" class="item-row">
-            <td class="product-type">
-              <span class="type-badge" :class="`type-${item.product_type}`">
-                {{ item.product_type.replace('_', ' ') }}
-              </span>
-            </td>
-            
-            <td class="product-details">
-              <div class="detail-primary">{{ formatProductDetails(item).primary }}</div>
-              <div v-if="formatProductDetails(item).secondary" class="detail-secondary">
-                {{ formatProductDetails(item).secondary }}
-              </div>
-              <div v-if="item.notes" class="detail-notes">
-                <small>{{ item.notes }}</small>
-              </div>
-            </td>
-            
-            <td class="quantity">
-              <div class="quantity-container">
-                <span class="quantity-value">{{ item.quantity }}</span>
-                <div v-if="getTagStatusBadges(item).length > 0" class="tag-badges">
-                  <span 
-                    v-for="badge in getTagStatusBadges(item)" 
-                    :key="badge.type" 
-                    class="tag-badge" 
-                    :style="{ backgroundColor: badge.color }"
-                    :title="`${badge.quantity} ${badge.label}`"
-                  >
-                    {{ badge.quantity }}
-                  </span>
-                </div>
-              </div>
-            </td>
-            
-            <td v-if="canViewCost" class="cost">
-              <span class="cost-value">{{ formatCost(item.cost) }}</span>
-            </td>
-            
-            <td v-if="canViewCost" class="total-invested">
-              <span class="total-invested-value">{{ formatTotalInvested(item) }}</span>
-            </td>
-            
-            <td class="status">
-              <span class="status-badge" :class="getStockStatus(item.quantity).class">
-                {{ getStockStatus(item.quantity).text }}
-              </span>
-            </td>
-            
-            <td class="location">
-              {{ item.location || '-' }}
-            </td>
-            
-            <td class="updated-date">
-              {{ formatDate(item.updatedAt) }}
-            </td>
-            
-            <td v-if="canWrite" class="actions">
-              <div class="action-buttons">
-                <button
-                  class="btn btn-sm btn-primary"
-                  @click="emit('edit', item)"
-                  title="Edit item"
-                >
-                  Edit
-                </button>
-                <button
-                  class="btn btn-sm btn-danger"
-                  @click="emit('delete', item)"
-                  title="Delete item"
-                >
-                  Delete
-                </button>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+    <div v-else>
+      <!-- Header Section -->
+      <div class="list-header glass-header q-pa-md q-mb-sm">
+        <div class="row items-center no-wrap">
+          <div class="col-auto header-section type-header">
+            <q-icon name="category" class="q-mr-xs" />
+            Type
+          </div>
+          <div class="col header-section details-header">
+            <q-icon name="inventory" class="q-mr-xs" />
+            Product Details
+          </div>
+          <div class="col-auto header-section quantity-header">
+            <q-icon name="tag" class="q-mr-xs" />
+            Qty
+          </div>
+          <div v-if="canViewCost" class="col-auto header-section cost-header">
+            <q-icon name="attach_money" class="q-mr-xs" />
+            Cost
+          </div>
+          <div class="col-auto header-section status-header">
+            <q-icon name="info" class="q-mr-xs" />
+            Status & Info
+          </div>
+          <div v-if="canWrite" class="col-auto header-section actions-header">
+            <q-icon name="settings" class="q-mr-xs" />
+            Actions
+          </div>
+        </div>
+      </div>
+      
+      <q-list class="inventory-list" separator>
+      <q-item 
+        v-for="item in items" 
+        :key="item._id" 
+        class="inventory-item glass-item"
+        clickable
+        v-ripple
+      >
+        <!-- Main Item Section -->
+        <q-item-section avatar>
+          <q-chip 
+            :color="getTypeColor(item.product_type)"
+            text-color="white"
+            size="sm"
+            class="type-chip"
+          >
+            {{ item.product_type.replace('_', ' ') }}
+          </q-chip>
+        </q-item-section>
+
+        <q-item-section>
+          <q-item-label class="item-title">
+            {{ formatProductDetails(item).primary }}
+          </q-item-label>
+          <q-item-label v-if="formatProductDetails(item).secondary" caption class="item-subtitle">
+            {{ formatProductDetails(item).secondary }}
+          </q-item-label>
+          <q-item-label v-if="item.notes" caption class="item-notes">
+            <q-icon name="note" size="xs" class="q-mr-xs" />{{ item.notes }}
+          </q-item-label>
+        </q-item-section>
+
+        <!-- Quantity Section -->
+        <q-item-section side class="quantity-section">
+          <div class="quantity-display">
+            <q-badge 
+              :color="getStockStatus(item.quantity).color" 
+              :label="item.quantity.toString()"
+              class="quantity-badge"
+            />
+            <div v-if="getTagStatusBadges(item).length > 0" class="tag-badges-container">
+              <q-chip
+                v-for="badge in getTagStatusBadges(item)"
+                :key="badge.type"
+                :color="badge.color"
+                text-color="white"
+                size="xs"
+                :label="badge.quantity.toString()"
+                :title="`${badge.quantity} ${badge.label}`"
+                class="tag-chip"
+              />
+            </div>
+          </div>
+        </q-item-section>
+
+        <!-- Cost Section (if can view cost) -->
+        <q-item-section v-if="canViewCost" side class="cost-section">
+          <q-item-label class="cost-label">{{ formatCost(item.cost) }}</q-item-label>
+          <q-item-label caption class="total-invested-label">
+            Total: {{ formatTotalInvested(item) }}
+          </q-item-label>
+        </q-item-section>
+
+        <!-- Status & Info Section -->
+        <q-item-section side class="status-section">
+          <q-chip 
+            :color="getStockStatus(item.quantity).color"
+            text-color="white"
+            size="sm"
+            :label="getStockStatus(item.quantity).text"
+            class="status-chip"
+          />
+          <q-item-label caption class="location-label">
+            <q-icon name="place" size="xs" class="q-mr-xs" />
+            {{ item.location || 'No location' }}
+          </q-item-label>
+          <q-item-label caption class="date-label">
+            {{ formatDate(item.updatedAt) }}
+          </q-item-label>
+        </q-item-section>
+
+        <!-- Actions Section -->
+        <q-item-section v-if="canWrite" side class="actions-section">
+          <div class="action-buttons">
+            <q-btn
+              @click.stop="emit('edit', item)"
+              color="primary"
+              icon="edit"
+              size="sm"
+              round
+              flat
+              class="action-btn"
+            >
+              <q-tooltip>Edit item</q-tooltip>
+            </q-btn>
+            <q-btn
+              @click.stop="emit('delete', item)"
+              color="negative"
+              icon="delete"
+              size="sm"
+              round
+              flat
+              class="action-btn"
+            >
+              <q-tooltip>Delete item</q-tooltip>
+            </q-btn>
+          </div>
+        </q-item-section>
+      </q-item>
+    </q-list>
     </div>
   </div>
 </template>
 
 <style scoped>
-.inventory-table-container {
-  background: white;
-  border-radius: 0 0 0.5rem 0.5rem;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+/* List Container */
+.inventory-list-container {
+  background: transparent;
+  border-radius: 20px;
   overflow: hidden;
-  width: 60%;
-  margin: 0 auto;
-}
-
-.no-items {
-  padding: 3rem;
-  text-align: center;
-  color: #6c757d;
-}
-
-.table-responsive {
-  overflow-x: auto;
   width: 100%;
 }
 
-.inventory-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.9rem;
+/* No Items Banner */
+.no-items-banner {
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(33, 37, 41, 0.7);
 }
 
-.inventory-table thead {
-  background-color: #f8f9fa;
+/* Header Section */
+.list-header {
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(15px);
+  border-radius: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  margin-bottom: 12px;
 }
 
-.inventory-table th,
-.inventory-table td {
-  padding: 1rem;
-  text-align: left;
-  border-bottom: 1px solid #dee2e6;
-}
-
-.inventory-table th {
+.header-section {
+  color: rgba(33, 37, 41, 0.8);
   font-weight: 600;
-  color: #495057;
+  font-size: 14px;
   text-transform: uppercase;
-  font-size: 0.8rem;
   letter-spacing: 0.5px;
-}
-
-.item-row:hover {
-  background-color: #f8f9fa;
-}
-
-.product-type {
-  white-space: nowrap;
-}
-
-.type-badge {
-  display: inline-block;
-  padding: 0.25rem 0.5rem;
-  border-radius: 0.25rem;
-  font-size: 0.75rem;
-  font-weight: 500;
-  text-transform: capitalize;
-  color: white;
-}
-
-.type-wall { background-color: #007bff; }
-.type-toilet { background-color: #28a745; }
-.type-base { background-color: #ffc107; color: #212529; }
-.type-tub { background-color: #17a2b8; }
-.type-vanity { background-color: #6f42c1; }
-.type-shower_door { background-color: #fd7e14; }
-.type-raw_material { background-color: #795548; }
-.type-accessory { background-color: #e91e63; }
-.type-miscellaneous { background-color: #9e9e9e; }
-
-.product-details {
-  min-width: 300px;
-}
-
-.detail-primary {
-  font-weight: 600;
-  color: #212529;
-  margin-bottom: 0.25rem;
-}
-
-.detail-secondary {
-  color: #6c757d;
-  font-size: 0.85rem;
-  margin-bottom: 0.25rem;
-}
-
-.detail-notes {
-  color: #6c757d;
-  font-style: italic;
-}
-
-.quantity {
-  text-align: center;
-  font-weight: 600;
-  font-size: 1.1rem;
-}
-
-.quantity-container {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 0.25rem;
 }
 
-.quantity-value {
-  display: inline-block;
-  min-width: 2rem;
-  padding: 0.25rem 0.5rem;
-  background-color: #f8f9fa;
-  border-radius: 0.25rem;
+.type-header {
+  min-width: 100px;
 }
 
-.tag-badges {
-  display: flex;
-  gap: 0.25rem;
-  flex-wrap: wrap;
+.details-header {
+  flex: 1;
+}
+
+.quantity-header {
+  min-width: 80px;
+  text-align: center;
   justify-content: center;
 }
 
-.tag-badge {
-  display: inline-block;
-  padding: 0.125rem 0.375rem;
-  border-radius: 0.75rem;
-  font-size: 0.6rem;
-  font-weight: 600;
-  color: white;
-  min-width: 1.25rem;
+.cost-header {
+  min-width: 120px;
+  text-align: right;
+  justify-content: flex-end;
+}
+
+.status-header {
+  min-width: 140px;
   text-align: center;
-  line-height: 1;
+  justify-content: center;
 }
 
-.cost {
-  text-align: right;
+.actions-header {
+  min-width: 100px;
+  text-align: center;
+  justify-content: center;
+}
+
+/* List Styling */
+.inventory-list {
+  background: transparent;
+}
+
+/* Individual Item Styling */
+.inventory-item {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border-radius: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  margin-bottom: 8px;
+  transition: all 0.3s ease;
+  padding: 16px;
+}
+
+.inventory-item:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+/* Type Chip */
+.type-chip {
+  text-transform: capitalize;
   font-weight: 600;
-  font-size: 1rem;
-  color: #28a745;
+  font-size: 11px;
+  border-radius: 12px;
 }
 
-.cost-value {
-  display: inline-block;
-  padding: 0.25rem 0.5rem;
-  background-color: rgba(40, 167, 69, 0.1);
-  border-radius: 0.25rem;
-  color: #28a745;
-}
-
-.total-invested {
-  text-align: right;
-  font-weight: 700;
-  font-size: 1rem;
-  color: #0056b3;
-}
-
-.total-invested-value {
-  display: inline-block;
-  padding: 0.25rem 0.5rem;
-  background-color: rgba(0, 86, 179, 0.1);
-  border-radius: 0.25rem;
-  color: #0056b3;
-  font-weight: 700;
-}
-
-.status {
-  white-space: nowrap;
-}
-
-.status-badge {
-  display: inline-block;
-  padding: 0.25rem 0.75rem;
-  border-radius: 1rem;
-  font-size: 0.75rem;
+/* Item Content */
+.item-title {
+  color: rgba(33, 37, 41, 0.9);
   font-weight: 600;
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.item-subtitle {
+  color: rgba(33, 37, 41, 0.7);
+  font-size: 14px;
+  margin-top: 4px;
+}
+
+.item-notes {
+  color: rgba(33, 37, 41, 0.6);
+  font-style: italic;
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+/* Quantity Section */
+.quantity-section {
+  min-width: 80px;
+  text-align: center;
+}
+
+.quantity-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.quantity-badge {
+  font-weight: 700;
+  font-size: 16px;
+  border-radius: 12px;
+}
+
+.tag-badges-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: center;
+  max-width: 80px;
+}
+
+.tag-chip {
+  font-weight: 600;
+  font-size: 10px;
+  border-radius: 10px;
+  min-width: 20px;
+}
+
+/* Cost Section */
+.cost-section {
+  min-width: 120px;
+  text-align: right;
+}
+
+.cost-label {
+  color: rgba(40, 167, 69, 0.9);
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.total-invested-label {
+  color: rgba(0, 86, 179, 0.8);
+  font-weight: 500;
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+/* Status Section */
+.status-section {
+  min-width: 140px;
+  text-align: center;
+}
+
+.status-chip {
+  font-weight: 600;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  border-radius: 12px;
+  margin-bottom: 6px;
 }
 
-.status-badge.in-stock {
-  background-color: #d4edda;
-  color: #155724;
+.location-label {
+  color: rgba(33, 37, 41, 0.6);
+  font-size: 12px;
+  margin-top: 4px;
 }
 
-.status-badge.low-stock {
-  background-color: #fff3cd;
-  color: #856404;
+.date-label {
+  color: rgba(33, 37, 41, 0.5);
+  font-size: 11px;
+  margin-top: 2px;
 }
 
-.status-badge.out-of-stock {
-  background-color: #f8d7da;
-  color: #721c24;
-}
-
-.location {
-  color: #6c757d;
-}
-
-.updated-date {
-  color: #6c757d;
-  font-size: 0.85rem;
-  white-space: nowrap;
-}
-
-.actions-column {
-  width: 120px;
-}
-
-.actions {
-  white-space: nowrap;
+/* Actions Section */
+.actions-section {
+  min-width: 100px;
 }
 
 .action-buttons {
   display: flex;
-  gap: 0.5rem;
+  gap: 8px;
+  justify-content: center;
 }
 
-.btn-sm {
-  padding: 0.25rem 0.5rem;
-  font-size: 0.75rem;
+.action-btn {
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-/* Responsive adjustments */
-@media (max-width: 1200px) {
-  .inventory-table-container {
-    width: 80%;
+.action-btn:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+  .cost-section {
+    min-width: 100px;
+  }
+  
+  .status-section {
+    min-width: 120px;
   }
 }
 
 @media (max-width: 768px) {
-  .inventory-table-container {
-    width: 95%;
+  .inventory-item {
+    padding: 12px;
+    flex-wrap: wrap;
   }
   
-  .inventory-table th,
-  .inventory-table td {
-    padding: 0.5rem;
+  .item-title {
+    font-size: 14px;
   }
   
-  .product-details {
-    min-width: 200px;
+  .item-subtitle {
+    font-size: 13px;
   }
   
-  .detail-primary {
-    font-size: 0.9rem;
+  .quantity-section,
+  .cost-section,
+  .status-section,
+  .actions-section {
+    min-width: auto;
+    flex-basis: 50%;
+    margin-top: 8px;
   }
   
   .action-buttons {
     flex-direction: column;
-    gap: 0.25rem;
+    gap: 4px;
+  }
+  
+  .tag-badges-container {
+    max-width: none;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 480px) {
+  .inventory-item {
+    padding: 8px;
+  }
+  
+  .type-chip {
+    font-size: 10px;
+    padding: 4px 8px;
+  }
+  
+  .item-title {
+    font-size: 13px;
+  }
+  
+  .item-subtitle {
+    font-size: 12px;
+  }
+  
+  .quantity-badge {
+    font-size: 14px;
+  }
+  
+  .cost-label {
+    font-size: 14px;
+  }
+  
+  .status-chip {
+    font-size: 11px;
   }
 }
 </style>
