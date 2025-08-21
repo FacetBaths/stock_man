@@ -744,6 +744,107 @@ router.get('/customers', auth, async (req, res) => {
   }
 });
 
+// Create batch tags (for CreateTagModalNew component)
+router.post('/batch', [auth, requireWriteAccess], [
+  body('customer_name').notEmpty().trim().withMessage('Customer name is required'),
+  body('tags').isArray({ min: 1 }).withMessage('At least one tag item is required'),
+  body('tags.*.item_id').isMongoId().withMessage('Valid item ID is required'),
+  body('tags.*.quantity').isInt({ min: 1 }).withMessage('Quantity must be at least 1'),
+  body('tag_type').optional().isIn(['stock', 'reserved', 'broken', 'imperfect'])
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { customer_name, tags, tag_type = 'reserved', notes, due_date } = req.body;
+    
+    // Convert item-based tags to SKU-based structure
+    const skuItemsMap = new Map();
+    const failed = [];
+
+    // Group items by their SKU
+    for (const tagItem of tags) {
+      try {
+        // Find the item and its associated SKU
+        const item = await Item.findById(tagItem.item_id).populate('product_details');
+        if (!item) {
+          failed.push({ item_id: tagItem.item_id, error: 'Item not found' });
+          continue;
+        }
+
+        // Find associated SKU
+        let sku = null;
+        if (item.sku_id) {
+          sku = await SKU.findById(item.sku_id);
+          if (!sku) {
+            failed.push({ item_id: tagItem.item_id, error: 'Associated SKU not found' });
+            continue;
+          }
+        } else {
+          failed.push({ item_id: tagItem.item_id, error: 'Item has no associated SKU' });
+          continue;
+        }
+
+        // Group by SKU ID
+        const skuKey = sku._id.toString();
+        if (skuItemsMap.has(skuKey)) {
+          skuItemsMap.get(skuKey).quantity += tagItem.quantity;
+        } else {
+          skuItemsMap.set(skuKey, {
+            sku_id: sku._id,
+            quantity: tagItem.quantity,
+            remaining_quantity: tagItem.quantity
+          });
+        }
+
+      } catch (error) {
+        failed.push({ item_id: tagItem.item_id, error: error.message });
+      }
+    }
+
+    if (skuItemsMap.size === 0) {
+      return res.status(400).json({
+        message: 'No valid SKU items found to create tags',
+        failed
+      });
+    }
+
+    // Create a single tag with all SKU items
+    try {
+      const tag = new Tag({
+        customer_name,
+        sku_items: Array.from(skuItemsMap.values()),
+        tag_type,
+        notes: notes || '',
+        created_by: req.user.username,
+        due_date: due_date ? new Date(due_date) : undefined
+      });
+
+      await tag.save();
+      await tag.populate({
+        path: 'sku_items.sku_id',
+        populate: { path: 'product_details' }
+      });
+
+      res.status(201).json({
+        message: `Successfully created tag with ${skuItemsMap.size} SKU item(s). ${failed.length} items failed.`,
+        tags: [tag],
+        failed: failed.length > 0 ? failed : undefined
+      });
+
+    } catch (error) {
+      console.error('Create tag error:', error);
+      res.status(500).json({ message: 'Failed to create tag: ' + error.message });
+    }
+
+  } catch (error) {
+    console.error('Create batch tags error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Get tag statistics
 router.get('/stats', auth, async (req, res) => {
   try {
