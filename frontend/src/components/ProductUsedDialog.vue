@@ -147,6 +147,7 @@ import { tagApi } from '@/utils/api'
 
 interface Props {
   show: boolean
+  preselectedCustomer?: string
 }
 
 interface Customer {
@@ -210,7 +211,13 @@ watch(() => props.show, (show) => {
   showDialog.value = show
   if (show) {
     reset()
-    loadCustomers()
+    loadCustomers().then(() => {
+      // Auto-select preselected customer if provided
+      if (props.preselectedCustomer) {
+        selectedCustomer.value = props.preselectedCustomer
+        loadTags()
+      }
+    })
   }
 })
 

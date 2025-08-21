@@ -576,6 +576,7 @@ const tableColumns = [
 
     <ProductUsedDialog
       :show="showProductUsedDialog"
+      :preselected-customer="customerFilter.trim() || undefined"
       @close="showProductUsedDialog = false"
       @success="handleDialogSuccess"
     />
