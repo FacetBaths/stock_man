@@ -171,8 +171,6 @@ router.get('/',
       }
 
       const skus = await SKU.find(filter)
-        .populate('product_details')
-        .populate('bundle_items.product_details')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit);
