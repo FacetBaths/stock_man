@@ -162,8 +162,92 @@
       </q-card-section>
     </q-card>
 
+    <!-- Products Without SKUs Section -->
+    <q-card class="q-mb-md" v-if="productsWithoutSKUs.length > 0">
+      <q-card-section>
+        <div class="row items-center q-mb-md">
+          <div class="col">
+            <div class="text-h6 text-weight-bold text-orange">
+              <q-icon name="warning" class="q-mr-sm" />
+              Products Without SKUs ({{ productsWithoutSKUs.length }})
+            </div>
+            <div class="text-caption text-grey-6">
+              These products existed before SKU implementation and need SKUs assigned
+            </div>
+          </div>
+          <div class="col-auto">
+            <q-btn
+              color="orange"
+              label="Bulk Create SKUs"
+              icon="batch_prediction"
+              @click="openBulkCreateDialog"
+              :disable="!authStore.canWrite || selectedProductsWithoutSKUs.length === 0"
+            />
+          </div>
+        </div>
+
+        <q-table
+          :rows="productsWithoutSKUs"
+          :columns="productsWithoutSKUsColumns"
+          :loading="loadingProductsWithoutSKUs"
+          row-key="_id"
+          selection="multiple"
+          v-model:selected="selectedProductsWithoutSKUs"
+          dense
+          :pagination="{ rowsPerPage: 5 }"
+          @row-click="(evt, row) => openCreateSKUForProduct(row)"
+          class="products-without-skus-table"
+        >
+          <template v-slot:no-data>
+            <div class="full-width row flex-center text-positive q-gutter-sm q-pa-lg">
+              <q-icon size="2em" name="check_circle" />
+              <span>All products have SKUs assigned!</span>
+            </div>
+          </template>
+
+          <template v-slot:body-cell-product_info="props">
+            <q-td :props="props">
+              <div class="text-weight-medium">{{ getProductDisplayName(props.row) }}</div>
+              <div class="text-caption text-grey-6">{{ formatProductType(props.row.product_type) }}</div>
+            </q-td>
+          </template>
+
+          <template v-slot:body-cell-quantity="props">
+            <q-td :props="props">
+              <q-chip
+                :label="props.value"
+                :color="props.value > 0 ? 'green' : 'grey'"
+                text-color="white"
+                dense
+              />
+            </q-td>
+          </template>
+
+          <template v-slot:body-cell-actions="props">
+            <q-td :props="props">
+              <q-btn
+                size="sm"
+                color="primary"
+                label="Create SKU"
+                @click.stop="openCreateSKUForProduct(props.row)"
+                :disable="!authStore.canWrite"
+              />
+            </q-td>
+          </template>
+        </q-table>
+      </q-card-section>
+    </q-card>
+
     <!-- SKU Table -->
     <q-card>
+      <q-card-section class="row items-center q-pb-none">
+        <div class="text-h6">SKU Inventory</div>
+        <q-space />
+        <div class="text-caption text-grey-6">
+          {{ skuStore.skus.length }} SKU{{ skuStore.skus.length !== 1 ? 's' : '' }} loaded
+        </div>
+      </q-card-section>
+      
       <q-table
         :rows="skuStore.skus"
         :columns="columns"
@@ -359,7 +443,8 @@ import { ref, onMounted, computed } from 'vue'
 import { useQuasar } from 'quasar'
 import { useAuthStore } from '@/stores/auth'
 import { useSKUStore } from '@/stores/sku'
-import { PRODUCT_TYPES, type SKU } from '@/types'
+import { inventoryApi } from '@/utils/api'
+import { PRODUCT_TYPES, type SKU, type Item } from '@/types'
 import StockStatusChip from '@/components/StockStatusChip.vue'
 import SKUFormDialog from '@/components/SKUFormDialog.vue'
 import AddCostDialog from '@/components/AddCostDialog.vue'
@@ -377,6 +462,12 @@ const showFormDialog = ref(false)
 const showAddCostDialog = ref(false)
 const showBatchScanDialog = ref(false)
 const showExportDialog = ref(false)
+
+// Products without SKUs state
+const productsWithoutSKUs = ref<Item[]>([])
+const selectedProductsWithoutSKUs = ref<Item[]>([])
+const loadingProductsWithoutSKUs = ref(false)
+const productForSKUCreation = ref<Item | null>(null)
 
 // Table configuration
 const columns = [
@@ -546,10 +637,16 @@ const openExportDialog = () => {
 }
 
 // Event handlers
-const onSKUSaved = () => {
+const onSKUSaved = async () => {
   showFormDialog.value = false
   selectedSKU.value = null
-  refreshData()
+  productForSKUCreation.value = null
+  
+  await Promise.all([
+    refreshData(),
+    loadProductsWithoutSKUs()
+  ])
+  
   $q.notify({
     type: 'positive',
     message: 'SKU saved successfully'
@@ -619,9 +716,160 @@ const confirmDeleteSelected = () => {
   })
 }
 
+// Products without SKUs table columns
+const productsWithoutSKUsColumns = [
+  {
+    name: 'product_info',
+    label: 'Product',
+    field: 'product_details',
+    align: 'left',
+    sortable: false
+  },
+  {
+    name: 'quantity',
+    label: 'Quantity',
+    field: 'quantity',
+    align: 'center',
+    sortable: true
+  },
+  {
+    name: 'location',
+    label: 'Location',
+    field: 'location',
+    align: 'left',
+    sortable: false
+  },
+  {
+    name: 'cost',
+    label: 'Cost',
+    field: 'cost',
+    align: 'right',
+    sortable: true,
+    format: (val: number) => `$${formatCurrency(val)}`
+  },
+  {
+    name: 'actions',
+    label: 'Actions',
+    field: '',
+    align: 'center',
+    sortable: false
+  }
+]
+
+// Products without SKUs methods
+const loadProductsWithoutSKUs = async () => {
+  try {
+    loadingProductsWithoutSKUs.value = true
+    // Get all items that don't have SKUs assigned
+    const response = await inventoryApi.getItems({ limit: 1000 })
+    productsWithoutSKUs.value = response.items.filter(item => !item.sku_id)
+  } catch (error) {
+    console.error('Error loading products without SKUs:', error)
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to load products without SKUs'
+    })
+  } finally {
+    loadingProductsWithoutSKUs.value = false
+  }
+}
+
+const getProductDisplayName = (item: Item) => {
+  const details = item.product_details as any
+  if (details.name) {
+    return details.name
+  }
+  if (details.product_line && details.color_name) {
+    return `${details.product_line} - ${details.color_name}`
+  }
+  if (details.brand && details.model) {
+    return `${details.brand} ${details.model}`
+  }
+  return `${formatProductType(item.product_type)} Product`
+}
+
+const openCreateSKUForProduct = (item: Item) => {
+  productForSKUCreation.value = item
+  selectedSKU.value = null
+  showFormDialog.value = true
+}
+
+const openBulkCreateDialog = () => {
+  if (selectedProductsWithoutSKUs.value.length === 0) {
+    $q.notify({
+      type: 'warning',
+      message: 'Please select products to create SKUs for'
+    })
+    return
+  }
+
+  $q.dialog({
+    title: 'Bulk Create SKUs',
+    message: `Create SKUs for ${selectedProductsWithoutSKUs.value.length} selected products?`,
+    cancel: true,
+    persistent: true
+  }).onOk(async () => {
+    try {
+      let created = 0
+      let failed = 0
+
+      for (const item of selectedProductsWithoutSKUs.value) {
+        try {
+          // Generate SKU code
+          const skuCode = await skuStore.generateSKUCode({
+            product_type: item.product_type,
+            product_details: item._id
+          })
+
+          // Create SKU
+          await skuStore.createSKU({
+            sku_code: skuCode,
+            product_type: item.product_type,
+            product_details: item._id,
+            current_cost: item.cost || 0,
+            stock_thresholds: item.stock_thresholds || {
+              understocked: 5,
+              overstocked: 100
+            },
+            description: `Auto-created for ${getProductDisplayName(item)}`,
+            notes: 'Bulk created from products without SKUs'
+          })
+
+          created++
+        } catch (error) {
+          console.error(`Failed to create SKU for product ${item._id}:`, error)
+          failed++
+        }
+      }
+
+      // Refresh data
+      await Promise.all([
+        refreshData(),
+        loadProductsWithoutSKUs()
+      ])
+
+      // Clear selection
+      selectedProductsWithoutSKUs.value = []
+
+      $q.notify({
+        type: 'positive',
+        message: `Created ${created} SKUs successfully${failed > 0 ? `, ${failed} failed` : ''}`
+      })
+    } catch (error: any) {
+      $q.notify({
+        type: 'negative',
+        message: error.message || 'Failed to bulk create SKUs'
+      })
+    }
+  })
+}
+
 // Lifecycle
-onMounted(() => {
-  refreshData()
+onMounted(async () => {
+  await Promise.all([
+    refreshData(),
+    loadProductsWithoutSKUs()
+  ])
 })
 </script>
 

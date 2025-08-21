@@ -32,6 +32,11 @@ const filteredItems = computed(() => {
     items = items.filter(item => {
       const details = item.product_details as any
       
+      // Check SKU code and barcode first
+      if (item.sku_code?.toLowerCase().includes(search) || item.barcode?.toLowerCase().includes(search)) {
+        return true
+      }
+      
       if (item.product_type === 'wall') {
         return (
           details.product_line?.toLowerCase().includes(search) ||
@@ -166,7 +171,7 @@ watch([searchQuery, showInStockOnly], () => {
                 <q-input
                   v-model="searchQuery"
                   filled
-                  placeholder="Search inventory..."
+                  placeholder="Search inventory (SKU, barcode, product name)..."
                   class="search-input"
                   style="min-width: 300px"
                 >

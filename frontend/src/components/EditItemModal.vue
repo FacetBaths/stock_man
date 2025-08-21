@@ -84,6 +84,31 @@ onMounted(() => {
               />
             </div>
 
+            <!-- SKU Information (Read-only) -->
+            <div class="form-group">
+              <label class="form-label">SKU Information</label>
+              <div class="sku-info-display">
+                <div v-if="item.sku_code" class="sku-info-item">
+                  <div class="sku-info-group">
+                    <label class="sku-info-label">SKU Code:</label>
+                    <div class="sku-info-value">
+                      <span class="sku-code-badge">{{ item.sku_code }}</span>
+                    </div>
+                  </div>
+                  <div v-if="item.barcode" class="sku-info-group">
+                    <label class="sku-info-label">Barcode:</label>
+                    <div class="sku-info-value">
+                      <span class="barcode-value">{{ item.barcode }}</span>
+                    </div>
+                  </div>
+                </div>
+                <div v-else class="no-sku-info">
+                  <span class="text-muted">No SKU assigned to this item</span>
+                  <small class="help-text">SKU assignments are managed through the SKU Management section</small>
+                </div>
+              </div>
+            </div>
+
             <!-- Wall Product Fields -->
             <template v-if="isWallProduct">
               <div class="form-group">
@@ -355,6 +380,78 @@ onMounted(() => {
   border-top: 1px solid #dee2e6;
 }
 
+/* SKU Information Display */
+.sku-info-display {
+  border: 1px solid #e9ecef;
+  border-radius: 0.375rem;
+  padding: 1rem;
+  background-color: #f8f9fa;
+}
+
+.sku-info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.sku-info-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sku-info-label {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: #495057;
+  min-width: 80px;
+  margin: 0;
+}
+
+.sku-info-value {
+  flex: 1;
+}
+
+.sku-code-badge {
+  display: inline-block;
+  background-color: #6f42c1;
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border-radius: 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.barcode-value {
+  display: inline-block;
+  background-color: #343a40;
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.no-sku-info {
+  text-align: center;
+  padding: 1rem;
+}
+
+.no-sku-info .text-muted {
+  color: #6c757d;
+  font-size: 0.875rem;
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.no-sku-info .help-text {
+  color: #868e96;
+  font-size: 0.75rem;
+  font-style: italic;
+}
+
 @media (max-width: 768px) {
   .modal-overlay {
     padding: 0.5rem;
@@ -367,6 +464,16 @@ onMounted(() => {
   
   .modal-actions {
     flex-direction: column;
+  }
+  
+  .sku-info-group {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+  
+  .sku-info-label {
+    min-width: auto;
   }
 }
 </style>

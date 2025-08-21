@@ -254,6 +254,11 @@ export const useSKUStore = defineStore('sku', () => {
     }
   }
 
+  const findSKUByBarcode = async (barcode: string) => {
+    // Alias for searchByBarcode for consistency
+    return await searchByBarcode(barcode)
+  }
+
   const getSKUByCode = (skuCode: string) => {
     return skus.value.find(sku => sku.sku_code === skuCode)
   }
@@ -313,6 +318,7 @@ export const useSKUStore = defineStore('sku', () => {
     generateSKUCode,
     addCost,
     searchByBarcode,
+    findSKUByBarcode,
     getSKUByCode,
     getSKUsByProduct,
     getSKUsByStatus,

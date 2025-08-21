@@ -32,6 +32,11 @@ const filteredItems = computed(() => {
     items = items.filter(item => {
       const details = item.product_details as any
       
+      // Check SKU code and barcode first
+      if (item.sku_code?.toLowerCase().includes(search) || item.barcode?.toLowerCase().includes(search)) {
+        return true
+      }
+      
       if (item.product_type === 'wall') {
         return (
           details.product_line?.toLowerCase().includes(search) ||
@@ -276,6 +281,18 @@ watch([searchQuery, showInStockOnly], () => {
             </q-card-section>
           </q-card>
           
+          <!-- SKU Coverage Card -->
+          <q-card class="glass-card stat-card text-center sku-card">
+            <q-card-section class="q-pa-md">
+              <q-icon name="qr_code" class="text-h4 text-teal q-mb-xs" />
+              <div class="text-h4 text-dark text-weight-bold">{{ inventoryStore.stats.skuCoverage?.percentage || 0 }}%</div>
+              <div class="text-body2 text-dark opacity-80">SKU Coverage</div>
+              <div v-if="inventoryStore.stats.skuCoverage" class="text-caption text-dark opacity-60 q-mt-xs">
+                {{ inventoryStore.stats.skuCoverage.itemsWithSKUs || 0 }}/{{ inventoryStore.stats.skuCoverage.totalItems || 0 }} items
+              </div>
+            </q-card-section>
+          </q-card>
+          
           <!-- Last Updated Card -->
           <q-card class="glass-card stat-card text-center">
             <q-card-section class="q-pa-md">
@@ -297,7 +314,7 @@ watch([searchQuery, showInStockOnly], () => {
                 <q-input
                   v-model="searchQuery"
                   filled
-                  placeholder="Search inventory..."
+                  placeholder="Search inventory (SKU, barcode, product name)..."
                   class="search-input"
                   style="min-width: 300px"
                 >
@@ -539,6 +556,18 @@ watch([searchQuery, showInStockOnly], () => {
   background: linear-gradient(135deg, rgba(220, 53, 69, 0.25), rgba(176, 42, 55, 0.25));
   border-color: rgba(220, 53, 69, 0.5);
   box-shadow: 0 12px 40px rgba(220, 53, 69, 0.2);
+}
+
+/* SKU Card Special Styling */
+.sku-card {
+  background: linear-gradient(135deg, rgba(0, 150, 136, 0.15), rgba(0, 121, 107, 0.15));
+  border: 2px solid rgba(0, 150, 136, 0.3);
+}
+
+.sku-card:hover {
+  background: linear-gradient(135deg, rgba(0, 150, 136, 0.25), rgba(0, 121, 107, 0.25));
+  border-color: rgba(0, 150, 136, 0.5);
+  box-shadow: 0 12px 40px rgba(0, 150, 136, 0.2);
 }
 
 /* Controls Section */

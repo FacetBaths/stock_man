@@ -197,13 +197,13 @@ const handleTagStatusClick = (item: Item) => {
       <!-- Header Section -->
       <div class="list-header glass-header q-pa-md q-mb-sm">
         <div class="header-row">
-          <div class="header-section type-header">
-            <q-icon name="category" class="q-mr-xs" />
-            Type
-          </div>
           <div class="header-section details-header">
             <q-icon name="inventory" class="q-mr-xs" />
             Product Details
+          </div>
+          <div class="header-section sku-header">
+            <q-icon name="qr_code" class="q-mr-xs" />
+            SKU
           </div>
           <div class="header-section quantity-header">
             <q-icon name="tag" class="q-mr-xs" />
@@ -233,22 +233,16 @@ const handleTagStatusClick = (item: Item) => {
           v-for="item in items" 
           :key="item._id" 
           class="inventory-item"
+          :class="`type-${item.product_type}`"
+          @click="canWrite ? emit('edit', item) : null"
+          :style="{ cursor: canWrite ? 'pointer' : 'default' }"
         >
           <div class="item-row">
-            <!-- Type Section -->
-            <div class="item-section type-section">
-              <q-chip 
-                :color="getTypeColor(item.product_type)"
-                text-color="white"
-                size="sm"
-                class="type-chip"
-              >
-                {{ item.product_type.replace('_', ' ') }}
-              </q-chip>
-            </div>
-
             <!-- Details Section -->
             <div class="item-section details-section">
+              <div class="product-type-banner" :class="`type-banner-${item.product_type}`">
+                {{ item.product_type.replace('_', ' ').toUpperCase() }}
+              </div>
               <div class="item-title">
                 {{ formatProductDetails(item).primary }}
               </div>
@@ -257,6 +251,38 @@ const handleTagStatusClick = (item: Item) => {
               </div>
               <div v-if="item.notes" class="item-notes">
                 <q-icon name="note" size="xs" class="q-mr-xs" />{{ item.notes }}
+              </div>
+            </div>
+
+            <!-- SKU Section -->
+            <div class="item-section sku-section">
+              <div v-if="item.sku_code" class="sku-display">
+                <q-chip
+                  color="purple"
+                  text-color="white"
+                  size="sm"
+                  :label="item.sku_code"
+                  class="sku-chip"
+                  icon="qr_code"
+                >
+                  <q-tooltip>SKU Code</q-tooltip>
+                </q-chip>
+                <div v-if="item.barcode" class="barcode-display">
+                  <q-icon name="barcode_reader" size="xs" class="q-mr-xs" />
+                  <span class="barcode-text">{{ item.barcode }}</span>
+                </div>
+              </div>
+              <div v-else class="no-sku-display">
+                <q-chip
+                  color="grey-5"
+                  text-color="grey-8"
+                  size="sm"
+                  label="No SKU"
+                  class="no-sku-chip"
+                  icon="help_outline"
+                >
+                  <q-tooltip>No SKU assigned</q-tooltip>
+                </q-chip>
               </div>
             </div>
 
@@ -489,9 +515,10 @@ const handleTagStatusClick = (item: Item) => {
 
 .header-row {
   display: flex;
-  justify-content: space-evenly;
+  justify-content: space-between;
   align-items: center;
   width: 100%;
+  padding: 0 10px;
 }
 
 .header-section {
@@ -503,12 +530,14 @@ const handleTagStatusClick = (item: Item) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  flex: 1;
+  flex: 0 1 auto;
+  min-width: 80px;
 }
 
 .details-header {
-  flex: 2;
+  flex: 1 1 auto;
   justify-content: flex-start;
+  max-width: 300px;
 }
 
 /* List Styling */
@@ -535,12 +564,50 @@ const handleTagStatusClick = (item: Item) => {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
 }
 
+/* Color-coded left borders for product types */
+.inventory-item.type-wall {
+  border-left: 5px solid var(--q-primary);
+}
+
+.inventory-item.type-toilet {
+  border-left: 5px solid var(--q-positive);
+}
+
+.inventory-item.type-base {
+  border-left: 5px solid var(--q-amber);
+}
+
+.inventory-item.type-tub {
+  border-left: 5px solid var(--q-cyan);
+}
+
+.inventory-item.type-vanity {
+  border-left: 5px solid var(--q-deep-purple);
+}
+
+.inventory-item.type-shower_door {
+  border-left: 5px solid var(--q-deep-orange);
+}
+
+.inventory-item.type-raw_material {
+  border-left: 5px solid var(--q-brown);
+}
+
+.inventory-item.type-accessory {
+  border-left: 5px solid var(--q-pink);
+}
+
+.inventory-item.type-miscellaneous {
+  border-left: 5px solid var(--q-grey);
+}
+
 /* Item Row Layout */
 .item-row {
   display: flex;
-  justify-content: space-evenly;
+  justify-content: space-between;
   align-items: center;
   width: 100%;
+  padding: 0 10px;
 }
 
 .item-section {
@@ -548,13 +615,17 @@ const handleTagStatusClick = (item: Item) => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  flex: 1;
+  flex: 0 1 auto;
+  min-width: 80px;
 }
 
 .details-section {
-  flex: 2;
+  flex: 1 1 auto;
   align-items: flex-start;
   text-align: left;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Type Chip */
@@ -565,6 +636,72 @@ const handleTagStatusClick = (item: Item) => {
   border-radius: 12px;
   user-select: none;
   cursor: default;
+}
+
+/* Product Type Banner */
+.product-type-banner {
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: all 0.3s ease;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  margin-bottom: 6px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  align-self: flex-start;
+}
+
+.inventory-item:hover .product-type-banner {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Product type banner colors */
+.type-banner-wall {
+  background: var(--q-primary);
+  color: white;
+}
+
+.type-banner-toilet {
+  background: var(--q-positive);
+  color: white;
+}
+
+.type-banner-base {
+  background: var(--q-amber);
+  color: white;
+}
+
+.type-banner-tub {
+  background: var(--q-cyan);
+  color: white;
+}
+
+.type-banner-vanity {
+  background: var(--q-deep-purple);
+  color: white;
+}
+
+.type-banner-shower_door {
+  background: var(--q-deep-orange);
+  color: white;
+}
+
+.type-banner-raw_material {
+  background: var(--q-brown);
+  color: white;
+}
+
+.type-banner-accessory {
+  background: var(--q-pink);
+  color: white;
+}
+
+.type-banner-miscellaneous {
+  background: var(--q-grey);
+  color: white;
 }
 
 /* Item Content */
@@ -640,6 +777,55 @@ const handleTagStatusClick = (item: Item) => {
   min-width: 20px;
   user-select: none;
   cursor: default;
+}
+
+/* SKU Section */
+.sku-section {
+  min-width: 140px;
+  text-align: center;
+}
+
+.sku-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.sku-chip {
+  font-weight: 600;
+  font-size: 12px;
+  border-radius: 12px;
+  user-select: text;
+  cursor: pointer;
+}
+
+.no-sku-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.no-sku-chip {
+  font-weight: 500;
+  font-size: 11px;
+  border-radius: 12px;
+  user-select: none;
+  cursor: default;
+  opacity: 0.7;
+}
+
+.barcode-display {
+  display: flex;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.barcode-text {
+  color: rgba(33, 37, 41, 0.6);
+  font-size: 11px;
+  font-family: monospace;
+  user-select: text;
 }
 
 /* Tag Status Section */
