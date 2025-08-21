@@ -709,7 +709,7 @@ router.get('/customers', auth, async (req, res) => {
         $group: {
           _id: '$customer_name',
           tag_count: { $sum: 1 },
-          total_sku_items: { $sum: { $size: '$sku_items' } },
+          total_sku_items: { $sum: { $size: { $ifNull: ['$sku_items', []] } } },
           tag_types: { $addToSet: '$tag_type' },
           oldest_date: { $min: '$createdAt' },
           newest_date: { $max: '$createdAt' }
@@ -746,7 +746,7 @@ router.get('/stats', auth, async (req, res) => {
         $group: {
           _id: '$tag_type',
           count: { $sum: 1 },
-          totalSkuItems: { $sum: { $size: '$sku_items' } }
+          totalSkuItems: { $sum: { $size: { $ifNull: ['$sku_items', []] } } }
         }
       }
     ]);
