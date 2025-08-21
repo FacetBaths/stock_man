@@ -138,8 +138,14 @@ router.get('/',
   [
     query('page').optional().isInt({ min: 1 }).withMessage('Page must be a positive integer'),
     query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100'),
-    query('product_type').optional().isIn(['wall', 'toilet', 'base', 'tub', 'vanity', 'shower_door', 'raw_material', 'accessory', 'miscellaneous']),
-    query('status').optional().isIn(['active', 'inactive', 'discontinued']),
+    query('product_type').optional().custom((value) => {
+      if (value === '' || value === null || value === undefined) return true;
+      return ['wall', 'toilet', 'base', 'tub', 'vanity', 'shower_door', 'raw_material', 'accessory', 'miscellaneous'].includes(value);
+    }).withMessage('Invalid product type'),
+    query('status').optional().custom((value) => {
+      if (value === '' || value === null || value === undefined) return true;
+      return ['active', 'inactive', 'discontinued'].includes(value);
+    }).withMessage('Invalid status'),
     query('search').optional().trim()
   ],
   async (req, res) => {
@@ -155,13 +161,13 @@ router.get('/',
 
       // Build filter
       const filter = {};
-      if (req.query.product_type) {
+      if (req.query.product_type && req.query.product_type.trim() !== '') {
         filter.product_type = req.query.product_type;
       }
-      if (req.query.status) {
+      if (req.query.status && req.query.status.trim() !== '') {
         filter.status = req.query.status;
       }
-      if (req.query.search) {
+      if (req.query.search && req.query.search.trim() !== '') {
         filter.$or = [
           { sku_code: { $regex: req.query.search, $options: 'i' } },
           { description: { $regex: req.query.search, $options: 'i' } },
