@@ -903,7 +903,7 @@ onMounted(() => {
 }
 
 .modal-body {
-  padding: 2rem 1.5rem;
+  padding: 2rem 1.5rem 6rem 1.5rem;
   min-height: 400px;
 }
 
