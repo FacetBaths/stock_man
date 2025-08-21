@@ -6,6 +6,8 @@ import type { Tag, Item } from '@/types'
 import { TAG_TYPES } from '@/types'
 import CreateTagModalNew from '@/components/CreateTagModalNew.vue'
 import EditTagModal from '@/components/EditTagModal.vue'
+import SendForInstallDialog from '@/components/SendForInstallDialog.vue'
+import ProductUsedDialog from '@/components/ProductUsedDialog.vue'
 import { useQuasar } from 'quasar'
 
 const authStore = useAuthStore()
@@ -146,168 +148,25 @@ const loadCustomers = async () => {
 }
 
 // Send for Install workflow
-const handleSendForInstall = async () => {
-  await loadCustomers()
-  
-  if (customers.value.length === 0) {
-    $q.notify({
-      type: 'warning',
-      message: 'No customers with active tags found'
-    })
-    return
-  }
-  
-  // Show customer selection dialog
-  $q.dialog({
-    title: 'Send for Install',
-    message: 'Select customer to send materials for installation:',
-    options: {
-      type: 'radio',
-      model: '',
-      items: customers.value.map(c => ({
-        label: `${c.name} (${c.tag_count} tags, ${c.total_quantity} items)`,
-        value: c.name,
-        color: 'primary'
-      }))
-    },
-    cancel: true,
-    persistent: false
-  }).onOk(async (customerName: string) => {
-    if (!customerName) return
-    
-    // Ask for confirmation and optional notes
-    $q.dialog({
-      title: 'Confirm Send for Install',
-      message: `Send all tagged items for ${customerName} for installation?\n\nThis will:\n• Mark all active tags as fulfilled\n• Reduce inventory quantities\n• Cannot be undone`,
-      prompt: {
-        model: '',
-        isValid: () => true,
-        type: 'text',
-        label: 'Notes (optional)'
-      },
-      cancel: true,
-      persistent: false
-    }).onOk(async (notes: string) => {
-      try {
-        const response = await tagApi.sendForInstall({
-          customer_name: customerName,
-          notes: notes || undefined
-        })
-        
-        $q.notify({
-          type: 'positive',
-          message: response.message,
-          timeout: 5000
-        })
-        
-        // Show detailed results
-        if (response.results.fulfilled.length > 0 || response.results.failed.length > 0) {
-          const resultMessage = [
-            `✅ ${response.results.fulfilled.length} tags fulfilled`,
-            response.results.failed.length > 0 ? `❌ ${response.results.failed.length} failed` : '',
-            `📦 ${response.results.inventory_reduced.length} inventory items reduced`
-          ].filter(Boolean).join('\n')
-          
-          $q.dialog({
-            title: 'Send for Install Results',
-            message: resultMessage,
-            html: true
-          })
-        }
-        
-        await loadTags()
-        await loadStats()
-      } catch (err: any) {
-        $q.notify({
-          type: 'negative',
-          message: err.response?.data?.message || err.message || 'Failed to send for install'
-        })
-      }
-    })
-  })
+const handleSendForInstall = () => {
+  showSendForInstallDialog.value = true
 }
 
-// Product Used workflow
+// Product Used workflow  
 const handleProductUsed = () => {
-  const activeTags = filteredTags.value.filter(tag => tag.status === 'active')
-  
-  if (activeTags.length === 0) {
-    $q.notify({
-      type: 'warning', 
-      message: 'No active tags available to mark as used'
-    })
-    return
-  }
-  
-  // Show tag selection dialog
-  const tagOptions = activeTags.map(tag => ({
-    label: `${tag.customer_name} - ${getItemName(tag.item_id)} (${tag.quantity} items)`,
-    value: tag._id
-  }))
-  
-  $q.dialog({
-    title: 'Product Used',
-    message: 'Select tags to mark as used:',
-    options: {
-      type: 'checkbox',
-      model: [],
-      items: tagOptions
-    },
-    cancel: true,
-    persistent: false
-  }).onOk(async (tagIds: string[]) => {
-    if (!tagIds || tagIds.length === 0) return
-    
-    // Ask for confirmation and optional notes
-    $q.dialog({
-      title: 'Confirm Product Used',
-      message: `Mark ${tagIds.length} tag(s) as used?\n\nThis will:\n• Mark selected tags as fulfilled\n• Reduce inventory quantities\n• Cannot be undone`,
-      prompt: {
-        model: '',
-        isValid: () => true,
-        type: 'text',
-        label: 'Notes (optional)'
-      },
-      cancel: true,
-      persistent: false
-    }).onOk(async (notes: string) => {
-      try {
-        const response = await tagApi.markUsed({
-          tag_ids: tagIds,
-          notes: notes || undefined
-        })
-        
-        $q.notify({
-          type: 'positive',
-          message: response.message,
-          timeout: 5000
-        })
-        
-        // Show detailed results
-        if (response.results.fulfilled.length > 0 || response.results.failed.length > 0) {
-          const resultMessage = [
-            `✅ ${response.results.fulfilled.length} tags marked as used`,
-            response.results.failed.length > 0 ? `❌ ${response.results.failed.length} failed` : '',
-            `📦 ${response.results.inventory_reduced.length} inventory items reduced`
-          ].filter(Boolean).join('\n')
-          
-          $q.dialog({
-            title: 'Product Used Results',
-            message: resultMessage,
-            html: true
-          })
-        }
-        
-        await loadTags()
-        await loadStats()
-      } catch (err: any) {
-        $q.notify({
-          type: 'negative',
-          message: err.response?.data?.message || err.message || 'Failed to mark products as used'
-        })
-      }
-    })
+  showProductUsedDialog.value = true
+}
+
+// Handle dialog success events
+const handleDialogSuccess = async (results: any) => {
+  $q.notify({
+    type: 'positive',
+    message: results.message || 'Operation completed successfully',
+    timeout: 5000
   })
+  
+  await loadTags()
+  await loadStats()
 }
 
 const formatDate = (dateString: string) => {
@@ -645,6 +504,19 @@ const tableColumns = [
       :tag="tagToEdit"
       @close="showEditModal = false"
       @success="handleEditSuccess"
+    />
+
+    <!-- Fulfillment Dialog Components -->
+    <SendForInstallDialog
+      :show="showSendForInstallDialog"
+      @close="showSendForInstallDialog = false"
+      @success="handleDialogSuccess"
+    />
+
+    <ProductUsedDialog
+      :show="showProductUsedDialog"
+      @close="showProductUsedDialog = false"
+      @success="handleDialogSuccess"
     />
   </q-page>
 </template>
