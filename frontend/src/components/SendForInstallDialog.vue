@@ -149,7 +149,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue'
-import { api } from '@/utils/api'
+import api from '@/utils/api'
 
 interface Props {
   show: boolean
@@ -226,7 +226,7 @@ watch(showDialog, (show) => {
 
 async function loadCustomers() {
   try {
-    const response = await api.get('/api/tags/customers')
+    const response = await api.get('/tags/customers')
     customers.value = response.data.customers
   } catch (err) {
     console.error('Failed to load customers:', err)
@@ -260,14 +260,14 @@ async function processFulfillment() {
     
     if (mode.value === 'scan') {
       // Use the barcode-based partial fulfillment endpoint
-      response = await api.post('/api/tags/scan-fulfill', {
+      response = await api.post('/tags/scan-fulfill', {
         customer_name: selectedCustomer.value,
         scanned_barcodes: scannedBarcodes.value,
         notes: notes.value
       })
     } else {
       // Use the complete fulfillment endpoint
-      response = await api.post('/api/tags/send-for-install', {
+      response = await api.post('/tags/send-for-install', {
         customer_name: selectedCustomer.value,
         notes: notes.value
       })

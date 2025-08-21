@@ -143,7 +143,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { api } from '@/utils/api'
+import api from '@/utils/api'
 
 interface Props {
   show: boolean
@@ -223,7 +223,7 @@ watch(showDialog, (show) => {
 
 async function loadCustomers() {
   try {
-    const response = await api.get('/api/tags/customers')
+    const response = await api.get('/tags/customers')
     customers.value = response.data.customers
   } catch (err) {
     console.error('Failed to load customers:', err)
@@ -241,7 +241,7 @@ async function loadTags() {
   error.value = ''
   
   try {
-    const response = await api.get('/api/tags', {
+    const response = await api.get('/tags', {
       params: {
         customer_name: selectedCustomer.value,
         status: 'active',
@@ -264,7 +264,7 @@ async function markAsUsed() {
   error.value = ''
   
   try {
-    const response = await api.post('/api/tags/mark-used', {
+    const response = await api.post('/tags/mark-used', {
       tag_ids: selectedTags.value,
       notes: notes.value
     })
