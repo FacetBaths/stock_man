@@ -173,14 +173,35 @@ const formatDate = (dateString: string) => {
   return new Date(dateString).toLocaleDateString()
 }
 
-const getItemName = (item: Item | string) => {
-  if (typeof item === 'string') return 'Unknown Item'
+const getSKUItemsDisplay = (skuItems: any[]) => {
+  if (!skuItems || skuItems.length === 0) return 'No items'
   
-  const details = item.product_details as any
-  if (item.product_type === 'wall') {
-    return `${details.product_line} - ${details.color_name}`
-  }
-  return details.name || details.brand || 'Unknown'
+  return skuItems.map(skuItem => {
+    const sku = skuItem.sku_id
+    if (!sku) return 'Unknown SKU'
+    
+    const quantity = skuItem.remaining_quantity || skuItem.quantity
+    let displayName = sku.sku_code
+    
+    // Add product details if available
+    if (sku.product_details) {
+      const details = sku.product_details
+      if (sku.product_type === 'wall') {
+        displayName += ` (${details.product_line} - ${details.color_name})`
+      } else if (details.name) {
+        displayName += ` (${details.name})`
+      } else if (details.brand) {
+        displayName += ` (${details.brand})`
+      }
+    }
+    
+    return `${displayName} (${quantity})`
+  }).join(', ')
+}
+
+const getTotalQuantity = (skuItems: any[]) => {
+  if (!skuItems) return 0
+  return skuItems.reduce((sum, item) => sum + (item.remaining_quantity || item.quantity), 0)
 }
 
 onMounted(async () => {
@@ -189,12 +210,12 @@ onMounted(async () => {
 
 const tableColumns = [
   {
-    name: 'item',
-    label: 'Item',
-    field: 'item_id',
-    format: (item: Item | string) => getItemName(item),
+    name: 'items',
+    label: 'SKU Items',
+    field: 'sku_items',
+    format: (skuItems: any[]) => getSKUItemsDisplay(skuItems),
     align: 'left',
-    sortable: true
+    sortable: false
   },
   {
     name: 'customer',
@@ -212,10 +233,11 @@ const tableColumns = [
   },
   {
     name: 'quantity',
-    label: 'Quantity',
-    field: 'quantity',
+    label: 'Total Quantity',
+    field: 'sku_items',
+    format: (skuItems: any[]) => getTotalQuantity(skuItems),
     align: 'center',
-    sortable: true
+    sortable: false
   },
   {
     name: 'status',
@@ -425,6 +447,45 @@ const tableColumns = [
           :rows-per-page-options="[25, 50, 100]"
           :pagination="{ rowsPerPage: 25 }"
         >
+          <template v-slot:body-cell-items="props">
+            <q-td :props="props" style="max-width: 400px">
+              <div class="sku-items-display">
+                <div v-if="props.row.sku_items && props.row.sku_items.length > 0" class="q-gutter-xs">
+                  <div v-for="(skuItem, index) in props.row.sku_items" :key="index" class="sku-item-chip">
+                    <q-chip 
+                      size="sm" 
+                      color="blue-grey-2" 
+                      text-color="dark"
+                      dense
+                      class="q-mb-xs"
+                    >
+                      <span class="text-weight-medium">
+                        {{ skuItem.sku_id?.sku_code || 'Unknown SKU' }}
+                      </span>
+                      <span v-if="skuItem.sku_id?.product_details" class="q-ml-xs text-caption">
+                        (<template v-if="skuItem.sku_id.product_type === 'wall'">
+                          {{ skuItem.sku_id.product_details.product_line }} - {{ skuItem.sku_id.product_details.color_name }}
+                        </template>
+                        <template v-else-if="skuItem.sku_id.product_details.name">
+                          {{ skuItem.sku_id.product_details.name }}
+                        </template>
+                        <template v-else-if="skuItem.sku_id.product_details.brand">
+                          {{ skuItem.sku_id.product_details.brand }}
+                        </template>)
+                      </span>
+                      <q-badge color="primary" floating transparent>
+                        {{ skuItem.remaining_quantity || skuItem.quantity }}
+                      </q-badge>
+                    </q-chip>
+                  </div>
+                </div>
+                <div v-else class="text-grey-6 text-caption">
+                  No items
+                </div>
+              </div>
+            </q-td>
+          </template>
+
           <template v-slot:body-cell-type="props">
             <q-td :props="props">
               <q-chip 
@@ -627,6 +688,30 @@ const tableColumns = [
 
 .opacity-80 {
   opacity: 0.8;
+}
+
+/* SKU Items Display */
+.sku-items-display {
+  max-width: 400px;
+}
+
+.sku-item-chip {
+  display: inline-block;
+  margin-right: 4px;
+  margin-bottom: 4px;
+}
+
+.sku-item-chip .q-chip {
+  position: relative;
+  padding-right: 24px;
+}
+
+.sku-item-chip .q-badge {
+  font-size: 10px;
+  min-width: 18px;
+  height: 18px;
+  top: -6px;
+  right: -6px;
 }
 
 @media (max-width: 768px) {
