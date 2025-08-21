@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useInventoryStore } from '@/stores/inventory'
-import type { Item, UpdateItemRequest, WallDetails, ProductDetails } from '@/types'
+import { skuApi } from '@/utils/api'
+import type { Item, UpdateItemRequest, WallDetails, ProductDetails, SKU } from '@/types'
 
 interface Props {
   item: Item
@@ -18,16 +19,69 @@ const emit = defineEmits<{
 const authStore = useAuthStore()
 const inventoryStore = useInventoryStore()
 
+// SKU-related state
+const availableSKUs = ref<SKU[]>([])
+const isLoadingSKUs = ref(false)
+const selectedSKU = ref<string>('')
+
 const formData = ref<UpdateItemRequest>({
   quantity: 0,
   location: '',
   notes: '',
   cost: undefined,
-  product_details: {}
+  product_details: {},
+  sku_id: undefined
 })
 
 const isWallProduct = computed(() => props.item.product_type === 'wall')
 const canEditCost = computed(() => authStore.user?.role === 'admin' || authStore.user?.role === 'warehouse_manager')
+
+// Load SKUs for the selected product type
+const loadSKUs = async () => {
+  try {
+    isLoadingSKUs.value = true
+    const response = await skuApi.getSKUs({ 
+      product_type: props.item.product_type,
+      status: 'active',
+      limit: 100
+    })
+    availableSKUs.value = response.skus
+  } catch (error) {
+    console.error('Failed to load SKUs:', error)
+    availableSKUs.value = []
+  } finally {
+    isLoadingSKUs.value = false
+  }
+}
+
+// Helper function to format SKU description
+const formatSKUDescription = (sku: SKU): string => {
+  if (!sku) return 'No description'
+  
+  // If SKU has a description, use it
+  if (sku.description && sku.description.trim()) {
+    return sku.description
+  }
+  
+  // Otherwise, try to build from populated product_details
+  if (sku.product_details && typeof sku.product_details === 'object') {
+    const details = sku.product_details as any
+    
+    if (sku.product_type === 'wall') {
+      return `${details.product_line || ''} ${details.color_name || ''} ${details.dimensions || ''}`.trim()
+    } else {
+      return `${details.name || ''} ${details.brand || ''} ${details.model || ''}`.trim()
+    }
+  }
+  
+  // Fallback to product type
+  return sku.product_type || 'No description'
+}
+
+// Watch for SKU selection changes
+watch(() => selectedSKU.value, (newSKU) => {
+  formData.value.sku_id = newSKU || null
+})
 
 const initializeForm = () => {
   formData.value = {
@@ -35,8 +89,12 @@ const initializeForm = () => {
     location: props.item.location || '',
     notes: props.item.notes || '',
     cost: props.item.cost,
-    product_details: { ...props.item.product_details }
+    product_details: { ...props.item.product_details },
+    sku_id: typeof props.item.sku_id === 'string' ? props.item.sku_id : (props.item.sku_id?._id || null)
   }
+  
+  // Set selected SKU
+  selectedSKU.value = formData.value.sku_id || ''
 }
 
 const handleSubmit = async () => {
@@ -52,8 +110,9 @@ const handleClose = () => {
   emit('close')
 }
 
-onMounted(() => {
+onMounted(async () => {
   initializeForm()
+  await loadSKUs()
 })
 </script>
 
@@ -84,29 +143,26 @@ onMounted(() => {
               />
             </div>
 
-            <!-- SKU Information (Read-only) -->
+            <!-- SKU Assignment -->
             <div class="form-group">
-              <label class="form-label">SKU Information</label>
-              <div class="sku-info-display">
-                <div v-if="item.sku_code" class="sku-info-item">
-                  <div class="sku-info-group">
-                    <label class="sku-info-label">SKU Code:</label>
-                    <div class="sku-info-value">
-                      <span class="sku-code-badge">{{ item.sku_code }}</span>
-                    </div>
-                  </div>
-                  <div v-if="item.barcode" class="sku-info-group">
-                    <label class="sku-info-label">Barcode:</label>
-                    <div class="sku-info-value">
-                      <span class="barcode-value">{{ item.barcode }}</span>
-                    </div>
-                  </div>
-                </div>
-                <div v-else class="no-sku-info">
-                  <span class="text-muted">No SKU assigned to this item</span>
-                  <small class="help-text">SKU assignments are managed through the SKU Management section</small>
-                </div>
-              </div>
+              <label for="sku" class="form-label">Associated SKU</label>
+              <select
+                id="sku"
+                v-model="selectedSKU"
+                class="form-select"
+                :disabled="isLoadingSKUs"
+              >
+                <option value="">No SKU (Manual Entry)</option>
+                <option v-if="isLoadingSKUs" disabled>Loading SKUs...</option>
+                <option 
+                  v-for="sku in availableSKUs" 
+                  :key="sku._id" 
+                  :value="sku._id"
+                >
+                  {{ sku.sku_code }} - {{ formatSKUDescription(sku) }}
+                </option>
+              </select>
+              <small class="form-text text-muted">Link this item to a SKU for barcode scanning integration</small>
             </div>
 
             <!-- Wall Product Fields -->
@@ -369,6 +425,123 @@ onMounted(() => {
 
 .form-row .form-group {
   flex: 1;
+}
+
+.form-group {
+  margin-bottom: 1rem;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: #333;
+}
+
+.form-control,
+.form-select {
+  display: block;
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #ced4da;
+  border-radius: 0.375rem;
+  font-size: 1rem;
+  line-height: 1.5;
+  background-color: #fff;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: #86b7fe;
+  outline: 0;
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+.form-control:disabled {
+  background-color: #e9ecef;
+  opacity: 1;
+}
+
+.form-text {
+  margin-top: 0.25rem;
+  font-size: 0.875em;
+  color: #6c757d;
+}
+
+.alert {
+  padding: 0.75rem 1.25rem;
+  margin-bottom: 1rem;
+  border: 1px solid transparent;
+  border-radius: 0.375rem;
+}
+
+.alert-danger {
+  color: #721c24;
+  background-color: #f8d7da;
+  border-color: #f5c6cb;
+}
+
+.btn {
+  display: inline-block;
+  font-weight: 400;
+  text-align: center;
+  text-decoration: none;
+  vertical-align: middle;
+  cursor: pointer;
+  border: 1px solid transparent;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  line-height: 1.5;
+  border-radius: 0.375rem;
+  transition: color 0.15s ease-in-out, background-color 0.15s ease-in-out, border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.btn:disabled {
+  pointer-events: none;
+  opacity: 0.65;
+}
+
+.btn-secondary {
+  color: #fff;
+  background-color: #6c757d;
+  border-color: #6c757d;
+}
+
+.btn-secondary:hover {
+  background-color: #5c636a;
+  border-color: #565e64;
+}
+
+.btn-primary {
+  color: #fff;
+  background-color: #0d6efd;
+  border-color: #0d6efd;
+}
+
+.btn-primary:hover {
+  background-color: #0b5ed7;
+  border-color: #0a58ca;
+}
+
+.spinner {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border: 0.125em solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spinner-border 0.75s linear infinite;
+}
+
+@keyframes spinner-border {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.mr-2 {
+  margin-right: 0.5rem;
 }
 
 .modal-actions {

@@ -6,6 +6,7 @@ import { PRODUCT_TYPES } from '@/types'
 import InventoryTable from '@/components/InventoryTable.vue'
 import AddItemModal from '@/components/AddItemModal.vue'
 import EditItemModal from '@/components/EditItemModal.vue'
+import QuickScanModal from '@/components/QuickScanModal.vue'
 import type { Item } from '@/types'
 
 const authStore = useAuthStore()
@@ -16,6 +17,7 @@ const searchQuery = ref('')
 const showInStockOnly = ref(false)
 const showAddModal = ref(false)
 const showEditModal = ref(false)
+const showQuickScanModal = ref(false)
 const itemToEdit = ref<Item | null>(null)
 
 const availableTabs = computed(() => {
@@ -93,6 +95,11 @@ const handleAddItem = () => {
   showAddModal.value = true
 }
 
+const handleQuickScan = () => {
+  showQuickScanModal.value = true
+}
+
+
 const handleEditItem = (item: Item) => {
   itemToEdit.value = item
   showEditModal.value = true
@@ -115,6 +122,13 @@ const handleAddSuccess = () => {
 const handleEditSuccess = () => {
   showEditModal.value = false
   itemToEdit.value = null
+}
+
+
+const handleQuickScanSuccess = () => {
+  showQuickScanModal.value = false
+  // Reload inventory data after batch processing
+  loadItems()
 }
 
 onMounted(async () => {
@@ -194,17 +208,27 @@ watch([searchQuery, showInStockOnly], () => {
             </div>
           </div>
 
-          <!-- Add Item Button -->
+          <!-- Action Buttons -->
           <div class="col-auto" v-if="authStore.canWrite">
-            <q-btn
-              @click="handleAddItem"
-              :loading="inventoryStore.isCreating"
-              color="positive"
-              icon="add"
-              label="Add Item"
-              class="add-btn"
-              no-caps
-            />
+            <div class="row q-gutter-sm">
+              <q-btn
+                @click="handleQuickScan"
+                color="purple"
+                icon="qr_code_scanner"
+                label="Scan Items"
+                class="action-btn"
+                no-caps
+              />
+              <q-btn
+                @click="handleAddItem"
+                :loading="inventoryStore.isCreating"
+                color="positive"
+                icon="add"
+                label="Add Item"
+                class="action-btn"
+                no-caps
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -288,6 +312,12 @@ watch([searchQuery, showInStockOnly], () => {
       @close="showEditModal = false"
       @success="handleEditSuccess"
     />
+
+    <QuickScanModal
+      v-if="showQuickScanModal"
+      @close="showQuickScanModal = false"
+      @success="handleQuickScanSuccess"
+    />
   </q-page>
 </template>
 
@@ -339,11 +369,12 @@ watch([searchQuery, showInStockOnly], () => {
   color: rgba(0, 0, 0, 0.6);
 }
 
-.add-btn {
+.action-btn {
   border-radius: 15px;
-  padding: 8px 24px;
+  padding: 8px 16px;
   font-weight: 600;
   text-transform: none;
+  min-width: 120px;
 }
 
 /* Tabs Section */

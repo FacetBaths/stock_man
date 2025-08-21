@@ -164,4 +164,8 @@ itemSchema.index({ product_type: 1, quantity: 1 });
 itemSchema.index({ quantity: 1 });
 itemSchema.index({ sku_id: 1 });
 
+// Unique index to prevent multiple items with same SKU
+// Note: This will only apply to items that have a sku_id (sparse index)
+itemSchema.index({ sku_id: 1 }, { unique: true, sparse: true });
+
 module.exports = mongoose.model('Item', itemSchema);

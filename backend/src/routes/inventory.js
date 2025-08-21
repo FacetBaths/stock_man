@@ -32,6 +32,14 @@ router.get('/', auth, async (req, res) => {
 
     let items = await Item.find(query)
       .populate('product_details')
+      .populate({
+        path: 'sku_id',
+        select: 'sku_code barcode description product_details product_type',
+        populate: {
+          path: 'product_details',
+          select: 'name product_line color_name brand model'
+        }
+      })
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit)
@@ -53,7 +61,7 @@ router.get('/', auth, async (req, res) => {
       return acc;
     }, {});
     
-    // Add tag info to each item
+    // Add tag info and SKU data to each item
     items = items.map(item => {
       const itemId = item._id.toString();
       const tags = tagsByItem[itemId] || [];
@@ -67,8 +75,14 @@ router.get('/', auth, async (req, res) => {
         totalTagged: tags.reduce((sum, tag) => sum + tag.quantity, 0)
       };
       
+      // Add SKU code and barcode directly from populated sku_id
+      const sku_code = item.sku_id ? item.sku_id.sku_code : null;
+      const barcode = item.sku_id ? item.sku_id.barcode : null;
+      
       return {
         ...item,
+        sku_code,
+        barcode,
         tagSummary,
         tags: tags.length > 0 ? tags : undefined
       };
@@ -247,7 +261,7 @@ router.post('/', [auth, requireWriteAccess], [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { product_type, product_details, quantity, location, notes, cost } = req.body;
+    const { product_type, product_details, quantity, location, notes, cost, sku_id, barcode } = req.body;
 
     // Create the product details first
     let productDetailsDoc;
@@ -307,7 +321,9 @@ router.post('/', [auth, requireWriteAccess], [
       location: location || '',
       notes: notes || '',
       // Only allow admin and warehouse_manager to set cost
-      cost: (req.user.role === 'admin' || req.user.role === 'warehouse_manager') ? (cost || 0) : 0
+      cost: (req.user.role === 'admin' || req.user.role === 'warehouse_manager') ? (cost || 0) : 0,
+      // Add SKU reference if provided
+      sku_id: sku_id || undefined
     });
 
     await item.save();
@@ -353,6 +369,11 @@ router.put('/:id', [auth, requireWriteAccess], [
     // Only allow admin and warehouse_manager to update cost
     if (updates.cost !== undefined && (req.user.role === 'admin' || req.user.role === 'warehouse_manager')) {
       item.cost = updates.cost;
+    }
+    
+    // Update SKU assignment (allow setting to null to remove SKU association)
+    if (updates.sku_id !== undefined) {
+      item.sku_id = updates.sku_id || undefined;
     }
 
     // Update product details if provided

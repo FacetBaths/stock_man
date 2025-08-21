@@ -104,6 +104,28 @@ export const inventoryApi = {
   deleteItem: async (id: string): Promise<{ message: string }> => {
     const response = await api.delete(`/inventory/${id}`)
     return response.data
+  },
+
+  batchUpdateInventory: async (data: {
+    scanned_items: Array<{ barcode: string; quantity: number; sku_id?: string }>
+    location?: string
+    notes?: string
+  }): Promise<{
+    message: string
+    summary: {
+      total: number
+      updated: number
+      created: number
+      failed: number
+    }
+    results: {
+      updated: Array<{ barcode: string; item_id: string; previous_quantity: number; new_quantity: number }>
+      created: Array<{ barcode: string; item: Item }>
+      failed: Array<{ barcode: string; error: string }>
+    }
+  }> => {
+    const response = await api.post('/barcode/update-inventory', data)
+    return response.data
   }
 }
 

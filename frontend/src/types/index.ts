@@ -101,6 +101,8 @@ export interface CreateItemRequest {
   location?: string
   notes?: string
   cost?: number
+  sku_id?: string
+  barcode?: string
 }
 
 export interface UpdateItemRequest {
@@ -109,6 +111,7 @@ export interface UpdateItemRequest {
   notes?: string
   cost?: number
   product_details?: Partial<WallDetails | ProductDetails>
+  sku_id?: string | null
 }
 
 export interface Tag {

@@ -191,16 +191,23 @@ router.get('/lookup-sku/:skuCode', auth, async (req, res) => {
       return res.status(404).json({ message: 'SKU not found' });
     }
     
-    // Get expanded item information
-    const expandedItems = await expandBundleItems(sku._id, 1);
+    // Find the corresponding inventory item
+    const item = await Item.findOne({ sku_id: sku._id }).populate('product_details');
+    if (!item) {
+      return res.status(404).json({ message: 'No inventory item found for this SKU' });
+    }
     
     // Check available quantities
     const availability = await checkAvailableInventory([{ sku_id: sku._id, quantity: 1 }]);
+    const availableQuantity = availability[0]?.item_checks?.[0]?.available || item.quantity;
     
+    // Return format expected by frontend
     res.json({
       sku,
-      expanded_items: expandedItems,
-      availability: availability[0]
+      item: {
+        ...item.toObject(),
+        availableQuantity
+      }
     });
     
   } catch (error) {
