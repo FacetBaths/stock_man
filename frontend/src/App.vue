@@ -57,7 +57,11 @@ const getVersionTooltip = () => {
     ? new Date(buildInfo.buildTime).toLocaleString() 
     : buildInfo.buildTime;
   
-  return `Version: ${buildInfo.version}\nBuild: #${buildInfo.buildNumber.slice(-6)}\nCommit: ${buildInfo.gitCommit}\nBranch: ${buildInfo.gitBranch}\nBuilt: ${buildDate}`
+  const buildNum = buildInfo.buildNumber !== 'Unknown' && buildInfo.buildNumber.length > 6
+    ? buildInfo.buildNumber.slice(-6)
+    : buildInfo.buildNumber;
+  
+  return `Version: ${buildInfo.version}\nBuild: #${buildNum}\nCommit: ${buildInfo.gitCommit}\nBranch: ${buildInfo.gitBranch}\nBuilt: ${buildDate}`
 };
 </script>
 
@@ -84,7 +88,7 @@ const getVersionTooltip = () => {
                   size="sm"
                   class="version-chip"
                 >
-                  v{{ packageInfo.version }}
+                  v{{ buildInfo.version }}
                   <q-tooltip class="bg-dark text-white" :delay="500">
                     {{ getVersionTooltip() }}
                   </q-tooltip>
