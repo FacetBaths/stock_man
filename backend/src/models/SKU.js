@@ -140,7 +140,12 @@ const skuSchema = new mongoose.Schema({
           'accessory': 'Accessory',
           'miscellaneous': 'Miscellaneous'
         };
-        return typeMapping[this.product_type];
+        // Ensure product_type is a valid string before accessing typeMapping
+        if (!this.product_type || typeof this.product_type !== 'string') {
+          console.warn('Invalid product_type in bundle_items:', this.product_type);
+          return 'Miscellaneous'; // Default fallback
+        }
+        return typeMapping[this.product_type] || 'Miscellaneous';
       }
     },
     quantity: {
