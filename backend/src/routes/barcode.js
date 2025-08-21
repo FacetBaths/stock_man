@@ -201,6 +201,139 @@ router.post('/create-missing',
   }
 );
 
+// POST /api/barcode/update-inventory - Update inventory quantities from batch scan
+router.post('/update-inventory',
+  auth,
+  requireWriteAccess,
+  [
+    body('scanned_items')
+      .isArray({ min: 1 })
+      .withMessage('Scanned items array is required'),
+    body('scanned_items.*.barcode')
+      .notEmpty()
+      .withMessage('Barcode is required for each scanned item'),
+    body('scanned_items.*.quantity')
+      .optional()
+      .isInt({ min: 1 })
+      .withMessage('Quantity must be a positive integer'),
+    body('location')
+      .optional()
+      .trim(),
+    body('notes')
+      .optional()
+      .trim()
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
+      }
+
+      const scannedItems = req.body.scanned_items;
+      const location = req.body.location || '';
+      const notes = req.body.notes || 'Added from batch scan';
+      const results = {
+        updated: [],
+        created: [],
+        failed: [],
+        summary: {
+          total: scannedItems.length,
+          updated: 0,
+          created: 0,
+          failed: 0
+        }
+      };
+
+      // Process each scanned item
+      for (const scannedItem of scannedItems) {
+        try {
+          const quantity = scannedItem.quantity || 1;
+          const sku = await SKU.findOne({ barcode: scannedItem.barcode.trim() });
+          
+          if (!sku) {
+            results.failed.push({
+              barcode: scannedItem.barcode,
+              error: 'SKU not found for barcode'
+            });
+            results.summary.failed++;
+            continue;
+          }
+
+          // Find existing inventory item for this SKU
+          let existingItem = await Item.findOne({ sku_id: sku._id });
+          
+          if (existingItem) {
+            // Update existing item quantity
+            const previousQuantity = existingItem.quantity;
+            existingItem.quantity += quantity;
+            existingItem.notes = notes;
+            existingItem.last_updated = new Date();
+            await existingItem.save();
+            
+            results.updated.push({
+              barcode: scannedItem.barcode,
+              sku_code: sku.sku_code,
+              previous_quantity: previousQuantity,
+              added_quantity: quantity,
+              new_quantity: existingItem.quantity,
+              item_id: existingItem._id
+            });
+            results.summary.updated++;
+          } else {
+            // Create new inventory item
+            const typeMapping = {
+              'wall': 'Wall',
+              'toilet': 'Toilet',
+              'base': 'Base',
+              'tub': 'Tub',
+              'vanity': 'Vanity',
+              'shower_door': 'ShowerDoor',
+              'raw_material': 'RawMaterial',
+              'accessory': 'Accessory',
+              'miscellaneous': 'Miscellaneous'
+            };
+            
+            const newItem = new Item({
+              product_type: sku.product_type,
+              product_type_model: typeMapping[sku.product_type],
+              product_details: sku.product_details,
+              quantity: quantity,
+              location: location,
+              notes: notes,
+              cost: sku.current_cost || 0,
+              sku_id: sku._id,
+              stock_thresholds: sku.stock_thresholds
+            });
+            
+            await newItem.save();
+            
+            results.created.push({
+              barcode: scannedItem.barcode,
+              sku_code: sku.sku_code,
+              quantity: quantity,
+              item_id: newItem._id
+            });
+            results.summary.created++;
+          }
+        } catch (itemError) {
+          console.error(`Error updating inventory for barcode ${scannedItem.barcode}:`, itemError);
+          results.failed.push({
+            barcode: scannedItem.barcode,
+            error: itemError.message
+          });
+          results.summary.failed++;
+        }
+      }
+
+      res.json(results);
+    } catch (error) {
+      console.error('Update inventory error:', error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  }
+);
+
 // POST /api/barcode/assign-to-tag - Assign scanned SKUs to a tag
 router.post('/assign-to-tag',
   auth,
