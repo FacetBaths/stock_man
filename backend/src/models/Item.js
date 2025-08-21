@@ -37,10 +37,40 @@ const itemSchema = new mongoose.Schema({
     type: Number,
     min: 0,
     default: 0
+  },
+  // SKU reference (optional for backward compatibility)
+  sku_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'SKU',
+    sparse: true // Allow items without SKUs during migration
+  },
+  // Stock level thresholds specific to this item
+  stock_thresholds: {
+    understocked: {
+      type: Number,
+      min: 0,
+      default: 5
+    },
+    overstocked: {
+      type: Number,
+      min: 0,
+      default: 100
+    }
   }
 }, {
   timestamps: true
 });
+
+// Method to get stock status based on thresholds
+itemSchema.methods.getStockStatus = function() {
+  if (this.quantity <= this.stock_thresholds.understocked) {
+    return 'understocked';
+  } else if (this.quantity >= this.stock_thresholds.overstocked) {
+    return 'overstocked';
+  } else {
+    return 'adequate';
+  }
+};
 
 // Pre-save middleware to set the correct model name
 itemSchema.pre('save', function(next) {
@@ -63,5 +93,6 @@ itemSchema.pre('save', function(next) {
 // Index for efficient searching
 itemSchema.index({ product_type: 1, quantity: 1 });
 itemSchema.index({ quantity: 1 });
+itemSchema.index({ sku_id: 1 });
 
 module.exports = mongoose.model('Item', itemSchema);

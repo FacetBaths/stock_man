@@ -12,7 +12,18 @@ import type {
   ItemTagsResponse,
   CreateTagRequest,
   UpdateTagRequest,
-  Tag
+  Tag,
+  SKU,
+  SKUResponse,
+  CreateSKURequest,
+  UpdateSKURequest,
+  AddCostRequest,
+  BatchScanRequest,
+  BatchScanResponse,
+  CreateMissingRequest,
+  TagAssignmentRequest,
+  LinkExistingRequest,
+  ExportOptions
 } from '@/types'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
@@ -136,6 +147,138 @@ export const tagApi = {
   }> => {
     const response = await api.get('/tags/stats')
     return response.data
+  }
+}
+
+export const skuApi = {
+  getSKUs: async (params?: {
+    product_type?: string
+    status?: string
+    search?: string
+    page?: number
+    limit?: number
+  }): Promise<SKUResponse> => {
+    const response = await api.get('/skus', { params })
+    return response.data
+  },
+
+  getSKU: async (id: string): Promise<SKU> => {
+    const response = await api.get(`/skus/${id}`)
+    return response.data
+  },
+
+  createSKU: async (sku: CreateSKURequest): Promise<SKU> => {
+    const response = await api.post('/skus', sku)
+    return response.data
+  },
+
+  updateSKU: async (id: string, updates: UpdateSKURequest): Promise<SKU> => {
+    const response = await api.put(`/skus/${id}`, updates)
+    return response.data
+  },
+
+  deleteSKU: async (id: string): Promise<{ message: string }> => {
+    const response = await api.delete(`/skus/${id}`)
+    return response.data
+  },
+
+  generateSKUCode: async (data: {
+    product_type: string
+    product_details: string
+    template?: string
+  }): Promise<{ sku_code: string }> => {
+    const response = await api.post('/skus/generate', data)
+    return response.data
+  },
+
+  addCost: async (id: string, costData: AddCostRequest): Promise<SKU> => {
+    const response = await api.post(`/skus/${id}/cost`, costData)
+    return response.data
+  },
+
+  searchByBarcode: async (barcode: string): Promise<SKU> => {
+    const response = await api.get(`/skus/search/barcode/${encodeURIComponent(barcode)}`)
+    return response.data
+  }
+}
+
+export const barcodeApi = {
+  batchScan: async (data: BatchScanRequest): Promise<BatchScanResponse> => {
+    const response = await api.post('/barcode/batch-scan', data)
+    return response.data
+  },
+
+  createMissing: async (data: CreateMissingRequest): Promise<{
+    created: Array<{ barcode: string; sku: SKU }>
+    failed: Array<{ barcode: string; error: string }>
+    summary: { total: number; created: number; failed: number }
+  }> => {
+    const response = await api.post('/barcode/create-missing', data)
+    return response.data
+  },
+
+  assignToTag: async (data: TagAssignmentRequest): Promise<{
+    success: Array<{
+      barcodes: string[]
+      tag: Tag
+      item: Item
+      sku: SKU
+    }>
+    failed: Array<{ barcode: string; error: string }>
+    summary: { total: number; success: number; failed: number }
+  }> => {
+    const response = await api.post('/barcode/assign-to-tag', data)
+    return response.data
+  },
+
+  linkExisting: async (data: LinkExistingRequest): Promise<{
+    message: string
+    sku: SKU
+    item: Item
+  }> => {
+    const response = await api.post('/barcode/link-existing', data)
+    return response.data
+  }
+}
+
+export const exportApi = {
+  inventory: async (options?: ExportOptions): Promise<string | any[]> => {
+    const response = await api.get('/export/inventory', { params: options })
+    return response.data
+  },
+
+  skus: async (options?: ExportOptions): Promise<string | any[]> => {
+    const response = await api.get('/export/skus', { params: options })
+    return response.data
+  },
+
+  reorderReport: async (options?: ExportOptions): Promise<string | any[]> => {
+    const response = await api.get('/export/reorder-report', { params: options })
+    return response.data
+  },
+
+  costAnalysis: async (options?: ExportOptions): Promise<string | any[]> => {
+    const response = await api.get('/export/cost-analysis', { params: options })
+    return response.data
+  },
+
+  // Helper to download CSV directly
+  downloadCSV: async (endpoint: string, filename: string, options?: ExportOptions): Promise<void> => {
+    const params = { ...options, format: 'csv' }
+    const response = await api.get(`/export/${endpoint}`, { 
+      params,
+      responseType: 'blob'
+    })
+    
+    const blob = new Blob([response.data], { type: 'text/csv' })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
   }
 }
 

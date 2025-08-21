@@ -8,6 +8,9 @@ const { initJSONDB } = require('./config/jsonDB');
 const authRoutes = require('./routes/auth');
 const inventoryRoutes = require('./routes/inventory');
 const tagRoutes = require('./routes/tags');
+const skuRoutes = require('./routes/skus');
+const barcodeRoutes = require('./routes/barcode');
+const exportRoutes = require('./routes/export');
 
 const app = express();
 
@@ -53,6 +56,9 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/api/auth', authRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/tags', tagRoutes);
+app.use('/api/skus', skuRoutes);
+app.use('/api/barcode', barcodeRoutes);
+app.use('/api/export', exportRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
