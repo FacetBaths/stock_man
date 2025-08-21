@@ -1,5 +1,5 @@
 <template>
-  <q-dialog v-model="show" persistent>
+  <q-dialog v-model="show" persistent seamless>
     <q-card style="min-width: 700px; max-width: 900px">
       <q-card-section class="row items-center">
         <div class="text-h6">
@@ -345,6 +345,7 @@
                 label="Barcode"
                 outlined
                 dense
+                :hint="props.barcode ? `From scan: ${props.barcode}` : ''"
               />
             </div>
 
@@ -458,6 +459,7 @@ import { PRODUCT_TYPES, type SKU, type CreateSKURequest, type UpdateSKURequest }
 interface Props {
   modelValue: boolean
   sku?: SKU | null
+  barcode?: string
 }
 
 const emit = defineEmits<{
@@ -813,6 +815,7 @@ const close = () => {
 watch(() => props.modelValue, (newValue) => {
   console.log('SKUFormDialog modelValue changed to:', newValue)
   console.log('props.sku:', props.sku)
+  console.log('props.barcode:', props.barcode)
   if (newValue) {
     if (props.sku) {
       // Editing mode
@@ -861,11 +864,71 @@ watch(() => props.modelValue, (newValue) => {
       }
       
       productMode.value = 'existing'
-      loadProductDetails(props.sku.product_type)
+      
+      // First, add the current product to options if it's populated
+      if (props.sku.product_details && typeof props.sku.product_details === 'object') {
+        console.log('Current product details:', props.sku.product_details)
+        
+        // Generate a human-readable name for the product
+        let productName = ''
+        const details = props.sku.product_details
+        
+        if (details.name) {
+          productName = details.name
+        } else if (details.product_line && details.color_name) {
+          productName = `${details.product_line} ${details.color_name}`
+          if (details.dimensions) productName += ` (${details.dimensions})`
+        } else if (details.brand && details.model) {
+          productName = `${details.brand} ${details.model}`
+          if (details.color) productName += ` - ${details.color}`
+        } else {
+          // Try to build a name from any available fields
+          const parts = []
+          if (details.brand) parts.push(details.brand)
+          if (details.model) parts.push(details.model)
+          if (details.product_line) parts.push(details.product_line)
+          if (details.color_name) parts.push(details.color_name)
+          if (details.color) parts.push(details.color)
+          if (details.finish) parts.push(details.finish)
+          
+          productName = parts.length > 0 ? parts.join(' ') : `${props.sku.product_type} product`
+        }
+        
+        console.log('Generated product name:', productName)
+        
+        const currentProduct = {
+          _id: props.sku.product_details._id,
+          name: productName,
+          ...props.sku.product_details
+        }
+        console.log('Created current product option:', currentProduct)
+        
+        // Add current product to options immediately
+        productDetailsOptions.value = [currentProduct]
+      }
+      
+      // Then load additional products
+      loadProductDetails(props.sku.product_type).then(() => {
+        // Ensure current product is still first in the list after loading
+        if (props.sku.product_details && typeof props.sku.product_details === 'object') {
+          const currentProductId = props.sku.product_details._id
+          const existingIndex = productDetailsOptions.value.findIndex(opt => opt._id === currentProductId)
+          if (existingIndex > 0) {
+            // Move current product to first position
+            const currentProduct = productDetailsOptions.value.splice(existingIndex, 1)[0]
+            productDetailsOptions.value.unshift(currentProduct)
+          }
+        }
+      })
     } else {
       // Create mode
       console.log('SKUFormDialog: Create mode')
       resetForm()
+      // Prefill barcode if provided
+      if (props.barcode) {
+        form.value.barcode = props.barcode
+        console.log('Prefilled barcode:', props.barcode)
+      }
     }
   }
 })

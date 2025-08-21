@@ -268,11 +268,30 @@ router.get('/:id',
         return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
       }
 
-      const sku = await SKU.findById(req.params.id)
-        .populate('product_details')
-        .populate('bundle_items.product_details');
+      // First get the SKU without population
+      let sku = await SKU.findById(req.params.id);
       if (!sku) {
         return res.status(404).json({ message: 'SKU not found' });
+      }
+
+      // Try to populate product_details, handle errors gracefully
+      try {
+        sku = await SKU.findById(req.params.id).populate('product_details');
+      } catch (populateError) {
+        console.error('Error populating product_details:', populateError);
+        // If population fails, continue with unpopulated SKU
+      }
+
+      // Try to populate bundle_items.product_details if it's a bundle
+      if (sku.is_bundle && sku.bundle_items && sku.bundle_items.length > 0) {
+        try {
+          sku = await SKU.findById(req.params.id)
+            .populate('product_details')
+            .populate('bundle_items.product_details');
+        } catch (bundlePopulateError) {
+          console.error('Error populating bundle_items.product_details:', bundlePopulateError);
+          // If bundle population fails, use the basic populated version
+        }
       }
 
       // Get associated items
@@ -431,7 +450,9 @@ router.post('/',
 
       // Populate product details for response
       await sku.populate('product_details');
-      await sku.populate('bundle_items.product_details');
+      if (sku.is_bundle) {
+        await sku.populate('bundle_items.product_details');
+      }
 
       res.status(201).json(sku);
     } catch (error) {

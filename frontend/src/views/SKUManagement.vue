@@ -620,9 +620,19 @@ const openCreateDialog = () => {
   console.log('showFormDialog set to:', showFormDialog.value)
 }
 
-const openEditDialog = (sku: SKU) => {
-  selectedSKU.value = sku
-  showFormDialog.value = true
+const openEditDialog = async (sku: SKU) => {
+  try {
+    // Fetch the full SKU details with populated product_details
+    const fullSKU = await skuStore.fetchSKU(sku._id)
+    selectedSKU.value = fullSKU
+    showFormDialog.value = true
+  } catch (error: any) {
+    console.error('Error fetching SKU details:', error)
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to load SKU details'
+    })
+  }
 }
 
 const openAddCostDialog = (sku: SKU) => {
