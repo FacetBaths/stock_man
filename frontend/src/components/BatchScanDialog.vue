@@ -224,8 +224,9 @@
     </q-card>
 
     <!-- Create SKU Dialog -->
-    <sku-form-dialog
+    <SKUFormDialog
       v-model="showCreateSKUDialog"
+      :barcode="selectedScanItem?.barcode"
       @saved="onSKUCreated"
     />
   </q-dialog>
@@ -427,19 +428,74 @@ const processAllScans = async () => {
       return
     }
 
-    // Here you could add additional processing logic
-    // For now, just show success message
-    
-    $q.notify({
-      type: 'positive',
-      message: `Processed ${foundItems.length} SKUs successfully`
+    // Aggregate quantities for each barcode from scanned items
+    const barcodeQuantities: Record<string, number> = {}
+    scannedItems.value.forEach(item => {
+      if (item.status === 'found') {
+        barcodeQuantities[item.barcode] = (barcodeQuantities[item.barcode] || 0) + 1
+      }
     })
+
+    // Create scanned items array with quantities for the API
+    const scannedItemsForAPI = foundItems.map(item => ({
+      barcode: item.barcode,
+      quantity: barcodeQuantities[item.barcode] || 1
+    }))
+
+    // Remove duplicates by grouping by barcode
+    const uniqueScannedItems = Object.entries(barcodeQuantities).map(([barcode, quantity]) => ({
+      barcode,
+      quantity
+    }))
+
+    // Call the inventory update endpoint
+    const response = await fetch('/api/barcode/update-inventory', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      },
+      body: JSON.stringify({
+        scanned_items: uniqueScannedItems,
+        location: '',
+        notes: 'Updated from batch scan'
+      })
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const results = await response.json()
+    
+    // Show detailed success notification
+    const { summary } = results
+    let message = ''
+    if (summary.updated > 0) {
+      message += `Updated ${summary.updated} existing items. `
+    }
+    if (summary.created > 0) {
+      message += `Created ${summary.created} new items. `
+    }
+    if (summary.failed > 0) {
+      message += `Failed to process ${summary.failed} items.`
+    }
+
+    $q.notify({
+      type: summary.failed === 0 ? 'positive' : 'warning',
+      message: message.trim() || `Processed ${foundItems.length} SKUs successfully`,
+      timeout: 5000
+    })
+
+    // Log detailed results for debugging
+    console.log('Inventory update results:', results)
 
     emit('processed')
   } catch (error: any) {
+    console.error('Error processing scans:', error)
     $q.notify({
       type: 'negative',
-      message: error.message || 'Failed to process scans'
+      message: error.message || 'Failed to update inventory from scanned items'
     })
   } finally {
     processing.value = false
@@ -521,8 +577,11 @@ const retryNotFound = async () => {
 }
 
 const createSKUForBarcode = (scanItem: ScanItem) => {
+  console.log('createSKUForBarcode called with:', scanItem)
   selectedScanItem.value = scanItem
+  console.log('selectedScanItem set to:', selectedScanItem.value)
   showCreateSKUDialog.value = true
+  console.log('showCreateSKUDialog set to:', showCreateSKUDialog.value)
 }
 
 const viewSKU = (sku: SKU) => {
