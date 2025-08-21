@@ -40,6 +40,7 @@ const navTabs = [
   { path: "/dashboard", label: "Dashboard", icon: "dashboard" },
   { path: "/inventory", label: "Inventory", icon: "inventory_2" },
   { path: "/tags", label: "Tags", icon: "local_offer" },
+  { path: "/skus", label: "SKU Management", icon: "qr_code" },
 ];
 
 // Build info (can be injected during build process)

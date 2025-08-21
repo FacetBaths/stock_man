@@ -4,6 +4,7 @@ import Login from '@/views/Login.vue'
 import Dashboard from '@/views/Dashboard.vue'
 import Inventory from '@/views/Inventory.vue'
 import Tags from '@/views/Tags.vue'
+import SKUManagement from '@/views/SKUManagement.vue'
 
 const routes = [
   {
@@ -32,6 +33,12 @@ const routes = [
     path: '/tags',
     name: 'Tags',
     component: Tags,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/skus',
+    name: 'SKUManagement',
+    component: SKUManagement,
     meta: { requiresAuth: true }
   }
 ]
