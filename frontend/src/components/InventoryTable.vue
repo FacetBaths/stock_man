@@ -139,9 +139,15 @@ const hasQualityIssues = (item: Item) => {
 
 // Get primary tag status for an item
 const getPrimaryTagStatus = (item: Item) => {
-  // If no tags or all quantities are 0, default to in-stock
+  // First check if item is actually out of stock
+  if (item.quantity === 0) {
+    return { text: 'Out of Stock', color: 'negative', clickable: false }
+  }
+  
+  // If no tags or all quantities are 0, show stock status based on quantity
   if (!item.tagSummary || item.tagSummary.totalTagged === 0) {
-    return { text: 'In Stock', color: 'positive', clickable: false }
+    const stockStatus = getStockStatus(item.quantity)
+    return { text: stockStatus.text, color: stockStatus.color, clickable: false }
   }
   
   const availableQty = item.quantity - item.tagSummary.totalTagged
