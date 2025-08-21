@@ -25,8 +25,34 @@ const validateSKU = [
     .isIn(['wall', 'toilet', 'base', 'tub', 'vanity', 'shower_door', 'raw_material', 'accessory', 'miscellaneous'])
     .withMessage('Invalid product type'),
   body('product_details')
-    .notEmpty()
-    .withMessage('Product details ID is required'),
+    .optional(),
+  body('new_product')
+    .optional()
+    .isObject()
+    .withMessage('New product must be an object'),
+  body('is_bundle')
+    .optional()
+    .isBoolean()
+    .withMessage('is_bundle must be a boolean'),
+  body('bundle_items')
+    .optional()
+    .isArray()
+    .withMessage('bundle_items must be an array'),
+  body('bundle_items.*.product_type')
+    .optional()
+    .isIn(['wall', 'toilet', 'base', 'tub', 'vanity', 'shower_door', 'raw_material', 'accessory', 'miscellaneous'])
+    .withMessage('Invalid product type in bundle item'),
+  body('bundle_items.*.product_details')
+    .optional()
+    .isMongoId()
+    .withMessage('Bundle item product_details must be a valid MongoDB ID'),
+  body('bundle_items.*.quantity')
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage('Bundle item quantity must be a positive integer'),
+  body('bundle_items.*.description')
+    .optional()
+    .trim(),
   body('stock_thresholds.understocked')
     .optional()
     .isFloat({ min: 0 })
@@ -52,6 +78,34 @@ const validateSKU = [
     .optional()
     .trim()
 ];
+
+// Helper function to create new product document
+async function createProductDocument(productType, productData) {
+  const typeMapping = {
+    'wall': Wall,
+    'toilet': Toilet,
+    'base': Base,
+    'tub': Tub,
+    'vanity': Vanity,
+    'shower_door': ShowerDoor,
+    'raw_material': RawMaterial,
+    'accessory': Accessory,
+    'miscellaneous': Miscellaneous
+  };
+  
+  const ProductModel = typeMapping[productType];
+  if (!ProductModel) {
+    throw new Error(`Invalid product type: ${productType}`);
+  }
+  
+  console.log(`Creating new ${productType} product with data:`, JSON.stringify(productData, null, 2));
+  
+  const product = new ProductModel(productData);
+  await product.save();
+  console.log(`Created new ${productType} product with ID:`, product._id);
+  
+  return product;
+}
 
 // Helper function to generate SKU code
 async function generateSKUCode(productType, productDetails, template = null) {
@@ -118,6 +172,7 @@ router.get('/',
 
       const skus = await SKU.find(filter)
         .populate('product_details')
+        .populate('bundle_items.product_details')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit);
@@ -152,6 +207,52 @@ router.get('/',
   }
 );
 
+// GET /api/skus/products/:product_type - Get available Product documents for SKU creation
+router.get('/products/:product_type',
+  auth,
+  param('product_type').isIn(['wall', 'toilet', 'base', 'tub', 'vanity', 'shower_door', 'raw_material', 'accessory', 'miscellaneous']),
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
+      }
+
+      const productType = req.params.product_type;
+      
+      // Get unique product details from existing items (which have populated product_details)
+      const items = await Item.find({ product_type: productType })
+        .populate('product_details')
+        .lean();
+      
+      // Extract unique product details
+      const uniqueProducts = new Map();
+      items.forEach(item => {
+        if (item.product_details && typeof item.product_details === 'object') {
+          const productId = item.product_details._id.toString();
+          if (!uniqueProducts.has(productId)) {
+            const details = item.product_details;
+            uniqueProducts.set(productId, {
+              _id: productId,
+              name: details.name || 
+                    `${details.product_line} ${details.color_name}` || 
+                    `${details.brand} ${details.model}` ||
+                    `${productType} product`,
+              ...details
+            });
+          }
+        }
+      });
+      
+      const products = Array.from(uniqueProducts.values());
+      res.json({ products });
+    } catch (error) {
+      console.error('Get products for SKU error:', error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  }
+);
+
 // GET /api/skus/:id - Get specific SKU
 router.get('/:id',
   auth,
@@ -163,7 +264,9 @@ router.get('/:id',
         return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
       }
 
-      const sku = await SKU.findById(req.params.id).populate('product_details');
+      const sku = await SKU.findById(req.params.id)
+        .populate('product_details')
+        .populate('bundle_items.product_details');
       if (!sku) {
         return res.status(404).json({ message: 'SKU not found' });
       }
@@ -193,9 +296,54 @@ router.post('/',
   validateSKU,
   async (req, res) => {
     try {
+      console.log('Creating SKU with data:', JSON.stringify(req.body, null, 2));
+      
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
+        console.log('Validation errors:', errors.array());
         return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
+      }
+
+      // Bundle-specific validation
+      if (req.body.is_bundle) {
+        // For bundles, validate bundle_items
+        if (!req.body.bundle_items || !Array.isArray(req.body.bundle_items) || req.body.bundle_items.length === 0) {
+          return res.status(400).json({ 
+            message: 'Bundle SKUs must have at least one bundle item' 
+          });
+        }
+        
+        // Validate each bundle item
+        for (const [index, item] of req.body.bundle_items.entries()) {
+          if (!item.product_type) {
+            return res.status(400).json({ 
+              message: `Bundle item ${index + 1} is missing product_type` 
+            });
+          }
+          if (!item.product_details) {
+            return res.status(400).json({ 
+              message: `Bundle item ${index + 1} is missing product_details` 
+            });
+          }
+          if (!item.quantity || item.quantity < 1) {
+            return res.status(400).json({ 
+              message: `Bundle item ${index + 1} must have quantity >= 1` 
+            });
+          }
+        }
+      } else {
+        // For regular SKUs, validate that either product_details or new_product is provided
+        if (!req.body.product_details && !req.body.new_product) {
+          return res.status(400).json({ 
+            message: 'Either product_details ID or new_product data must be provided' 
+          });
+        }
+        
+        if (req.body.product_details && req.body.new_product) {
+          return res.status(400).json({ 
+            message: 'Cannot provide both product_details and new_product' 
+          });
+        }
       }
 
       // Check if SKU code already exists
@@ -203,14 +351,45 @@ router.post('/',
       if (existingSku) {
         return res.status(400).json({ message: 'SKU code already exists' });
       }
+      
+      let productDetailsId = req.body.product_details;
+      
+      // If new_product is provided, create the product document first
+      if (req.body.new_product) {
+        console.log('Creating new product document for SKU...');
+        try {
+          const newProduct = await createProductDocument(req.body.product_type, req.body.new_product);
+          productDetailsId = newProduct._id;
+          console.log('Created new product document with ID:', productDetailsId);
+        } catch (productError) {
+          console.error('Failed to create product document:', productError);
+          return res.status(400).json({ 
+            message: 'Failed to create product document', 
+            error: productError.message 
+          });
+        }
+      }
 
       // Create SKU
       const skuData = {
         ...req.body,
         sku_code: req.body.sku_code.toUpperCase(),
+        product_details: productDetailsId,
         created_by: req.user.username,
         last_updated_by: req.user.username
       };
+      
+      // Auto-generate barcode if not provided
+      if (!skuData.barcode) {
+        // Use SKU code as barcode, removing hyphens and making it numeric-compatible
+        skuData.barcode = skuData.sku_code.replace(/-/g, '');
+        console.log(`Auto-generated barcode: ${skuData.barcode} from SKU: ${skuData.sku_code}`);
+      }
+      
+      // Remove new_product field from SKU data as it's not part of SKU schema
+      delete skuData.new_product;
+
+      console.log('Final SKU data before save:', JSON.stringify(skuData, null, 2));
 
       // Add initial cost to history if provided
       if (req.body.current_cost && req.body.current_cost > 0) {
@@ -223,18 +402,58 @@ router.post('/',
       }
 
       const sku = new SKU(skuData);
+      console.log('About to save SKU...');
       await sku.save();
+      console.log('SKU saved successfully with ID:', sku._id);
+
+      // Automatically link existing items with matching product details
+      const matchingItems = await Item.find({
+        product_type: sku.product_type,
+        product_details: sku.product_details,
+        sku_id: { $exists: false } // Only link items without SKU
+      });
+      
+      if (matchingItems.length > 0) {
+        await Item.updateMany(
+          {
+            product_type: sku.product_type,
+            product_details: sku.product_details,
+            sku_id: { $exists: false }
+          },
+          { sku_id: sku._id }
+        );
+        console.log(`Linked ${matchingItems.length} existing items to new SKU`);
+      }
 
       // Populate product details for response
       await sku.populate('product_details');
+      await sku.populate('bundle_items.product_details');
 
       res.status(201).json(sku);
     } catch (error) {
       console.error('Create SKU error:', error);
+      console.error('Error name:', error.name);
+      console.error('Error message:', error.message);
+      if (error.errors) {
+        console.error('Validation errors:', error.errors);
+      }
+      
       if (error.code === 11000) {
         res.status(400).json({ message: 'SKU code already exists' });
+      } else if (error.name === 'ValidationError') {
+        const validationErrors = Object.keys(error.errors).map(key => ({
+          field: key,
+          message: error.errors[key].message
+        }));
+        res.status(400).json({ 
+          message: 'Database validation failed', 
+          errors: validationErrors
+        });
       } else {
-        res.status(500).json({ message: 'Server error' });
+        res.status(500).json({ 
+          message: 'Server error',
+          error: error.message 
+        });
       }
     }
   }

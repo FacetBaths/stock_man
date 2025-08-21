@@ -258,7 +258,7 @@
         selection="multiple"
         v-model:selected="selectedSKUs"
         binary-state-sort
-        @row-click="openEditDialog"
+        @row-click="(evt, row) => openEditDialog(row)"
       >
         <!-- Loading slot -->
         <template v-slot:loading>
@@ -332,7 +332,7 @@
 
         <template v-slot:body-cell-stock_status="props">
           <q-td :props="props">
-            <stock-status-chip
+            <StockStatusChip
               :status="props.row.stockStatus"
               :quantity="props.row.totalQuantity"
               :thresholds="props.row.stock_thresholds"
@@ -411,27 +411,27 @@
     </q-card>
 
     <!-- Create/Edit Dialog -->
-    <sku-form-dialog
+    <SKUFormDialog
       v-model="showFormDialog"
       :sku="selectedSKU"
       @saved="onSKUSaved"
     />
 
     <!-- Add Cost Dialog -->
-    <add-cost-dialog
+    <AddCostDialog
       v-model="showAddCostDialog"
       :sku="selectedSKU"
       @saved="onCostAdded"
     />
 
     <!-- Batch Scan Dialog -->
-    <batch-scan-dialog
+    <BatchScanDialog
       v-model="showBatchScanDialog"
       @processed="onBatchProcessed"
     />
 
     <!-- Export Dialog -->
-    <export-dialog
+    <ExportDialog
       v-model="showExportDialog"
       export-type="skus"
     />
@@ -614,8 +614,10 @@ const onTableRequest = (props: any) => {
 
 // Dialog methods
 const openCreateDialog = () => {
+  console.log('openCreateDialog called')
   selectedSKU.value = null
   showFormDialog.value = true
+  console.log('showFormDialog set to:', showFormDialog.value)
 }
 
 const openEditDialog = (sku: SKU) => {
@@ -815,17 +817,28 @@ const openBulkCreateDialog = () => {
 
       for (const item of selectedProductsWithoutSKUs.value) {
         try {
+          // Extract the Product ID from the item's product_details
+          const productDetailsId = typeof item.product_details === 'string' ?
+            item.product_details :
+            (item.product_details as any)?._id
+
+          if (!productDetailsId) {
+            console.error(`No product_details ID found for item ${item._id}`)
+            failed++
+            continue
+          }
+
           // Generate SKU code
           const skuCode = await skuStore.generateSKUCode({
             product_type: item.product_type,
-            product_details: item._id
+            product_details: productDetailsId
           })
 
           // Create SKU
           await skuStore.createSKU({
             sku_code: skuCode,
             product_type: item.product_type,
-            product_details: item._id,
+            product_details: productDetailsId,
             current_cost: item.cost || 0,
             stock_thresholds: item.stock_thresholds || {
               understocked: 5,

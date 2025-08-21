@@ -375,6 +375,91 @@ router.put('/:id', [auth, requireWriteAccess], [
   }
 });
 
+// Use/consume items for installation
+router.post('/:id/use', [auth, requireWriteAccess], [
+  body('quantity_used').isNumeric().isInt({ min: 1 }).withMessage('Quantity used must be a positive integer'),
+  body('used_for').notEmpty().trim().withMessage('Usage description is required'),
+  body('location').optional().trim(),
+  body('project_name').optional().trim(),
+  body('customer_name').optional().trim(),
+  body('notes').optional().trim()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ 
+        message: 'Validation failed',
+        errors: errors.array() 
+      });
+    }
+
+    const { id } = req.params;
+    const usageData = {
+      ...req.body,
+      used_by: req.user.username
+    };
+
+    const item = await Item.findById(id).populate('product_details');
+    if (!item) {
+      return res.status(404).json({ message: 'Item not found' });
+    }
+
+    // Check if we have enough quantity
+    if (usageData.quantity_used > item.quantity) {
+      return res.status(400).json({ 
+        message: `Cannot use ${usageData.quantity_used} items. Only ${item.quantity} available.` 
+      });
+    }
+
+    // Use the items
+    item.useItems(usageData);
+    await item.save();
+
+    res.json({
+      message: `Successfully used ${usageData.quantity_used} items for: ${usageData.used_for}`,
+      item,
+      usage: item.usage_history[item.usage_history.length - 1] // Return the latest usage entry
+    });
+
+  } catch (error) {
+    console.error('Use item error:', error);
+    if (error.message && error.message.startsWith('Cannot use')) {
+      return res.status(400).json({ message: error.message });
+    }
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get usage history for an item
+router.get('/:id/usage', auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const item = await Item.findById(id)
+      .select('usage_history product_type')
+      .populate('product_details', 'name product_line color_name brand model');
+    
+    if (!item) {
+      return res.status(404).json({ message: 'Item not found' });
+    }
+
+    // Calculate total used
+    const totalUsed = item.getTotalUsed();
+    
+    res.json({
+      item_id: item._id,
+      product_info: item.product_details,
+      product_type: item.product_type,
+      usage_history: item.usage_history.sort((a, b) => new Date(b.used_date) - new Date(a.used_date)),
+      total_used: totalUsed
+    });
+
+  } catch (error) {
+    console.error('Get usage history error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Delete inventory item
 router.delete('/:id', [auth, requireWriteAccess], async (req, res) => {
   try {

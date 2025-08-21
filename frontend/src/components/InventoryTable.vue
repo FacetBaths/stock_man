@@ -182,6 +182,7 @@ const handleTagStatusClick = (item: Item) => {
     showTagDialog.value = true
   }
 }
+
 </script>
 
 <template>
@@ -574,32 +575,44 @@ const handleTagStatusClick = (item: Item) => {
 }
 
 .inventory-item.type-base {
-  border-left: 5px solid var(--q-amber);
+  border-left: 5px solid #ffc107;
 }
 
 .inventory-item.type-tub {
-  border-left: 5px solid var(--q-cyan);
+  border-left: 5px solid #00bcd4;
 }
 
 .inventory-item.type-vanity {
-  border-left: 5px solid var(--q-deep-purple);
+  border-left: 5px solid #673ab7;
 }
 
-.inventory-item.type-shower_door {
-  border-left: 5px solid var(--q-deep-orange);
+.inventory-item.type-shower_door,
+.inventory-item.type-shower-door,
+.inventory-item.type-showerdoor,
+.inventory-item.type-shower_doors,
+.inventory-item.type-shower-doors,
+.inventory-item.type-showerdoors {
+  border-left: 5px solid #ff6f00;
 }
 
-.inventory-item.type-raw_material {
-  border-left: 5px solid var(--q-brown);
+.inventory-item.type-raw_material,
+.inventory-item.type-raw-material,
+.inventory-item.type-rawmaterial,
+.inventory-item.type-raw_materials,
+.inventory-item.type-raw-materials,
+.inventory-item.type-rawmaterials {
+  border-left: 5px solid #5d4037;
 }
 
 .inventory-item.type-accessory {
-  border-left: 5px solid var(--q-pink);
+  border-left: 5px solid #e91e63;
 }
 
-.inventory-item.type-miscellaneous {
-  border-left: 5px solid var(--q-grey);
+.inventory-item.type-miscellaneous,
+.inventory-item.type-misc {
+  border-left: 5px solid #616161;
 }
+
 
 /* Item Row Layout */
 .item-row {
@@ -670,36 +683,47 @@ const handleTagStatusClick = (item: Item) => {
 }
 
 .type-banner-base {
-  background: var(--q-amber);
+  background: #ffc107;
   color: white;
 }
 
 .type-banner-tub {
-  background: var(--q-cyan);
+  background: #00bcd4;
   color: white;
 }
 
 .type-banner-vanity {
-  background: var(--q-deep-purple);
+  background: #673ab7;
   color: white;
 }
 
-.type-banner-shower_door {
+.type-banner-shower_door,
+.type-banner-shower-door,
+.type-banner-showerdoor,
+.type-banner-shower_doors,
+.type-banner-shower-doors,
+.type-banner-showerdoors {
   background: var(--q-deep-orange);
   color: white;
 }
 
-.type-banner-raw_material {
+.type-banner-raw_material,
+.type-banner-raw-material,
+.type-banner-rawmaterial,
+.type-banner-raw_materials,
+.type-banner-raw-materials,
+.type-banner-rawmaterials {
   background: var(--q-brown);
   color: white;
 }
 
 .type-banner-accessory {
-  background: var(--q-pink);
+  background: #e91e63;
   color: white;
 }
 
-.type-banner-miscellaneous {
+.type-banner-miscellaneous,
+.type-banner-misc {
   background: var(--q-grey);
   color: white;
 }

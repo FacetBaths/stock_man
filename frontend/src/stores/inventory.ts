@@ -10,6 +10,7 @@ export const useInventoryStore = defineStore('inventory', () => {
   const isCreating = ref(false)
   const isUpdating = ref(false)
   const isDeleting = ref(false)
+  const isUsing = ref(false)
   const error = ref<string | null>(null)
   
   const totalItems = ref(0)
@@ -149,6 +150,47 @@ export const useInventoryStore = defineStore('inventory', () => {
     }
   }
 
+  const useItem = async (id: string, usageData: {
+    quantity_used: number
+    used_for: string
+    location?: string
+    project_name?: string
+    customer_name?: string
+    notes?: string
+  }) => {
+    try {
+      isUsing.value = true
+      error.value = null
+      
+      const response = await inventoryApi.useItem(id, usageData)
+      
+      // Update the item in the local state with new quantity
+      const index = items.value.findIndex(item => item._id === id)
+      if (index !== -1) {
+        items.value[index] = response.item
+      }
+      
+      await loadStats()
+      
+      return response
+    } catch (err: any) {
+      error.value = err.response?.data?.message || 'Failed to use item'
+      throw err
+    } finally {
+      isUsing.value = false
+    }
+  }
+
+  const getUsageHistory = async (id: string) => {
+    try {
+      const response = await inventoryApi.getUsageHistory(id)
+      return response
+    } catch (err: any) {
+      error.value = err.response?.data?.message || 'Failed to get usage history'
+      throw err
+    }
+  }
+
   const clearError = () => {
     error.value = null
   }
@@ -171,6 +213,7 @@ export const useInventoryStore = defineStore('inventory', () => {
     isCreating,
     isUpdating,
     isDeleting,
+    isUsing,
     error,
     totalItems,
     totalPages,
@@ -185,6 +228,8 @@ export const useInventoryStore = defineStore('inventory', () => {
     createItem,
     updateItem,
     deleteItem,
+    useItem,
+    getUsageHistory,
     clearError,
     setFilters
   }

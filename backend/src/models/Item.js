@@ -56,7 +56,44 @@ const itemSchema = new mongoose.Schema({
       min: 0,
       default: 100
     }
-  }
+  },
+  // Usage history for tracking when items are consumed/used for installations
+  usage_history: [{
+    quantity_used: {
+      type: Number,
+      required: true,
+      min: 1
+    },
+    used_for: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    location: {
+      type: String,
+      trim: true
+    },
+    project_name: {
+      type: String,
+      trim: true
+    },
+    customer_name: {
+      type: String,
+      trim: true
+    },
+    notes: {
+      type: String,
+      trim: true
+    },
+    used_by: {
+      type: String,
+      required: true
+    },
+    used_date: {
+      type: Date,
+      default: Date.now
+    }
+  }]
 }, {
   timestamps: true
 });
@@ -70,6 +107,38 @@ itemSchema.methods.getStockStatus = function() {
   } else {
     return 'adequate';
   }
+};
+
+// Method to use/consume items for installation
+itemSchema.methods.useItems = function(usageData) {
+  const { quantity_used, used_for, location, project_name, customer_name, notes, used_by } = usageData;
+  
+  // Check if we have enough quantity
+  if (quantity_used > this.quantity) {
+    throw new Error(`Cannot use ${quantity_used} items. Only ${this.quantity} available.`);
+  }
+  
+  // Reduce quantity
+  this.quantity -= quantity_used;
+  
+  // Add to usage history
+  this.usage_history.push({
+    quantity_used,
+    used_for,
+    location: location || '',
+    project_name: project_name || '',
+    customer_name: customer_name || '',
+    notes: notes || '',
+    used_by,
+    used_date: new Date()
+  });
+  
+  return this;
+};
+
+// Method to get total used quantity
+itemSchema.methods.getTotalUsed = function() {
+  return this.usage_history.reduce((total, usage) => total + usage.quantity_used, 0);
 };
 
 // Pre-save middleware to set the correct model name

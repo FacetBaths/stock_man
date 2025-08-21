@@ -147,6 +147,81 @@ export const tagApi = {
   }> => {
     const response = await api.get('/tags/stats')
     return response.data
+  },
+
+  createBatchTags: async (data: {
+    tag_type: string
+    customer_name: string
+    notes?: string
+    due_date?: string
+    tags: Array<{ item_id: string; quantity: number }>
+  }): Promise<{ message: string; tags: Tag[] }> => {
+    const response = await api.post('/tags/batch', data)
+    return response.data
+  },
+
+  lookupBySku: async (skuCode: string): Promise<{ item: Item & { availableQuantity: number }; sku: SKU }> => {
+    const response = await api.get(`/tags/lookup-sku/${encodeURIComponent(skuCode)}`)
+    return response.data
+  },
+
+  sendForInstall: async (data: {
+    customer_name: string
+    scanned_barcodes?: string[]
+    tag_ids?: string[]
+    notes?: string
+  }): Promise<{
+    message: string
+    customer_name: string
+    results: {
+      fulfilled: Tag[]
+      failed: Array<{ barcode?: string; tag_id?: string; error: string }>
+      inventory_reduced: Array<{
+        item_id: string
+        previous_quantity: number
+        new_quantity: number
+        reduced_by: number
+      }>
+    }
+  }> => {
+    const response = await api.post('/tags/send-for-install', data)
+    return response.data
+  },
+
+  markUsed: async (data: {
+    tag_ids: string[]
+    notes?: string
+  }): Promise<{
+    message: string
+    results: {
+      fulfilled: Tag[]
+      failed: Array<{ tag_id: string; error: string }>
+      inventory_reduced: Array<{
+        item_id: string
+        previous_quantity: number
+        new_quantity: number
+        reduced_by: number
+      }>
+    }
+  }> => {
+    const response = await api.post('/tags/mark-used', data)
+    return response.data
+  },
+
+  getCustomers: async (): Promise<{
+    customers: Array<{
+      name: string
+      tag_count: number
+      total_quantity: number
+      tag_types: string[]
+      date_range: {
+        oldest: string
+        newest: string
+      }
+    }>
+  }> => {
+    const response = await api.get('/tags/customers')
+    return response.data
   }
 }
 
@@ -193,6 +268,11 @@ export const skuApi = {
 
   addCost: async (id: string, costData: AddCostRequest): Promise<SKU> => {
     const response = await api.post(`/skus/${id}/cost`, costData)
+    return response.data
+  },
+
+  getProductsForSKU: async (productType: string): Promise<{ products: any[] }> => {
+    const response = await api.get(`/skus/products/${productType}`)
     return response.data
   },
 
