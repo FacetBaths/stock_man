@@ -5,6 +5,7 @@
     :icon="statusConfig.icon"
     text-color="white"
     dense
+    class="stock-status-chip"
   >
     <q-tooltip v-if="thresholds">
       Understocked: ≤{{ thresholds.understocked }}<br>
@@ -38,3 +39,17 @@ const displayText = computed(() => {
   return `${statusConfig.value.label} (${props.quantity})`
 })
 </script>
+
+<style scoped>
+.stock-status-chip {
+  font-weight: 600;
+  border-radius: 12px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+}
+
+.stock-status-chip:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+</style>

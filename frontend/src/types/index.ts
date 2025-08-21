@@ -316,9 +316,9 @@ export interface LinkExistingRequest {
 export type StockStatus = 'understocked' | 'adequate' | 'overstocked'
 
 export const STOCK_STATUS_CONFIG = {
-  understocked: { label: 'Understocked', color: '#dc3545', icon: 'warning' },
-  adequate: { label: 'Adequate', color: '#28a745', icon: 'check_circle' },
-  overstocked: { label: 'Overstocked', color: '#fd7e14', icon: 'inventory' }
+  understocked: { label: 'Understocked', color: 'red-6', icon: 'warning' },
+  adequate: { label: 'Adequate', color: 'green-6', icon: 'check_circle' },
+  overstocked: { label: 'Overstocked', color: 'orange-6', icon: 'inventory_2' }
 } as const
 
 // Export types
