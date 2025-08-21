@@ -137,17 +137,16 @@ const hasQualityIssues = (item: Item) => {
   return item.tagSummary.broken > 0 || item.tagSummary.imperfect > 0
 }
 
-// Get primary tag status for an item
+// Get primary tag status for an item (focuses on availability for tagging/reservation)
 const getPrimaryTagStatus = (item: Item) => {
   // First check if item is actually out of stock
   if (item.quantity === 0) {
-    return { text: 'Out of Stock', color: 'negative', clickable: false }
+    return { text: 'None Available', color: 'negative', clickable: false }
   }
   
-  // If no tags or all quantities are 0, show stock status based on quantity
+  // If no tags or all quantities are 0, items are available for tagging
   if (!item.tagSummary || item.tagSummary.totalTagged === 0) {
-    const stockStatus = getStockStatus(item.quantity)
-    return { text: stockStatus.text, color: stockStatus.color, clickable: false }
+    return { text: 'Available', color: 'positive', clickable: false }
   }
   
   const availableQty = item.quantity - item.tagSummary.totalTagged
@@ -176,8 +175,8 @@ const getPrimaryTagStatus = (item: Item) => {
     }
   }
   
-// Default fallback
-  return { text: 'In Stock', color: 'positive', clickable: false }
+// Default fallback - some items available
+  return { text: 'Available', color: 'positive', clickable: false }
 }
 
 // Handle tag status click
