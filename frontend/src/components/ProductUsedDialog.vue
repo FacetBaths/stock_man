@@ -1,176 +1,148 @@
 <template>
-  <div class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true" v-if="show">
-    <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-      <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" @click="close"></div>
-      
-      <!-- This element is to trick the browser into centering the modal contents. -->
-      <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-      
-      <div class="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full sm:p-6">
-        <div class="sm:flex sm:items-start">
-          <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-blue-100 sm:mx-0 sm:h-10 sm:w-10">
-            <svg class="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left flex-1">
-            <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">
-              Mark Products as Used
-            </h3>
-            <div class="mt-2">
-              <p class="text-sm text-gray-500">
-                Select specific tags to mark as used and reduce inventory quantities.
-              </p>
-            </div>
-          </div>
-        </div>
-        
-        <div class="mt-5">
-          <!-- Customer Selection -->
-          <div class="mb-4">
-            <label for="customer" class="block text-sm font-medium text-gray-700 mb-1">
-              Customer
-            </label>
-            <select 
-              id="customer" 
-              v-model="selectedCustomer"
-              class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-              :disabled="processing"
-              @change="loadTags"
-            >
-              <option value="">Select a customer...</option>
-              <option v-for="customer in customers" :key="customer.name" :value="customer.name">
-                {{ customer.name }} ({{ customer.tag_count }} tags)
-              </option>
-            </select>
-          </div>
+  <q-dialog v-model="showDialog" persistent>
+    <q-card class="product-used-card" style="min-width: 600px; max-width: 800px;">
+      <q-card-section class="row items-center q-pb-none">
+        <q-icon name="done_all" class="text-deep-orange q-mr-sm" size="sm" />
+        <div class="text-h6">Mark Products as Used</div>
+        <q-space />
+        <q-btn icon="close" flat round dense v-close-popup />
+      </q-card-section>
 
-          <!-- Tags Selection -->
-          <div v-if="selectedCustomer && tags.length > 0" class="mb-4">
-            <label class="block text-sm font-medium text-gray-700 mb-2">
-              Select Tags to Mark as Used
-            </label>
-            <div class="max-h-64 overflow-y-auto border border-gray-300 rounded-md">
-              <div v-for="tag in tags" :key="tag._id" 
-                   class="flex items-center px-3 py-2 border-b border-gray-200 last:border-b-0">
-                <input
-                  :id="tag._id"
-                  type="checkbox"
+      <q-card-section>
+        <p class="text-body2 text-grey-7 q-mb-md">
+          Select specific tags to mark as used and reduce inventory quantities.
+        </p>
+
+        <!-- Customer Selection -->
+        <q-select
+          v-model="selectedCustomer"
+          :options="customerOptions"
+          label="Customer"
+          filled
+          :disable="processing"
+          @update:model-value="loadTags"
+          class="q-mb-md"
+        />
+
+        <!-- Tags Selection -->
+        <div v-if="selectedCustomer && tags.length > 0" class="q-mb-md">
+          <div class="text-subtitle2 q-mb-sm">
+            Select Tags to Mark as Used
+          </div>
+          <q-list bordered class="rounded-borders" style="max-height: 300px; overflow-y: auto;">
+            <q-item v-for="tag in tags" :key="tag._id" dense>
+              <q-item-section side>
+                <q-checkbox
                   v-model="selectedTags"
-                  :value="tag._id"
-                  class="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300 rounded"
-                  :disabled="processing"
-                >
-                <label :for="tag._id" class="ml-3 flex-1 cursor-pointer">
-                  <div class="flex justify-between items-start">
-                    <div class="flex-1">
-                      <div class="text-sm font-medium text-gray-900">
-                        Tag #{{ tag._id.slice(-8) }}
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ml-2"
-                              :class="getTagTypeClass(tag.tag_type)">
-                          {{ tag.tag_type }}
-                        </span>
-                      </div>
-                      <div class="text-sm text-gray-600 mt-1">
-                        <div v-for="skuItem in tag.sku_items" :key="skuItem.sku_id._id" class="mb-1">
-                          <span class="font-medium">{{ skuItem.sku_id.sku_code }}</span>
-                          - Qty: {{ skuItem.remaining_quantity || skuItem.quantity }} / {{ skuItem.quantity }}
-                          <span v-if="skuItem.sku_id.is_bundle" class="text-blue-600 text-xs">(Bundle)</span>
-                        </div>
-                      </div>
-                      <div v-if="tag.notes" class="text-xs text-gray-500 mt-1">
-                        {{ tag.notes }}
-                      </div>
-                    </div>
-                    <div class="text-right text-xs text-gray-500">
-                      <div>Created: {{ formatDate(tag.createdAt) }}</div>
-                      <div v-if="tag.due_date">Due: {{ formatDate(tag.due_date) }}</div>
-                    </div>
+                  :val="tag._id"
+                  :disable="processing"
+                />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label>
+                  Tag #{{ tag._id.slice(-8) }}
+                  <q-chip
+                    :color="getTagTypeColor(tag.tag_type)"
+                    text-color="white"
+                    size="sm"
+                    class="q-ml-sm"
+                  >
+                    {{ tag.tag_type }}
+                  </q-chip>
+                </q-item-label>
+                <q-item-label caption>
+                  <div v-for="skuItem in tag.sku_items" :key="skuItem.sku_id._id" class="q-mb-xs">
+                    <strong>{{ skuItem.sku_id.sku_code }}</strong>
+                    - Qty: {{ skuItem.remaining_quantity || skuItem.quantity }} / {{ skuItem.quantity }}
+                    <q-chip v-if="skuItem.sku_id.is_bundle" color="blue" text-color="white" size="xs" class="q-ml-xs">
+                      Bundle
+                    </q-chip>
                   </div>
-                </label>
-              </div>
-            </div>
-          </div>
+                </q-item-label>
+                <q-item-label v-if="tag.notes" caption class="text-grey-6">
+                  {{ tag.notes }}
+                </q-item-label>
+              </q-item-section>
+              <q-item-section side>
+                <q-item-label caption>
+                  Created: {{ formatDate(tag.createdAt) }}
+                </q-item-label>
+                <q-item-label v-if="tag.due_date" caption>
+                  Due: {{ formatDate(tag.due_date) }}
+                </q-item-label>
+              </q-item-section>
+            </q-item>
+          </q-list>
+        </div>
 
-          <!-- No Tags Message -->
-          <div v-if="selectedCustomer && tags.length === 0 && !loadingTags" class="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-            <p class="text-sm text-yellow-800">No active tags found for this customer.</p>
-          </div>
+        <!-- No Tags Message -->
+        <div v-if="selectedCustomer && tags.length === 0 && !loadingTags" class="q-mb-md">
+          <q-banner class="bg-yellow-1 text-orange-8">
+            No active tags found for this customer.
+          </q-banner>
+        </div>
 
-          <!-- Loading Tags -->
-          <div v-if="loadingTags" class="mb-4 p-3 bg-gray-50 rounded-md">
-            <p class="text-sm text-gray-600">Loading tags...</p>
-          </div>
+        <!-- Loading Tags -->
+        <div v-if="loadingTags" class="q-mb-md text-center">
+          <q-spinner-dots size="lg" color="primary" />
+          <div class="text-body2 q-mt-sm">Loading tags...</div>
+        </div>
 
-          <!-- Selection Summary -->
-          <div v-if="selectedTags.length > 0" class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
-            <p class="text-sm text-blue-800">
-              {{ selectedTags.length }} tag{{ selectedTags.length === 1 ? '' : 's' }} selected for completion
-            </p>
-          </div>
+        <!-- Selection Summary -->
+        <div v-if="selectedTags.length > 0" class="q-mb-md">
+          <q-banner class="bg-blue-1 text-blue-8">
+            {{ selectedTags.length }} tag{{ selectedTags.length === 1 ? '' : 's' }} selected for completion
+          </q-banner>
+        </div>
 
-          <!-- Notes -->
-          <div class="mb-4">
-            <label for="notes" class="block text-sm font-medium text-gray-700 mb-1">
-              Notes (optional)
-            </label>
-            <textarea
-              id="notes"
-              v-model="notes"
-              rows="2"
-              class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-              placeholder="Add any notes about why these products were marked as used..."
-              :disabled="processing"
-            ></textarea>
-          </div>
+        <!-- Notes -->
+        <q-input
+          v-model="notes"
+          label="Notes (optional)"
+          type="textarea"
+          rows="2"
+          filled
+          :disable="processing"
+          class="q-mb-md"
+          placeholder="Add any notes about why these products were marked as used..."
+        />
 
-          <!-- Results Display -->
-          <div v-if="results" class="mb-4 p-3 bg-gray-50 rounded-md">
-            <h4 class="text-sm font-medium text-gray-900 mb-2">Results</h4>
-            <div class="text-sm text-gray-600 space-y-1">
-              <p>✅ {{ results.fulfilled?.length || 0 }} tags marked as used</p>
-              <p v-if="results.failed?.length" class="text-red-600">
+        <!-- Results Display -->
+        <div v-if="results" class="q-mb-md">
+          <q-banner class="bg-grey-2 q-mb-sm">
+            <div class="text-subtitle2">Results</div>
+            <div class="text-body2 q-mt-sm">
+              <div>✅ {{ results.fulfilled?.length || 0 }} tags marked as used</div>
+              <div v-if="results.failed?.length" class="text-negative">
                 ❌ {{ results.failed.length }} failed
-              </p>
-              <p>📦 {{ results.inventory_reduced?.length || 0 }} inventory items updated</p>
+              </div>
+              <div>📦 {{ results.inventory_reduced?.length || 0 }} inventory items updated</div>
             </div>
-          </div>
-
-          <!-- Error Display -->
-          <div v-if="error" class="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
-            <p class="text-sm text-red-600">{{ error }}</p>
-          </div>
+          </q-banner>
         </div>
 
-        <div class="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
-          <button
-            type="button"
-            @click="markAsUsed"
-            :disabled="selectedTags.length === 0 || processing"
-            class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <svg v-if="processing" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            {{ processing ? 'Processing...' : `Mark ${selectedTags.length} Tag${selectedTags.length === 1 ? '' : 's'} as Used` }}
-          </button>
-          <button
-            type="button"
-            @click="close"
-            :disabled="processing"
-            class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:w-auto sm:text-sm"
-          >
-            {{ results ? 'Close' : 'Cancel' }}
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
+        <!-- Error Display -->
+        <q-banner v-if="error" class="bg-negative text-white q-mb-md">
+          {{ error }}
+        </q-banner>
+      </q-card-section>
+
+      <q-card-actions align="right">
+        <q-btn flat label="Cancel" @click="close" :disable="processing" />
+        <q-btn
+          :label="`Mark ${selectedTags.length} Tag${selectedTags.length === 1 ? '' : 's'} as Used`"
+          color="positive"
+          @click="markAsUsed"
+          :disable="selectedTags.length === 0 || processing"
+          :loading="processing"
+        />
+      </q-card-actions>
+    </q-card>
+  </q-dialog>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { api } from '@/utils/api'
 
 interface Props {
@@ -215,6 +187,7 @@ const emit = defineEmits<{
   success: [results: any]
 }>()
 
+const showDialog = ref(false)
 const selectedCustomer = ref('')
 const selectedTags = ref<string[]>([])
 const tags = ref<Tag[]>([])
@@ -225,11 +198,26 @@ const loadingTags = ref(false)
 const results = ref<Results | null>(null)
 const error = ref('')
 
-// Load customers when dialog opens
+const customerOptions = computed(() => 
+  customers.value.map(c => ({
+    label: `${c.name} (${c.tag_count} tags)`,
+    value: c.name
+  }))
+)
+
+// Sync show prop with internal dialog state
 watch(() => props.show, (show) => {
+  showDialog.value = show
   if (show) {
     reset()
     loadCustomers()
+  }
+})
+
+// Close dialog when internal state changes
+watch(showDialog, (show) => {
+  if (!show) {
+    emit('close')
   }
 })
 
@@ -292,17 +280,17 @@ async function markAsUsed() {
   }
 }
 
-function getTagTypeClass(tagType: string) {
-  const classes = {
-    stock: 'bg-green-100 text-green-800',
-    reserved: 'bg-blue-100 text-blue-800',
-    broken: 'bg-red-100 text-red-800',
-    imperfect: 'bg-yellow-100 text-yellow-800',
-    expected: 'bg-purple-100 text-purple-800',
-    partial_shipment: 'bg-indigo-100 text-indigo-800',
-    backorder: 'bg-gray-100 text-gray-800'
+function getTagTypeColor(tagType: string) {
+  const colors = {
+    stock: 'positive',
+    reserved: 'info',
+    broken: 'negative',
+    imperfect: 'warning',
+    expected: 'purple',
+    partial_shipment: 'indigo',
+    backorder: 'grey'
   }
-  return classes[tagType as keyof typeof classes] || classes.stock
+  return colors[tagType as keyof typeof colors] || 'positive'
 }
 
 function formatDate(dateString: string) {
@@ -322,6 +310,13 @@ function reset() {
 }
 
 function close() {
-  emit('close')
+  showDialog.value = false
 }
 </script>
+
+<style scoped>
+.product-used-card {
+  max-height: 80vh;
+  overflow-y: auto;
+}
+</style>
