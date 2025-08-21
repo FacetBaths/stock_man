@@ -143,7 +143,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import api from '@/utils/api'
+import { tagApi } from '@/utils/api'
 
 interface Props {
   show: boolean
@@ -223,8 +223,8 @@ watch(showDialog, (show) => {
 
 async function loadCustomers() {
   try {
-    const response = await api.get('/tags/customers')
-    customers.value = response.data.customers
+    const response = await tagApi.getCustomers()
+    customers.value = response.customers
   } catch (err) {
     console.error('Failed to load customers:', err)
     error.value = 'Failed to load customers'
@@ -241,14 +241,12 @@ async function loadTags() {
   error.value = ''
   
   try {
-    const response = await api.get('/tags', {
-      params: {
-        customer_name: selectedCustomer.value,
-        status: 'active',
-        limit: 100
-      }
+    const response = await tagApi.getTags({
+      customer_name: selectedCustomer.value,
+      status: 'active',
+      limit: 100
     })
-    tags.value = response.data.tags
+    tags.value = response.tags
   } catch (err) {
     console.error('Failed to load tags:', err)
     error.value = 'Failed to load tags for customer'
@@ -264,13 +262,13 @@ async function markAsUsed() {
   error.value = ''
   
   try {
-    const response = await api.post('/tags/mark-used', {
+    const response = await tagApi.markUsed({
       tag_ids: selectedTags.value,
       notes: notes.value
     })
     
-    results.value = response.data.results
-    emit('success', response.data)
+    results.value = response.results
+    emit('success', response)
     
   } catch (err: any) {
     console.error('Mark used error:', err)

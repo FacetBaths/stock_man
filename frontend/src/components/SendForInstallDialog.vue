@@ -149,7 +149,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue'
-import api from '@/utils/api'
+import { tagApi } from '@/utils/api'
 
 interface Props {
   show: boolean
@@ -226,8 +226,8 @@ watch(showDialog, (show) => {
 
 async function loadCustomers() {
   try {
-    const response = await api.get('/tags/customers')
-    customers.value = response.data.customers
+    const response = await tagApi.getCustomers()
+    customers.value = response.customers
   } catch (err) {
     console.error('Failed to load customers:', err)
     error.value = 'Failed to load customers'
@@ -259,26 +259,26 @@ async function processFulfillment() {
     let response
     
     if (mode.value === 'scan') {
-      // Use the barcode-based partial fulfillment endpoint
-      response = await api.post('/tags/scan-fulfill', {
+      // Use the existing sendForInstall method with barcodes
+      response = await tagApi.sendForInstall({
         customer_name: selectedCustomer.value,
         scanned_barcodes: scannedBarcodes.value,
         notes: notes.value
       })
     } else {
-      // Use the complete fulfillment endpoint
-      response = await api.post('/tags/send-for-install', {
+      // Use the existing sendForInstall method without barcodes (complete all tags)
+      response = await tagApi.sendForInstall({
         customer_name: selectedCustomer.value,
         notes: notes.value
       })
     }
     
-    results.value = response.data.results
-    emit('success', response.data)
+    results.value = response.results
+    emit('success', response)
     
   } catch (err: any) {
     console.error('Fulfillment error:', err)
-    error.value = err.response?.data?.message || 'Failed to process fulfillment'
+    error.value = err.response?.data?.message || err.message || 'Failed to process fulfillment'
   } finally {
     processing.value = false
   }
