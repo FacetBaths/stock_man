@@ -45,26 +45,51 @@ router.get('/', auth, async (req, res) => {
       .skip((page - 1) * limit)
       .lean();
     
-    // Add tag information to each item
+    // Add tag information to each item using new SKU-based tags
     const Tag = require('../models/Tag');
-    const itemIds = items.map(item => item._id);
-    const activeTags = await Tag.find({
-      item_id: { $in: itemIds },
-      status: 'active'
-    }).lean();
+    const SKU = require('../models/SKU');
     
-    // Group tags by item ID
-    const tagsByItem = activeTags.reduce((acc, tag) => {
-      const itemId = tag.item_id.toString();
-      if (!acc[itemId]) acc[itemId] = [];
-      acc[itemId].push(tag);
-      return acc;
-    }, {});
+    // Get all SKU IDs from items that have them
+    const skuIds = items.filter(item => item.sku_id).map(item => item.sku_id._id);
+    
+    // Find active tags that contain these SKUs
+    const activeTags = await Tag.find({
+      'sku_items.sku_id': { $in: skuIds },
+      status: 'active'
+    }).populate('sku_items.sku_id').lean();
+    
+    // Map tags to items by matching SKU IDs
+    const tagsByItemId = {};
+    
+    for (const tag of activeTags) {
+      for (const skuItem of tag.sku_items) {
+        if (!skuItem.sku_id) continue;
+        
+        const skuId = skuItem.sku_id._id || skuItem.sku_id;
+        
+        // Find items with this SKU ID
+        const matchingItems = items.filter(item => 
+          item.sku_id && (item.sku_id._id?.toString() === skuId.toString() || item.sku_id.toString() === skuId.toString())
+        );
+        
+        for (const matchingItem of matchingItems) {
+          const itemId = matchingItem._id.toString();
+          if (!tagsByItemId[itemId]) tagsByItemId[itemId] = [];
+          
+          // Create tag entry with quantity from sku_items
+          tagsByItemId[itemId].push({
+            ...tag,
+            quantity: skuItem.remaining_quantity || skuItem.quantity,
+            originalQuantity: skuItem.quantity
+          });
+        }
+      }
+    }
     
     // Add tag info and SKU data to each item
     items = items.map(item => {
       const itemId = item._id.toString();
-      const tags = tagsByItem[itemId] || [];
+      const tags = tagsByItemId[itemId] || [];
       
       // Calculate tag summary
       const tagSummary = {
@@ -186,8 +211,18 @@ router.get('/stats', auth, async (req, res) => {
     const itemsWithCost = totalValueAggregation.length > 0 ? totalValueAggregation[0].itemsWithCost : 0;
     const totalQuantityWithCost = totalValueAggregation.length > 0 ? totalValueAggregation[0].totalQuantityWithCost : 0;
     
-    // Calculate tag-based status counts
+    // Calculate SKU coverage
+    const itemsWithSKUs = await Item.countDocuments({ sku_id: { $exists: true, $ne: null } });
+    const skuCoverage = {
+      totalItems,
+      itemsWithSKUs,
+      percentage: totalItems > 0 ? Math.round((itemsWithSKUs / totalItems) * 100) : 0
+    };
+    
+    // Calculate tag-based status counts using new SKU-based tags
     const Tag = require('../models/Tag');
+    const SKU = require('../models/SKU');
+    
     const tagStats = await Tag.aggregate([
       {
         $match: {
@@ -195,21 +230,24 @@ router.get('/stats', auth, async (req, res) => {
         }
       },
       {
+        $unwind: '$sku_items'
+      },
+      {
         $group: {
           _id: '$tag_type',
           count: { $sum: 1 },
-          totalQuantity: { $sum: '$quantity' },
-          uniqueItems: { $addToSet: '$item_id' }
+          totalQuantity: { $sum: { $ifNull: ['$sku_items.remaining_quantity', '$sku_items.quantity'] } },
+          uniqueSKUs: { $addToSet: '$sku_items.sku_id' }
         }
       },
       {
         $addFields: {
-          uniqueItemCount: { $size: '$uniqueItems' }
+          uniqueItemCount: { $size: '$uniqueSKUs' }
         }
       },
       {
         $project: {
-          uniqueItems: 0
+          uniqueSKUs: 0
         }
       }
     ]);
@@ -232,7 +270,8 @@ router.get('/stats', auth, async (req, res) => {
       totalValue,
       itemsWithCost,
       totalQuantityWithCost,
-      tagStatus: tagStatusSummary
+      tagStatus: tagStatusSummary,
+      skuCoverage
     });
 
   } catch (error) {
