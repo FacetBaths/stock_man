@@ -78,7 +78,7 @@ rollback_to_snapshot() {
     fi
     
     echo -e "\n${BLUE}Step 1: Dropping current database${NC}"
-    mongo "$LOCAL_DB_NAME" --eval "db.dropDatabase()" > /dev/null 2>&1
+    mongosh "$LOCAL_DB_NAME" --eval "db.dropDatabase()" > /dev/null 2>&1
     print_status "Current database dropped"
     
     echo -e "\n${BLUE}Step 2: Restoring from snapshot${NC}"
@@ -101,7 +101,7 @@ rollback_to_snapshot() {
     
     echo -e "\n${BLUE}Step 3: Verifying restored database${NC}"
     echo "Collection counts in restored database:"
-    mongo "$LOCAL_DB_NAME" --quiet --eval "
+    mongosh "$LOCAL_DB_NAME" --quiet --eval "
         db.getCollectionNames().forEach(function(collection) {
             var count = db[collection].count();
             print(collection + ': ' + count + ' documents');
@@ -149,7 +149,7 @@ cleanup_new_collections() {
         )
         
         for collection in "${new_collections[@]}"; do
-            mongo "$LOCAL_DB_NAME" --eval "db.$collection.drop()" > /dev/null 2>&1
+            mongosh "$LOCAL_DB_NAME" --eval "db.$collection.drop()" > /dev/null 2>&1
             print_status "Dropped collection: $collection"
         done
         

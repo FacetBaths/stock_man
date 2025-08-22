@@ -83,7 +83,7 @@ clear_local_db() {
     echo
     
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        mongo "$LOCAL_DB_NAME" --eval "db.dropDatabase()" > /dev/null 2>&1 || true
+        mongosh "$LOCAL_DB_NAME" --eval "db.dropDatabase()" > /dev/null 2>&1 || true
         print_status "Local database cleared"
     else
         print_error "Operation cancelled"
@@ -124,7 +124,7 @@ verify_local_db() {
     
     # Get collection counts
     echo "Collection counts in local database:"
-    mongo "$LOCAL_DB_NAME" --quiet --eval "
+    mongosh "$LOCAL_DB_NAME" --quiet --eval "
         db.getCollectionNames().forEach(function(collection) {
             var count = db[collection].count();
             print(collection + ': ' + count + ' documents');

@@ -70,7 +70,10 @@ check_nodejs() {
 check_mongodb() {
     print_info "Checking MongoDB installation..."
     
-    if command_exists mongo; then
+    if command_exists mongosh; then
+        MONGO_VERSION=$(mongosh --version)
+        print_status "MongoDB client found: $MONGO_VERSION"
+    elif command_exists mongo; then
         MONGO_VERSION=$(mongo --version | head -1)
         print_status "MongoDB client found: $MONGO_VERSION"
     else

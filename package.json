@@ -24,12 +24,16 @@
   },
   "keywords": [
     "inventory",
-    "management", 
+    "management",
     "vue",
     "express",
     "mongodb",
     "typescript"
   ],
   "author": "Facet Renovations",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^17.2.1",
+    "mongoose": "^8.17.2"
+  }
 }
