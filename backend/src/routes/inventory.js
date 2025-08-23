@@ -1,447 +1,381 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const Item = require('../models/Item');
-const Wall = require('../models/Wall');
-const { Toilet, Base, Tub, Vanity, ShowerDoor, RawMaterial, Accessory, Miscellaneous } = require('../models/Product');
+const Inventory = require('../models/Inventory');
+const SKUNew = require('../models/SKUNew');
+const TagNew = require('../models/TagNew');
 const { auth, requireWriteAccess } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Get all inventory items with optional filtering
+// Validation middleware
+const validateInventoryUpdate = [
+  body('available').optional().isNumeric().isInt({ min: 0 }).withMessage('Available quantity must be a non-negative integer'),
+  body('reserved').optional().isNumeric().isInt({ min: 0 }).withMessage('Reserved quantity must be a non-negative integer'),
+  body('broken').optional().isNumeric().isInt({ min: 0 }).withMessage('Broken quantity must be a non-negative integer'),
+  body('loaned').optional().isNumeric().isInt({ min: 0 }).withMessage('Loaned quantity must be a non-negative integer'),
+  body('minimum_stock_level').optional().isNumeric().isInt({ min: 0 }).withMessage('Minimum stock level must be a non-negative integer'),
+  body('reorder_point').optional().isNumeric().isInt({ min: 0 }).withMessage('Reorder point must be a non-negative integer'),
+  body('maximum_stock_level').optional().isNumeric().isInt({ min: 0 }).withMessage('Maximum stock level must be a non-negative integer'),
+  body('average_cost').optional().isNumeric().isFloat({ min: 0 }).withMessage('Average cost must be a non-negative number')
+];
+
+const validateStockMovement = [
+  body('quantity').isNumeric().isInt({ min: 1 }).withMessage('Quantity must be a positive integer'),
+  body('from_status').optional().isIn(['available', 'reserved', 'broken', 'loaned']).withMessage('Invalid from status'),
+  body('to_status').optional().isIn(['available', 'reserved', 'broken', 'loaned']).withMessage('Invalid to status'),
+  body('reason').optional().trim(),
+  body('notes').optional().trim()
+];
+
+// Helper function to ensure inventory record exists for a SKU
+async function ensureInventoryRecord(skuId, updatedBy = 'System') {
+  let inventory = await Inventory.findOne({ sku_id: skuId });
+  
+  if (!inventory) {
+    inventory = new Inventory({
+      sku_id: skuId,
+      available_quantity: 0,
+      reserved_quantity: 0,
+      broken_quantity: 0,
+      loaned_quantity: 0,
+      last_updated_by: updatedBy
+    });
+    await inventory.save();
+  }
+  
+  return inventory;
+}
+
+// GET /api/inventory - Get inventory summary with filtering and pagination
 router.get('/', auth, async (req, res) => {
   try {
-    const { 
-      product_type, 
-      search, 
-      page = 1, 
+    const {
+      category_id,
+      search,
+      status = 'all', // all, low_stock, out_of_stock, overstock, needs_reorder
+      page = 1,
       limit = 50,
-      in_stock_only = false 
+      sort_by = 'sku_code',
+      sort_order = 'asc'
     } = req.query;
 
-    let query = {};
+    let query = { is_active: true };
     
-    // Filter by product type if specified
-    if (product_type && product_type !== 'all') {
-      query.product_type = product_type;
+    // Status-based filtering
+    if (status === 'low_stock') {
+      query.is_low_stock = true;
+    } else if (status === 'out_of_stock') {
+      query.is_out_of_stock = true;
+    } else if (status === 'overstock') {
+      query.is_overstock = true;
+    } else if (status === 'needs_reorder') {
+      query.$expr = { $lte: ['$available_quantity', '$reorder_point'] };
     }
 
-    // Filter for in-stock items only
-    if (in_stock_only === 'true') {
-      query.quantity = { $gt: 0 };
-    }
-
-    let items = await Item.find(query)
-      .populate('product_details')
-      .populate({
-        path: 'sku_id',
-        select: 'sku_code barcode description product_details product_type',
-        populate: {
-          path: 'product_details',
-          select: 'name product_line color_name brand model'
+    // Build aggregation pipeline
+    let pipeline = [
+      { $match: query },
+      {
+        $lookup: {
+          from: 'skunews',
+          localField: 'sku_id',
+          foreignField: '_id',
+          as: 'sku'
         }
-      })
-      .sort({ createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .lean();
-    
-    // Add tag information to each item using new SKU-based tags
-    const Tag = require('../models/Tag');
-    const SKU = require('../models/SKU');
-    
-    // Get all SKU IDs from items that have them
-    const skuIds = items.filter(item => item.sku_id).map(item => item.sku_id._id);
-    
-    // Find active tags that contain these SKUs
-    const activeTags = await Tag.find({
-      'sku_items.sku_id': { $in: skuIds },
-      status: 'active'
-    }).populate('sku_items.sku_id').lean();
-    
-    // Map tags to items by matching SKU IDs
-    const tagsByItemId = {};
-    
-    for (const tag of activeTags) {
-      for (const skuItem of tag.sku_items) {
-        if (!skuItem.sku_id) continue;
-        
-        const skuId = skuItem.sku_id._id || skuItem.sku_id;
-        
-        // Find items with this SKU ID
-        const matchingItems = items.filter(item => 
-          item.sku_id && (item.sku_id._id?.toString() === skuId.toString() || item.sku_id.toString() === skuId.toString())
-        );
-        
-        for (const matchingItem of matchingItems) {
-          const itemId = matchingItem._id.toString();
-          if (!tagsByItemId[itemId]) tagsByItemId[itemId] = [];
-          
-          // Create tag entry with quantity from sku_items
-          tagsByItemId[itemId].push({
-            ...tag,
-            quantity: skuItem.remaining_quantity || skuItem.quantity,
-            originalQuantity: skuItem.quantity
-          });
+      },
+      { $unwind: '$sku' },
+      {
+        $lookup: {
+          from: 'categories',
+          localField: 'sku.category_id',
+          foreignField: '_id',
+          as: 'category'
         }
-      }
-    }
-    
-    // Add tag info and SKU data to each item
-    items = items.map(item => {
-      const itemId = item._id.toString();
-      const tags = tagsByItemId[itemId] || [];
-      
-      // Calculate tag summary
-      const tagSummary = {
-        reserved: tags.filter(tag => tag.tag_type === 'reserved').reduce((sum, tag) => sum + tag.quantity, 0),
-        broken: tags.filter(tag => tag.tag_type === 'broken').reduce((sum, tag) => sum + tag.quantity, 0),
-        imperfect: tags.filter(tag => tag.tag_type === 'imperfect').reduce((sum, tag) => sum + tag.quantity, 0),
-        stock: tags.filter(tag => tag.tag_type === 'stock').reduce((sum, tag) => sum + tag.quantity, 0),
-        totalTagged: tags.reduce((sum, tag) => sum + tag.quantity, 0)
-      };
-      
-      // Add SKU code and barcode directly from populated sku_id
-      const sku_code = item.sku_id ? item.sku_id.sku_code : null;
-      const barcode = item.sku_id ? item.sku_id.barcode : null;
-      
-      return {
-        ...item,
-        sku_code,
-        barcode,
-        tagSummary,
-        tags: tags.length > 0 ? tags : undefined
-      };
-    });
+      },
+      { $unwind: { path: '$category', preserveNullAndEmptyArrays: true } }
+    ];
 
-    // If search query is provided, filter results
+    // Category filtering
+    if (category_id && category_id !== 'all') {
+      pipeline.push({
+        $match: { 'sku.category_id': require('mongoose').Types.ObjectId(category_id) }
+      });
+    }
+
+    // Search filtering
     if (search && search.trim()) {
       const searchTerm = search.toLowerCase().trim();
-      items = items.filter(item => {
-        const details = item.product_details;
-        if (!details) return false;
-
-        // Search in different fields based on product type
-        if (item.product_type === 'wall') {
-          return (
-            details.product_line?.toLowerCase().includes(searchTerm) ||
-            details.color_name?.toLowerCase().includes(searchTerm) ||
-            details.dimensions?.toLowerCase().includes(searchTerm) ||
-            details.finish?.toLowerCase().includes(searchTerm)
-          );
-        } else {
-          return (
-            details.name?.toLowerCase().includes(searchTerm) ||
-            details.brand?.toLowerCase().includes(searchTerm) ||
-            details.model?.toLowerCase().includes(searchTerm) ||
-            details.color?.toLowerCase().includes(searchTerm) ||
-            details.dimensions?.toLowerCase().includes(searchTerm) ||
-            details.finish?.toLowerCase().includes(searchTerm) ||
-            details.description?.toLowerCase().includes(searchTerm)
-          );
+      pipeline.push({
+        $match: {
+          $or: [
+            { 'sku.sku_code': { $regex: searchTerm, $options: 'i' } },
+            { 'sku.description': { $regex: searchTerm, $options: 'i' } },
+            { 'sku.manufacturer_part_number': { $regex: searchTerm, $options: 'i' } },
+            { 'category.name': { $regex: searchTerm, $options: 'i' } }
+          ]
         }
       });
     }
 
-    const totalItems = await Item.countDocuments(query);
+    // Add computed fields
+    pipeline.push({
+      $addFields: {
+        needs_reorder: { $lte: ['$available_quantity', '$reorder_point'] },
+        utilization_rate: {
+          $cond: {
+            if: { $gt: ['$total_quantity', 0] },
+            then: {
+              $multiply: [
+                { $divide: [{ $subtract: ['$total_quantity', '$available_quantity'] }, '$total_quantity'] },
+                100
+              ]
+            },
+            else: 0
+          }
+        }
+      }
+    });
+
+    // Sorting
+    const sortField = sort_by === 'sku_code' ? 'sku.sku_code' : sort_by;
+    const sortDirection = sort_order === 'desc' ? -1 : 1;
+    pipeline.push({ $sort: { [sortField]: sortDirection } });
+
+    // Get total count for pagination
+    const countPipeline = [...pipeline, { $count: 'total' }];
+    const countResult = await Inventory.aggregate(countPipeline);
+    const totalItems = countResult.length > 0 ? countResult[0].total : 0;
+
+    // Apply pagination
+    pipeline.push(
+      { $skip: (page - 1) * limit },
+      { $limit: parseInt(limit) }
+    );
+
+    const inventory = await Inventory.aggregate(pipeline);
 
     res.json({
-      items,
-      totalItems,
-      totalPages: Math.ceil(totalItems / limit),
-      currentPage: parseInt(page)
+      inventory,
+      pagination: {
+        current_page: parseInt(page),
+        total_pages: Math.ceil(totalItems / limit),
+        total_items: totalItems,
+        items_per_page: parseInt(limit)
+      },
+      filters: {
+        category_id,
+        search,
+        status,
+        sort_by,
+        sort_order
+      }
     });
 
   } catch (error) {
     console.error('Get inventory error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ 
+      message: 'Server error', 
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
   }
 });
 
-// Get inventory statistics
+// GET /api/inventory/stats - Get inventory statistics and dashboard data
 router.get('/stats', auth, async (req, res) => {
   try {
     console.log('Fetching inventory stats...');
-    console.log('MongoDB connection state:', require('mongoose').connection.readyState);
-    
-    const stats = await Item.aggregate([
+
+    // Get summary statistics
+    const summaryStats = await Inventory.aggregate([
+      { $match: { is_active: true } },
       {
         $group: {
-          _id: '$product_type',
-          count: { $sum: 1 },
-          totalQuantity: { $sum: '$quantity' },
-          inStock: {
-            $sum: {
-              $cond: [{ $gt: ['$quantity', 0] }, 1, 0]
-            }
+          _id: null,
+          total_skus: { $sum: 1 },
+          total_quantity: { $sum: '$total_quantity' },
+          available_quantity: { $sum: '$available_quantity' },
+          reserved_quantity: { $sum: '$reserved_quantity' },
+          broken_quantity: { $sum: '$broken_quantity' },
+          loaned_quantity: { $sum: '$loaned_quantity' },
+          total_value: { $sum: '$total_value' },
+          low_stock_count: { $sum: { $cond: ['$is_low_stock', 1, 0] } },
+          out_of_stock_count: { $sum: { $cond: ['$is_out_of_stock', 1, 0] } },
+          overstock_count: { $sum: { $cond: ['$is_overstock', 1, 0] } },
+          needs_reorder_count: { 
+            $sum: { 
+              $cond: [
+                { $lte: ['$available_quantity', '$reorder_point'] }, 
+                1, 
+                0 
+              ] 
+            } 
           }
         }
       }
     ]);
-    console.log('Stats aggregation result:', stats);
 
-    const totalItems = await Item.countDocuments();
-    const totalInStock = await Item.countDocuments({ quantity: { $gt: 0 } });
-    
-    // Get the most recently updated item for "Last Updated" timestamp
-    const lastUpdatedItem = await Item.findOne().sort({ updatedAt: -1 }).lean();
-    const lastUpdated = lastUpdatedItem ? lastUpdatedItem.updatedAt : null;
-    
-    // Calculate total monetary value of inventory
-    const totalValueAggregation = await Item.aggregate([
+    // Get stats by category
+    const categoryStats = await Inventory.aggregate([
+      { $match: { is_active: true } },
       {
-        $match: {
-          cost: { $exists: true, $ne: null, $gt: 0 }
+        $lookup: {
+          from: 'skunews',
+          localField: 'sku_id',
+          foreignField: '_id',
+          as: 'sku'
         }
       },
+      { $unwind: '$sku' },
+      {
+        $lookup: {
+          from: 'categories',
+          localField: 'sku.category_id',
+          foreignField: '_id',
+          as: 'category'
+        }
+      },
+      { $unwind: { path: '$category', preserveNullAndEmptyArrays: true } },
       {
         $group: {
-          _id: null,
-          totalValue: {
-            $sum: {
-              $multiply: ['$cost', '$quantity']
-            }
-          },
-          itemsWithCost: { $sum: 1 },
-          totalQuantityWithCost: { $sum: '$quantity' }
+          _id: '$category._id',
+          category_name: { $first: '$category.name' },
+          sku_count: { $sum: 1 },
+          total_quantity: { $sum: '$total_quantity' },
+          available_quantity: { $sum: '$available_quantity' },
+          total_value: { $sum: '$total_value' },
+          low_stock_count: { $sum: { $cond: ['$is_low_stock', 1, 0] } },
+          out_of_stock_count: { $sum: { $cond: ['$is_out_of_stock', 1, 0] } }
         }
-      }
+      },
+      { $sort: { category_name: 1 } }
     ]);
-    
-    const totalValue = totalValueAggregation.length > 0 ? totalValueAggregation[0].totalValue : 0;
-    const itemsWithCost = totalValueAggregation.length > 0 ? totalValueAggregation[0].itemsWithCost : 0;
-    const totalQuantityWithCost = totalValueAggregation.length > 0 ? totalValueAggregation[0].totalQuantityWithCost : 0;
-    
-    // Calculate SKU coverage
-    const itemsWithSKUs = await Item.countDocuments({ sku_id: { $exists: true, $ne: null } });
-    const skuCoverage = {
-      totalItems,
-      itemsWithSKUs,
-      percentage: totalItems > 0 ? Math.round((itemsWithSKUs / totalItems) * 100) : 0
+
+    // Get recent activity (last 30 days)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const recentActivity = await Inventory.find({
+      is_active: true,
+      last_movement_date: { $gte: thirtyDaysAgo }
+    })
+    .populate('sku_id', 'sku_code description')
+    .sort({ last_movement_date: -1 })
+    .limit(10)
+    .lean();
+
+    // Get top value items
+    const topValueItems = await Inventory.find({
+      is_active: true,
+      total_value: { $gt: 0 }
+    })
+    .populate('sku_id', 'sku_code description')
+    .sort({ total_value: -1 })
+    .limit(10)
+    .lean();
+
+    const summary = summaryStats.length > 0 ? summaryStats[0] : {
+      total_skus: 0,
+      total_quantity: 0,
+      available_quantity: 0,
+      reserved_quantity: 0,
+      broken_quantity: 0,
+      loaned_quantity: 0,
+      total_value: 0,
+      low_stock_count: 0,
+      out_of_stock_count: 0,
+      overstock_count: 0,
+      needs_reorder_count: 0
     };
-    
-    // Calculate tag-based status counts using new SKU-based tags
-    const Tag = require('../models/Tag');
-    const SKU = require('../models/SKU');
-    
-    const tagStats = await Tag.aggregate([
-      {
-        $match: {
-          status: 'active'
-        }
-      },
-      {
-        $unwind: '$sku_items'
-      },
-      {
-        $group: {
-          _id: '$tag_type',
-          count: { $sum: 1 },
-          totalQuantity: { $sum: { $ifNull: ['$sku_items.remaining_quantity', '$sku_items.quantity'] } },
-          uniqueSKUs: { $addToSet: '$sku_items.sku_id' }
-        }
-      },
-      {
-        $addFields: {
-          uniqueItemCount: { $size: '$uniqueSKUs' }
-        }
-      },
-      {
-        $project: {
-          uniqueSKUs: 0
-        }
-      }
-    ]);
-    
-    const tagStatusSummary = {
-      broken: tagStats.find(stat => stat._id === 'broken') || { count: 0, totalQuantity: 0, uniqueItemCount: 0 },
-      imperfect: tagStats.find(stat => stat._id === 'imperfect') || { count: 0, totalQuantity: 0, uniqueItemCount: 0 },
-      reserved: tagStats.find(stat => stat._id === 'reserved') || { count: 0, totalQuantity: 0, uniqueItemCount: 0 }
-    };
-    
-    console.log('Total items:', totalItems, 'In stock:', totalInStock, 'Last updated:', lastUpdated);
-    console.log('Total monetary value:', totalValue, 'Items with cost:', itemsWithCost);
-    console.log('Tag status summary:', tagStatusSummary);
 
     res.json({
-      totalItems,
-      totalInStock,
-      byProductType: stats,
-      lastUpdated,
-      totalValue,
-      itemsWithCost,
-      totalQuantityWithCost,
-      tagStatus: tagStatusSummary,
-      skuCoverage
+      summary,
+      by_category: categoryStats,
+      recent_activity: recentActivity,
+      top_value_items: topValueItems,
+      alerts: {
+        low_stock: summary.low_stock_count,
+        out_of_stock: summary.out_of_stock_count,
+        overstock: summary.overstock_count,
+        needs_reorder: summary.needs_reorder_count
+      }
     });
 
   } catch (error) {
-    console.error('Get stats error:', error);
-    console.error('Error stack:', error.stack);
-    console.error('MongoDB connection state:', require('mongoose').connection.readyState);
+    console.error('Get inventory stats error:', error);
     res.status(500).json({ 
-      message: 'Server error',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
-      debug: {
-        mongoState: require('mongoose').connection.readyState,
-        timestamp: new Date().toISOString()
+      message: 'Server error', 
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+});
+
+
+// PUT /api/inventory/:sku_id - Update inventory settings for a SKU
+router.put('/:sku_id', [auth, requireWriteAccess, ...validateInventoryUpdate], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ 
+        message: 'Validation failed',
+        errors: errors.array() 
+      });
+    }
+
+    const { sku_id } = req.params;
+    const updates = req.body;
+    const updatedBy = req.user.username || 'System';
+
+    // Ensure inventory record exists
+    let inventory = await ensureInventoryRecord(sku_id, updatedBy);
+
+    // Update quantities if provided
+    const quantityUpdates = {};
+    if (updates.available !== undefined) quantityUpdates.available = updates.available;
+    if (updates.reserved !== undefined) quantityUpdates.reserved = updates.reserved;
+    if (updates.broken !== undefined) quantityUpdates.broken = updates.broken;
+    if (updates.loaned !== undefined) quantityUpdates.loaned = updates.loaned;
+
+    if (Object.keys(quantityUpdates).length > 0) {
+      inventory.updateQuantities(quantityUpdates, updatedBy);
+    }
+
+    // Update thresholds and settings
+    if (updates.minimum_stock_level !== undefined) inventory.minimum_stock_level = updates.minimum_stock_level;
+    if (updates.reorder_point !== undefined) inventory.reorder_point = updates.reorder_point;
+    if (updates.maximum_stock_level !== undefined) inventory.maximum_stock_level = updates.maximum_stock_level;
+    if (updates.primary_location !== undefined) inventory.primary_location = updates.primary_location;
+    if (updates.average_cost !== undefined) inventory.average_cost = updates.average_cost;
+
+    // Update location breakdown if provided
+    if (updates.locations && Array.isArray(updates.locations)) {
+      inventory.locations = updates.locations;
+    }
+
+    await inventory.save();
+    await inventory.populate({
+      path: 'sku_id',
+      populate: {
+        path: 'category_id',
+        select: 'name description'
       }
     });
-  }
-});
-
-// Add new inventory item
-router.post('/', [auth, requireWriteAccess], [
-  body('product_type').isIn(['wall', 'toilet', 'base', 'tub', 'vanity', 'shower_door', 'raw_material', 'accessory', 'miscellaneous']),
-  body('quantity').isNumeric().isInt({ min: 0 })
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { product_type, product_details, quantity, location, notes, cost, sku_id, barcode } = req.body;
-
-    // Create the product details first
-    let productDetailsDoc;
-    
-    switch (product_type) {
-      case 'wall':
-        productDetailsDoc = new Wall(product_details);
-        break;
-      case 'toilet':
-        productDetailsDoc = new Toilet(product_details);
-        break;
-      case 'base':
-        productDetailsDoc = new Base(product_details);
-        break;
-      case 'tub':
-        productDetailsDoc = new Tub(product_details);
-        break;
-      case 'vanity':
-        productDetailsDoc = new Vanity(product_details);
-        break;
-      case 'shower_door':
-        productDetailsDoc = new ShowerDoor(product_details);
-        break;
-      case 'raw_material':
-        productDetailsDoc = new RawMaterial(product_details);
-        break;
-      case 'accessory':
-        productDetailsDoc = new Accessory(product_details);
-        break;
-      case 'miscellaneous':
-        productDetailsDoc = new Miscellaneous(product_details);
-        break;
-      default:
-        return res.status(400).json({ message: 'Invalid product type' });
-    }
-
-    await productDetailsDoc.save();
-
-    // Create the inventory item
-    const typeMapping = {
-      'wall': 'Wall',
-      'toilet': 'Toilet',
-      'base': 'Base',
-      'tub': 'Tub',
-      'vanity': 'Vanity',
-      'shower_door': 'ShowerDoor',
-      'raw_material': 'RawMaterial',
-      'accessory': 'Accessory',
-      'miscellaneous': 'Miscellaneous'
-    };
-    
-    const item = new Item({
-      product_type,
-      product_details: productDetailsDoc._id,
-      product_type_model: typeMapping[product_type],
-      quantity,
-      location: location || '',
-      notes: notes || '',
-      // Only allow admin and warehouse_manager to set cost
-      cost: (req.user.role === 'admin' || req.user.role === 'warehouse_manager') ? (cost || 0) : 0,
-      // Add SKU reference if provided
-      sku_id: sku_id || undefined
-    });
-
-    await item.save();
-    await item.populate('product_details');
-
-    res.status(201).json({
-      message: 'Item added successfully',
-      item
-    });
-
-  } catch (error) {
-    console.error('Add item error:', error);
-    if (error.code === 11000) {
-      return res.status(400).json({ message: 'Item with these details already exists' });
-    }
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Update inventory item
-router.put('/:id', [auth, requireWriteAccess], [
-  body('quantity').optional().isNumeric().isInt({ min: 0 })
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { id } = req.params;
-    const updates = req.body;
-
-    const item = await Item.findById(id).populate('product_details');
-    if (!item) {
-      return res.status(404).json({ message: 'Item not found' });
-    }
-
-    // Update item fields
-    if (updates.quantity !== undefined) item.quantity = updates.quantity;
-    if (updates.location !== undefined) item.location = updates.location;
-    if (updates.notes !== undefined) item.notes = updates.notes;
-    
-    // Only allow admin and warehouse_manager to update cost
-    if (updates.cost !== undefined && (req.user.role === 'admin' || req.user.role === 'warehouse_manager')) {
-      item.cost = updates.cost;
-    }
-    
-    // Update SKU assignment (allow setting to null to remove SKU association)
-    if (updates.sku_id !== undefined) {
-      item.sku_id = updates.sku_id || undefined;
-    }
-
-    // Update product details if provided
-    if (updates.product_details) {
-      Object.assign(item.product_details, updates.product_details);
-      await item.product_details.save();
-    }
-
-    await item.save();
-    await item.populate('product_details');
 
     res.json({
-      message: 'Item updated successfully',
-      item
+      message: 'Inventory updated successfully',
+      inventory
     });
 
   } catch (error) {
-    console.error('Update item error:', error);
+    console.error('Update inventory error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Use/consume items for installation
-router.post('/:id/use', [auth, requireWriteAccess], [
-  body('quantity_used').isNumeric().isInt({ min: 1 }).withMessage('Quantity used must be a positive integer'),
-  body('used_for').notEmpty().trim().withMessage('Usage description is required'),
+// POST /api/inventory/:sku_id/receive - Receive new stock
+router.post('/:sku_id/receive', [auth, requireWriteAccess], [
+  body('quantity').isNumeric().isInt({ min: 1 }).withMessage('Quantity must be a positive integer'),
+  body('cost').optional().isNumeric().isFloat({ min: 0 }).withMessage('Cost must be non-negative'),
   body('location').optional().trim(),
-  body('project_name').optional().trim(),
-  body('customer_name').optional().trim(),
   body('notes').optional().trim()
 ], async (req, res) => {
   try {
@@ -453,108 +387,595 @@ router.post('/:id/use', [auth, requireWriteAccess], [
       });
     }
 
-    const { id } = req.params;
-    const usageData = {
-      ...req.body,
-      used_by: req.user.username
-    };
+    const { sku_id } = req.params;
+    const { quantity, cost, location, notes } = req.body;
+    const updatedBy = req.user.username || 'System';
 
-    const item = await Item.findById(id).populate('product_details');
-    if (!item) {
-      return res.status(404).json({ message: 'Item not found' });
+    // Ensure inventory record exists
+    let inventory = await ensureInventoryRecord(sku_id, updatedBy);
+
+    // Add the new stock
+    inventory.addStock(quantity, cost, updatedBy);
+
+    // Update location if provided
+    if (location && location.trim()) {
+      const locationIndex = inventory.locations.findIndex(loc => loc.location_name === location);
+      if (locationIndex >= 0) {
+        inventory.locations[locationIndex].quantity += quantity;
+      } else {
+        inventory.locations.push({
+          location_name: location,
+          quantity: quantity
+        });
+      }
     }
 
-    // Check if we have enough quantity
-    if (usageData.quantity_used > item.quantity) {
-      return res.status(400).json({ 
-        message: `Cannot use ${usageData.quantity_used} items. Only ${item.quantity} available.` 
-      });
-    }
-
-    // Use the items
-    item.useItems(usageData);
-    await item.save();
+    await inventory.save();
+    await inventory.populate('sku_id', 'sku_code description');
 
     res.json({
-      message: `Successfully used ${usageData.quantity_used} items for: ${usageData.used_for}`,
-      item,
-      usage: item.usage_history[item.usage_history.length - 1] // Return the latest usage entry
+      message: `Successfully received ${quantity} units`,
+      inventory,
+      movement: {
+        type: 'receive',
+        quantity,
+        cost,
+        location,
+        notes,
+        updated_by: updatedBy,
+        timestamp: new Date()
+      }
     });
 
   } catch (error) {
-    console.error('Use item error:', error);
-    if (error.message && error.message.startsWith('Cannot use')) {
+    console.error('Receive stock error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// POST /api/inventory/:sku_id/move - Move inventory between statuses
+router.post('/:sku_id/move', [auth, requireWriteAccess, ...validateStockMovement], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ 
+        message: 'Validation failed',
+        errors: errors.array() 
+      });
+    }
+
+    const { sku_id } = req.params;
+    const { quantity, from_status, to_status, reason, notes } = req.body;
+    const updatedBy = req.user.username || 'System';
+
+    let inventory = await Inventory.findOne({ sku_id, is_active: true });
+    if (!inventory) {
+      return res.status(404).json({ message: 'Inventory record not found' });
+    }
+
+    // Move inventory between statuses
+    inventory.moveInventory(from_status, to_status, quantity, updatedBy);
+    await inventory.save();
+    await inventory.populate('sku_id', 'sku_code description');
+
+    res.json({
+      message: `Successfully moved ${quantity} units from ${from_status} to ${to_status}`,
+      inventory,
+      movement: {
+        type: 'move',
+        quantity,
+        from_status,
+        to_status,
+        reason,
+        notes,
+        updated_by: updatedBy,
+        timestamp: new Date()
+      }
+    });
+
+  } catch (error) {
+    console.error('Move inventory error:', error);
+    if (error.message.includes('Cannot move') || error.message.includes('Invalid status')) {
       return res.status(400).json({ message: error.message });
     }
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Get usage history for an item
-router.get('/:id/usage', auth, async (req, res) => {
+// POST /api/inventory/:sku_id/remove - Remove inventory (damage, theft, etc.)
+router.post('/:sku_id/remove', [auth, requireWriteAccess], [
+  body('quantity').isNumeric().isInt({ min: 1 }).withMessage('Quantity must be a positive integer'),
+  body('from_status').isIn(['available', 'reserved', 'broken', 'loaned']).withMessage('Invalid from status'),
+  body('reason').notEmpty().trim().withMessage('Reason is required'),
+  body('notes').optional().trim()
+], async (req, res) => {
   try {
-    const { id } = req.params;
-    
-    const item = await Item.findById(id)
-      .select('usage_history product_type')
-      .populate('product_details', 'name product_line color_name brand model');
-    
-    if (!item) {
-      return res.status(404).json({ message: 'Item not found' });
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ 
+        message: 'Validation failed',
+        errors: errors.array() 
+      });
     }
 
-    // Calculate total used
-    const totalUsed = item.getTotalUsed();
-    
+    const { sku_id } = req.params;
+    const { quantity, from_status, reason, notes } = req.body;
+    const updatedBy = req.user.username || 'System';
+
+    let inventory = await Inventory.findOne({ sku_id, is_active: true });
+    if (!inventory) {
+      return res.status(404).json({ message: 'Inventory record not found' });
+    }
+
+    // Remove inventory
+    inventory.removeStock(from_status, quantity, reason, updatedBy);
+    await inventory.save();
+    await inventory.populate('sku_id', 'sku_code description');
+
     res.json({
-      item_id: item._id,
-      product_info: item.product_details,
-      product_type: item.product_type,
-      usage_history: item.usage_history.sort((a, b) => new Date(b.used_date) - new Date(a.used_date)),
-      total_used: totalUsed
+      message: `Successfully removed ${quantity} units from ${from_status}: ${reason}`,
+      inventory,
+      movement: {
+        type: 'remove',
+        quantity,
+        from_status,
+        reason,
+        notes,
+        updated_by: updatedBy,
+        timestamp: new Date()
+      }
     });
 
   } catch (error) {
-    console.error('Get usage history error:', error);
+    console.error('Remove inventory error:', error);
+    if (error.message.includes('Cannot remove') || error.message.includes('Invalid status')) {
+      return res.status(400).json({ message: error.message });
+    }
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Delete inventory item
-router.delete('/:id', [auth, requireWriteAccess], async (req, res) => {
+// GET /api/inventory/alerts/low-stock - Get low stock items
+router.get('/alerts/low-stock', auth, async (req, res) => {
   try {
-    const { id } = req.params;
-
-    const item = await Item.findById(id);
-    if (!item) {
-      return res.status(404).json({ message: 'Item not found' });
-    }
-
-    // Delete the product details document
-    const ModelMap = {
-      'Wall': Wall,
-      'Toilet': Toilet,
-      'Base': Base,
-      'Tub': Tub,
-      'Vanity': Vanity,
-      'ShowerDoor': ShowerDoor,
-      'RawMaterial': RawMaterial,
-      'Accessory': Accessory,
-      'Miscellaneous': Miscellaneous
-    };
-
-    const ProductModel = ModelMap[item.product_type_model];
-    if (ProductModel) {
-      await ProductModel.findByIdAndDelete(item.product_details);
-    }
-
-    // Delete the item
-    await Item.findByIdAndDelete(id);
-
-    res.json({ message: 'Item deleted successfully' });
+    const lowStockItems = await Inventory.getLowStockItems();
+    
+    res.json({
+      alert_type: 'low_stock',
+      count: lowStockItems.length,
+      items: lowStockItems
+    });
 
   } catch (error) {
-    console.error('Delete item error:', error);
+    console.error('Get low stock alerts error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// GET /api/inventory/alerts/out-of-stock - Get out of stock items
+router.get('/alerts/out-of-stock', auth, async (req, res) => {
+  try {
+    const outOfStockItems = await Inventory.getOutOfStockItems();
+    
+    res.json({
+      alert_type: 'out_of_stock',
+      count: outOfStockItems.length,
+      items: outOfStockItems
+    });
+
+  } catch (error) {
+    console.error('Get out of stock alerts error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// GET /api/inventory/alerts/reorder - Get items needing reorder
+router.get('/alerts/reorder', auth, async (req, res) => {
+  try {
+    const reorderItems = await Inventory.getItemsNeedingReorder();
+    
+    res.json({
+      alert_type: 'reorder_needed',
+      count: reorderItems.length,
+      items: reorderItems
+    });
+
+  } catch (error) {
+    console.error('Get reorder alerts error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// GET /api/inventory/reports/valuation - Get inventory valuation report
+router.get('/reports/valuation', auth, async (req, res) => {
+  try {
+    const { category_id } = req.query;
+
+    let matchStage = { is_active: true };
+    
+    // Build aggregation pipeline
+    let pipeline = [
+      { $match: matchStage },
+      {
+        $lookup: {
+          from: 'skunews',
+          localField: 'sku_id',
+          foreignField: '_id',
+          as: 'sku'
+        }
+      },
+      { $unwind: '$sku' },
+      {
+        $lookup: {
+          from: 'categories',
+          localField: 'sku.category_id',
+          foreignField: '_id',
+          as: 'category'
+        }
+      },
+      { $unwind: { path: '$category', preserveNullAndEmptyArrays: true } }
+    ];
+
+    // Category filtering
+    if (category_id && category_id !== 'all') {
+      pipeline.push({
+        $match: { 'sku.category_id': require('mongoose').Types.ObjectId(category_id) }
+      });
+    }
+
+    // Group by category for summary
+    const categorySummary = await Inventory.aggregate([
+      ...pipeline,
+      {
+        $group: {
+          _id: '$category._id',
+          category_name: { $first: '$category.name' },
+          total_skus: { $sum: 1 },
+          total_quantity: { $sum: '$total_quantity' },
+          available_quantity: { $sum: '$available_quantity' },
+          reserved_quantity: { $sum: '$reserved_quantity' },
+          broken_quantity: { $sum: '$broken_quantity' },
+          loaned_quantity: { $sum: '$loaned_quantity' },
+          total_value: { $sum: '$total_value' },
+          avg_cost_per_unit: { $avg: '$average_cost' }
+        }
+      },
+      { $sort: { category_name: 1 } }
+    ]);
+
+    // Overall totals
+    const overallTotals = await Inventory.getTotalInventoryValue();
+    const totalValue = overallTotals.length > 0 ? overallTotals[0].total_value : 0;
+
+    // Get detailed items if specific category requested
+    let detailedItems = [];
+    if (category_id && category_id !== 'all') {
+      detailedItems = await Inventory.aggregate([
+        ...pipeline,
+        {
+          $project: {
+            sku_code: '$sku.sku_code',
+            description: '$sku.description',
+            category_name: '$category.name',
+            total_quantity: 1,
+            available_quantity: 1,
+            reserved_quantity: 1,
+            broken_quantity: 1,
+            loaned_quantity: 1,
+            average_cost: 1,
+            total_value: 1,
+            last_movement_date: 1
+          }
+        },
+        { $sort: { total_value: -1 } }
+      ]);
+    }
+
+    res.json({
+      report_type: 'inventory_valuation',
+      generated_at: new Date(),
+      category_filter: category_id,
+      summary: {
+        total_inventory_value: totalValue,
+        categories_count: categorySummary.length,
+        total_skus: categorySummary.reduce((sum, cat) => sum + cat.total_skus, 0),
+        total_quantity: categorySummary.reduce((sum, cat) => sum + cat.total_quantity, 0)
+      },
+      by_category: categorySummary,
+      detailed_items: detailedItems
+    });
+
+  } catch (error) {
+    console.error('Get valuation report error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// GET /api/inventory/reports/movement - Get inventory movement report
+router.get('/reports/movement', auth, async (req, res) => {
+  try {
+    const { 
+      days = 30,
+      category_id,
+      sku_id 
+    } = req.query;
+
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - parseInt(days));
+
+    let matchStage = {
+      is_active: true,
+      last_movement_date: { $gte: startDate }
+    };
+
+    // SKU-specific filter
+    if (sku_id) {
+      matchStage.sku_id = require('mongoose').Types.ObjectId(sku_id);
+    }
+
+    let pipeline = [
+      { $match: matchStage },
+      {
+        $lookup: {
+          from: 'skunews',
+          localField: 'sku_id',
+          foreignField: '_id',
+          as: 'sku'
+        }
+      },
+      { $unwind: '$sku' },
+      {
+        $lookup: {
+          from: 'categories',
+          localField: 'sku.category_id',
+          foreignField: '_id',
+          as: 'category'
+        }
+      },
+      { $unwind: { path: '$category', preserveNullAndEmptyArrays: true } }
+    ];
+
+    // Category filtering
+    if (category_id && category_id !== 'all') {
+      pipeline.push({
+        $match: { 'sku.category_id': require('mongoose').Types.ObjectId(category_id) }
+      });
+    }
+
+    // Get active items with recent movement
+    const recentActivity = await Inventory.aggregate([
+      ...pipeline,
+      {
+        $project: {
+          sku_code: '$sku.sku_code',
+          description: '$sku.description',
+          category_name: '$category.name',
+          total_quantity: 1,
+          available_quantity: 1,
+          reserved_quantity: 1,
+          broken_quantity: 1,
+          loaned_quantity: 1,
+          last_movement_date: 1,
+          last_updated_by: 1,
+          locations: 1
+        }
+      },
+      { $sort: { last_movement_date: -1 } },
+      { $limit: 100 }
+    ]);
+
+    // Movement statistics
+    const movementStats = await Inventory.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: {
+            $dateToString: {
+              format: "%Y-%m-%d",
+              date: "$last_movement_date"
+            }
+          },
+          movement_count: { $sum: 1 },
+          items_moved: {
+            $sum: {
+              $add: [
+                '$reserved_quantity',
+                '$broken_quantity', 
+                '$loaned_quantity'
+              ]
+            }
+          }
+        }
+      },
+      { $sort: { _id: -1 } },
+      { $limit: parseInt(days) }
+    ]);
+
+    res.json({
+      report_type: 'inventory_movement',
+      period_days: parseInt(days),
+      start_date: startDate,
+      end_date: new Date(),
+      category_filter: category_id,
+      sku_filter: sku_id,
+      summary: {
+        total_items_with_movement: recentActivity.length,
+        avg_daily_movements: movementStats.length > 0 
+          ? Math.round(movementStats.reduce((sum, day) => sum + day.movement_count, 0) / movementStats.length)
+          : 0
+      },
+      daily_stats: movementStats,
+      recent_activity: recentActivity
+    });
+
+  } catch (error) {
+    console.error('Get movement report error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// POST /api/inventory/sync - Sync existing Item data into Inventory model
+router.post('/sync', [auth, requireWriteAccess], async (req, res) => {
+  try {
+    const { force_rebuild = false } = req.body;
+    const updatedBy = req.user.username || 'System';
+
+    console.log('Starting inventory synchronization...');
+
+    // Get all SKUs that need inventory records
+    const allSKUs = await SKUNew.find({ is_active: true }).select('_id sku_code').lean();
+    
+    let syncResults = {
+      skus_processed: 0,
+      records_created: 0,
+      records_updated: 0,
+      errors: []
+    };
+
+    for (const sku of allSKUs) {
+      try {
+        syncResults.skus_processed++;
+        
+        // Check if inventory record exists
+        let inventory = await Inventory.findOne({ sku_id: sku._id });
+        
+        if (!inventory) {
+          // Create new inventory record
+          inventory = new Inventory({
+            sku_id: sku._id,
+            available_quantity: 0,
+            reserved_quantity: 0,
+            broken_quantity: 0,
+            loaned_quantity: 0,
+            minimum_stock_level: 0,
+            reorder_point: 5, // Default reorder point
+            last_updated_by: updatedBy
+          });
+          await inventory.save();
+          syncResults.records_created++;
+          
+        } else if (force_rebuild) {
+          // Reset and recalculate quantities from tags
+          inventory.available_quantity = 0;
+          inventory.reserved_quantity = 0;
+          inventory.broken_quantity = 0;
+          inventory.loaned_quantity = 0;
+          inventory.last_updated_by = updatedBy;
+          
+          // Get active tags for this SKU
+          const activeTags = await TagNew.find({
+            'items.sku_id': sku._id,
+            status: { $in: ['active', 'partially_fulfilled'] }
+          }).lean();
+          
+          // Recalculate quantities based on active tags
+          activeTags.forEach(tag => {
+            tag.items.forEach(item => {
+              if (item.sku_id.toString() === sku._id.toString()) {
+                const quantity = item.remaining_quantity || item.quantity || 0;
+                if (tag.tag_type === 'reserved') {
+                  inventory.reserved_quantity += quantity;
+                } else if (tag.tag_type === 'broken') {
+                  inventory.broken_quantity += quantity;
+                } else if (tag.tag_type === 'loaned') {
+                  inventory.loaned_quantity += quantity;
+                }
+              }
+            });
+          });
+          
+          await inventory.save();
+          syncResults.records_updated++;
+        }
+        
+      } catch (error) {
+        console.error(`Error syncing SKU ${sku.sku_code}:`, error);
+        syncResults.errors.push({
+          sku_id: sku._id,
+          sku_code: sku.sku_code,
+          error: error.message
+        });
+      }
+    }
+
+    console.log('Inventory synchronization completed:', syncResults);
+
+    res.json({
+      message: 'Inventory synchronization completed',
+      results: syncResults,
+      timestamp: new Date()
+    });
+
+  } catch (error) {
+    console.error('Inventory sync error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// GET /api/inventory/:sku_id - Get detailed inventory for specific SKU
+// This route MUST be last to avoid conflicts with specific routes above
+router.get('/:sku_id', auth, async (req, res) => {
+  try {
+    const { sku_id } = req.params;
+
+    const inventory = await Inventory.findOne({ sku_id, is_active: true })
+      .populate({
+        path: 'sku_id',
+        populate: {
+          path: 'category_id',
+          select: 'name description'
+        }
+      })
+      .lean();
+
+    if (!inventory) {
+      return res.status(404).json({ message: 'Inventory record not found' });
+    }
+
+    // Get related tags for this SKU
+    const activeTags = await TagNew.find({
+      'items.sku_id': sku_id,
+      status: { $in: ['active', 'partially_fulfilled'] }
+    })
+    .select('_id customer_name tag_type project_name due_date status items.$')
+    .lean();
+
+    // Calculate tag summary
+    const tagSummary = {
+      reserved: 0,
+      broken: 0,
+      loaned: 0,
+      total_tagged: 0
+    };
+
+    activeTags.forEach(tag => {
+      tag.items.forEach(item => {
+        if (item.sku_id.toString() === sku_id) {
+          const quantity = item.remaining_quantity || item.quantity || 0;
+          tagSummary[tag.tag_type] = (tagSummary[tag.tag_type] || 0) + quantity;
+          tagSummary.total_tagged += quantity;
+        }
+      });
+    });
+
+    res.json({
+      ...inventory,
+      tag_summary: tagSummary,
+      active_tags: activeTags,
+      summary: {
+        total_quantity: inventory.total_quantity,
+        available_quantity: inventory.available_quantity,
+        reserved_quantity: inventory.reserved_quantity,
+        broken_quantity: inventory.broken_quantity,
+        loaned_quantity: inventory.loaned_quantity,
+        is_low_stock: inventory.is_low_stock,
+        is_out_of_stock: inventory.is_out_of_stock,
+        needs_reorder: inventory.available_quantity <= inventory.reorder_point
+      }
+    });
+
+  } catch (error) {
+    console.error('Get inventory detail error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

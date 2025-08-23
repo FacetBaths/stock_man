@@ -7,7 +7,7 @@ const auditLogSchema = new mongoose.Schema({
     type: String,
     required: true,
     enum: [
-      'create', 'update', 'delete', 'login', 'logout',
+      'create', 'update', 'delete', 'login', 'logout', 'authentication',
       'inventory_movement', 'tag_created', 'tag_fulfilled', 'tag_cancelled',
       'item_added', 'item_removed', 'item_transferred',
       'customer_created', 'customer_updated',

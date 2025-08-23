@@ -1,132 +1,114 @@
 const express = require('express');
-const { body, validationResult } = require('express-validator');
-const Tag = require('../models/Tag');
-const Item = require('../models/Item');
-const SKU = require('../models/SKU');
-const { auth, requireWriteAccess } = require('../middleware/auth');
-
+const { body, query, param, validationResult } = require('express-validator');
 const router = express.Router();
 
-// Helper function to expand bundle SKUs to individual items
-async function expandBundleItems(skuId, quantity) {
-  const sku = await SKU.findById(skuId);
-  if (!sku) {
-    throw new Error('SKU not found');
-  }
-  
-  const expandedItems = [];
-  
-  if (sku.is_bundle && sku.bundle_items.length > 0) {
-    // For bundle SKUs, expand to individual items
-    for (const bundleItem of sku.bundle_items) {
-      // Find matching items for each bundle component
-      const items = await Item.find({
-        product_type: bundleItem.product_type,
-        product_details: bundleItem.product_details
-      });
-      
-      if (items.length > 0) {
-        expandedItems.push({
-          item_id: items[0]._id, // Use first matching item
-          product_type: bundleItem.product_type,
-          product_details: bundleItem.product_details,
-          quantity: bundleItem.quantity * quantity, // Multiply by tag quantity
-          from_bundle: true,
-          bundle_sku_id: skuId
-        });
-      }
-    }
-  } else {
-    // For non-bundle SKUs, find the corresponding item
-    const item = await Item.findOne({ sku_id: skuId });
-    if (item) {
-      expandedItems.push({
-        item_id: item._id,
-        quantity: quantity,
-        from_bundle: false,
-        bundle_sku_id: null
-      });
-    }
-  }
-  
-  return expandedItems;
-}
+// Import new models
+const TagNew = require('../models/TagNew');
+const ItemNew = require('../models/ItemNew');
+const SKUNew = require('../models/SKUNew');
+const Inventory = require('../models/Inventory');
+const { auth, requireWriteAccess } = require('../middleware/auth');
 
-// Helper function to check available inventory for SKU items
-async function checkAvailableInventory(skuItems) {
+// Validation middleware for tag creation/updates
+const validateTag = [
+  body('customer_name')
+    .notEmpty()
+    .withMessage('Customer name is required')
+    .trim()
+    .isLength({ min: 1, max: 200 })
+    .withMessage('Customer name must be between 1 and 200 characters'),
+  body('tag_type')
+    .notEmpty()
+    .withMessage('Tag type is required')
+    .isIn(['reserved', 'broken', 'imperfect', 'loaned', 'stock'])
+    .withMessage('Tag type must be reserved, broken, imperfect, loaned, or stock'),
+  body('project_name')
+    .optional()
+    .trim()
+    .isLength({ max: 200 })
+    .withMessage('Project name cannot exceed 200 characters'),
+  body('items')
+    .isArray({ min: 1 })
+    .withMessage('Items array is required and must contain at least one item'),
+  body('items.*.item_id')
+    .notEmpty()
+    .withMessage('Item ID is required')
+    .isMongoId()
+    .withMessage('Item ID must be a valid MongoDB ID'),
+  body('items.*.quantity')
+    .isInt({ min: 1 })
+    .withMessage('Item quantity must be a positive integer'),
+  body('items.*.notes')
+    .optional()
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage('Item notes cannot exceed 500 characters'),
+  body('notes')
+    .optional()
+    .trim()
+    .isLength({ max: 1000 })
+    .withMessage('Notes cannot exceed 1000 characters'),
+  body('due_date')
+    .optional()
+    .isISO8601()
+    .withMessage('Due date must be a valid date'),
+  body('status')
+    .optional()
+    .isIn(['active', 'fulfilled', 'cancelled'])
+    .withMessage('Status must be active, fulfilled, or cancelled')
+];
+// Helper function to check item availability and validate quantities
+async function checkItemAvailability(items) {
   const availability = [];
   
-  for (const skuItem of skuItems) {
-    const sku = await SKU.findById(skuItem.sku_id);
-    if (!sku) {
-      availability.push({
-        sku_id: skuItem.sku_id,
-        error: 'SKU not found'
-      });
-      continue;
-    }
-    
-    // Expand to actual inventory items
+  for (const tagItem of items) {
     try {
-      const expandedItems = await expandBundleItems(skuItem.sku_id, skuItem.quantity);
-      let canFulfill = true;
-      const itemChecks = [];
+      // Get the item details
+      const item = await ItemNew.findById(tagItem.item_id)
+        .populate({
+          path: 'sku_id',
+          populate: { path: 'category_id' }
+        });
       
-      for (const expanded of expandedItems) {
-        const item = await Item.findById(expanded.item_id);
-        if (!item) {
-          itemChecks.push({
-            item_id: expanded.item_id,
-            available: 0,
-            needed: expanded.quantity,
-            sufficient: false,
-            error: 'Item not found'
-          });
-          canFulfill = false;
-        } else {
-          // Get current tagged quantities for this item
-          const existingTags = await Tag.aggregate([
-            { $match: { status: 'active', 'sku_items.sku_id': { $exists: true } } },
-            { $unwind: '$sku_items' },
-            { $match: { 'sku_items.sku_id': { $exists: true } } }
-          ]);
-          
-          // Calculate total tagged quantity for this item
-          let totalTagged = 0;
-          for (const tag of existingTags) {
-            const tagExpandedItems = await expandBundleItems(tag.sku_items.sku_id, tag.sku_items.remaining_quantity || tag.sku_items.quantity);
-            const matchingExpanded = tagExpandedItems.find(ei => ei.item_id.toString() === item._id.toString());
-            if (matchingExpanded) {
-              totalTagged += matchingExpanded.quantity;
-            }
-          }
-          
-          const availableQuantity = item.quantity - totalTagged;
-          const sufficient = expanded.quantity <= availableQuantity;
-          
-          itemChecks.push({
-            item_id: expanded.item_id,
-            available: availableQuantity,
-            needed: expanded.quantity,
-            sufficient: sufficient
-          });
-          
-          if (!sufficient) canFulfill = false;
-        }
+      if (!item) {
+        availability.push({
+          item_id: tagItem.item_id,
+          error: 'Item not found',
+          can_fulfill: false
+        });
+        continue;
       }
       
+      // Get current inventory status
+      const inventory = await Inventory.findOne({ sku_id: item.sku_id });
+      if (!inventory) {
+        availability.push({
+          item_id: tagItem.item_id,
+          item_details: item,
+          error: 'No inventory record found',
+          can_fulfill: false
+        });
+        continue;
+      }
+      
+      // Check if enough quantity is available
+      const availableQuantity = inventory.available_quantity || 0;
+      const canFulfill = tagItem.quantity <= availableQuantity;
+      
       availability.push({
-        sku_id: skuItem.sku_id,
-        sku_code: sku.sku_code,
-        is_bundle: sku.is_bundle,
-        quantity: skuItem.quantity,
+        item_id: tagItem.item_id,
+        item_details: item,
+        requested_quantity: tagItem.quantity,
+        available_quantity: availableQuantity,
         can_fulfill: canFulfill,
-        item_checks: itemChecks
+        shortage: canFulfill ? 0 : tagItem.quantity - availableQuantity
       });
+      
     } catch (error) {
       availability.push({
-        sku_id: skuItem.sku_id,
-        error: error.message
+        item_id: tagItem.item_id,
+        error: error.message,
+        can_fulfill: false
       });
     }
   }
@@ -134,744 +116,764 @@ async function checkAvailableInventory(skuItems) {
   return availability;
 }
 
-// Get all tags with optional filtering
-router.get('/', auth, async (req, res) => {
-  try {
-    const { 
-      sku_id,
-      customer_name, 
-      status = 'active',
-      tag_type,
-      page = 1, 
-      limit = 50
-    } = req.query;
-
-    let query = { status };
-    
-    if (sku_id) query['sku_items.sku_id'] = sku_id;
-    if (customer_name) query.customer_name = new RegExp(customer_name, 'i');
-    if (tag_type) query.tag_type = tag_type;
-
-    const tags = await Tag.find(query)
-      .populate({
-        path: 'sku_items.sku_id',
-        populate: { path: 'product_details' }
-      })
-      .sort({ createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
-
-    const totalTags = await Tag.countDocuments(query);
-
-    res.json({
-      tags,
-      totalTags,
-      totalPages: Math.ceil(totalTags / limit),
-      currentPage: parseInt(page)
-    });
-
-  } catch (error) {
-    console.error('Get tags error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Look up SKU by code (for scanning)
-router.get('/lookup-sku/:skuCode', auth, async (req, res) => {
-  try {
-    const { skuCode } = req.params;
-    
-    // Find SKU by code
-    const sku = await SKU.findOne({ 
-      sku_code: skuCode.toUpperCase(),
-      status: 'active'
-    }).populate('product_details');
-    
-    if (!sku) {
-      return res.status(404).json({ message: 'SKU not found' });
-    }
-    
-    // Find the corresponding inventory item
-    const item = await Item.findOne({ sku_id: sku._id }).populate('product_details');
-    if (!item) {
-      return res.status(404).json({ message: 'No inventory item found for this SKU' });
-    }
-    
-    // Check available quantities
-    const availability = await checkAvailableInventory([{ sku_id: sku._id, quantity: 1 }]);
-    const availableQuantity = availability[0]?.item_checks?.[0]?.available || item.quantity;
-    
-    // Return format expected by frontend
-    res.json({
-      sku,
-      item: {
-        ...item.toObject(),
-        availableQuantity
-      }
-    });
-    
-  } catch (error) {
-    console.error('SKU lookup error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Get tags for specific SKU
-router.get('/sku/:skuId', auth, async (req, res) => {
-  try {
-    const { skuId } = req.params;
-    
-    const tags = await Tag.find({ 
-      'sku_items.sku_id': skuId,
-      status: 'active' 
-    }).populate({
-      path: 'sku_items.sku_id',
-      populate: { path: 'product_details' }
-    }).sort({ createdAt: -1 });
-
-    // Calculate quantities by tag type
-    const stockQuantity = tags
-      .filter(tag => tag.tag_type === 'stock')
-      .reduce((sum, tag) => {
-        const skuItem = tag.sku_items.find(item => item.sku_id._id.toString() === skuId);
-        return sum + (skuItem ? (skuItem.remaining_quantity || skuItem.quantity) : 0);
-      }, 0);
-    
-    const reservedQuantity = tags
-      .filter(tag => tag.tag_type !== 'stock')
-      .reduce((sum, tag) => {
-        const skuItem = tag.sku_items.find(item => item.sku_id._id.toString() === skuId);
-        return sum + (skuItem ? (skuItem.remaining_quantity || skuItem.quantity) : 0);
-      }, 0);
-
-    res.json({
-      tags,
-      stockQuantity,
-      reservedQuantity,
-      totalTagged: stockQuantity + reservedQuantity
-    });
-
-  } catch (error) {
-    console.error('Get SKU tags error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Create new tag with SKUs
-router.post('/', [auth, requireWriteAccess], [
-  body('customer_name').notEmpty().trim().withMessage('Customer name is required'),
-  body('sku_items').isArray({ min: 1 }).withMessage('At least one SKU item is required'),
-  body('sku_items.*.sku_id').isMongoId().withMessage('Valid SKU ID is required'),
-  body('sku_items.*.quantity').isInt({ min: 1 }).withMessage('Quantity must be at least 1'),
-  body('tag_type').optional().isIn(['stock', 'reserved', 'broken', 'imperfect'])
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { customer_name, sku_items, tag_type, notes, due_date } = req.body;
-
-    // Check availability for all SKU items
-    const availability = await checkAvailableInventory(sku_items);
-    const insufficient = availability.filter(a => !a.can_fulfill);
-    
-    if (insufficient.length > 0) {
-      return res.status(400).json({ 
-        message: 'Insufficient inventory for some items',
-        insufficient_items: insufficient
-      });
-    }
-
-    const tag = new Tag({
-      customer_name,
-      sku_items,
-      tag_type: tag_type || 'stock',
-      notes: notes || '',
-      created_by: req.user.username,
-      due_date: due_date ? new Date(due_date) : undefined
-    });
-
-    await tag.save();
-    await tag.populate({
-      path: 'sku_items.sku_id',
-      populate: { path: 'product_details' }
-    });
-
-    res.status(201).json({
-      message: 'Tag created successfully',
-      tag
-    });
-
-  } catch (error) {
-    console.error('Create tag error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Update tag
-router.put('/:id', [auth, requireWriteAccess], [
-  body('sku_items').optional().isArray(),
-  body('sku_items.*.sku_id').optional().isMongoId(),
-  body('sku_items.*.quantity').optional().isInt({ min: 1 }),
-  body('customer_name').optional().notEmpty().trim(),
-  body('tag_type').optional().isIn(['stock', 'reserved', 'broken', 'imperfect']),
-  body('status').optional().isIn(['active', 'fulfilled', 'cancelled'])
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { id } = req.params;
-    const updates = req.body;
-
-    const tag = await Tag.findById(id);
-    if (!tag) {
-      return res.status(404).json({ message: 'Tag not found' });
-    }
-
-    // If updating sku_items, check availability
-    if (updates.sku_items) {
-      const availability = await checkAvailableInventory(updates.sku_items);
-      const insufficient = availability.filter(a => !a.can_fulfill);
-      
-      if (insufficient.length > 0) {
-        return res.status(400).json({ 
-          message: 'Insufficient inventory for updated items',
-          insufficient_items: insufficient
-        });
-      }
-    }
-
-    // Update fields
-    Object.keys(updates).forEach(key => {
-      if (updates[key] !== undefined) {
-        if (key === 'due_date' && updates[key]) {
-          tag[key] = new Date(updates[key]);
-        } else {
-          tag[key] = updates[key];
-        }
-      }
-    });
-
-    await tag.save();
-    await tag.populate({
-      path: 'sku_items.sku_id',
-      populate: { path: 'product_details' }
-    });
-
-    res.json({
-      message: 'Tag updated successfully',
-      tag
-    });
-
-  } catch (error) {
-    console.error('Update tag error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Delete tag
-router.delete('/:id', [auth, requireWriteAccess], async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const tag = await Tag.findById(id);
-    if (!tag) {
-      return res.status(404).json({ message: 'Tag not found' });
-    }
-
-    await Tag.findByIdAndDelete(id);
-
-    res.json({ message: 'Tag deleted successfully' });
-
-  } catch (error) {
-    console.error('Delete tag error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Barcode-based partial fulfillment endpoint
-router.post('/scan-fulfill', [auth, requireWriteAccess], [
-  body('customer_name').notEmpty().trim().withMessage('Customer name is required'),
-  body('scanned_barcodes').isArray({ min: 1 }).withMessage('At least one barcode is required'),
-  body('notes').optional().trim()
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ 
-        message: 'Validation failed',
-        errors: errors.array() 
-      });
-    }
-
-    const { customer_name, scanned_barcodes, notes } = req.body;
-    
-    const results = {
-      fulfilled_items: [],
-      partially_fulfilled_tags: [],
-      fully_fulfilled_tags: [],
-      failed_scans: [],
-      inventory_reduced: []
-    };
-
-    // Process each scanned barcode
-    for (const barcode of scanned_barcodes) {
-      try {
-        // Find SKU by barcode
-        const sku = await SKU.findOne({ barcode: barcode.trim() });
-        if (!sku) {
-          results.failed_scans.push({ barcode, error: 'SKU not found' });
-          continue;
-        }
-
-        // Find active tags for this customer that contain this SKU
-        const tagsWithSku = await Tag.find({
-          customer_name: customer_name,
-          status: 'active',
-          'sku_items.sku_id': sku._id
-        });
-
-        if (tagsWithSku.length === 0) {
-          results.failed_scans.push({ barcode, error: 'No active tags found for this SKU and customer' });
-          continue;
-        }
-
-        // Process each tag that contains this SKU
-        for (const tag of tagsWithSku) {
-          const skuItemIndex = tag.sku_items.findIndex(item => item.sku_id.toString() === sku._id.toString());
-          if (skuItemIndex === -1) continue;
-
-          const skuItem = tag.sku_items[skuItemIndex];
-          if ((skuItem.remaining_quantity || skuItem.quantity) <= 0) continue;
-
-          // Reduce remaining quantity by 1 for this SKU
-          const quantityToReduce = 1;
-          const previousRemaining = skuItem.remaining_quantity || skuItem.quantity;
-          const newRemaining = Math.max(0, previousRemaining - quantityToReduce);
-          
-          tag.sku_items[skuItemIndex].remaining_quantity = newRemaining;
-
-          // Update inventory for this specific scan
-          const expandedItems = await expandBundleItems(sku._id, quantityToReduce);
-          for (const expanded of expandedItems) {
-            const item = await Item.findById(expanded.item_id);
-            if (item && item.quantity >= expanded.quantity) {
-              item.quantity -= expanded.quantity;
-              await item.save();
-              
-              results.inventory_reduced.push({
-                barcode: barcode,
-                sku_code: sku.sku_code,
-                item_id: item._id,
-                previous_quantity: item.quantity + expanded.quantity,
-                new_quantity: item.quantity,
-                reduced_by: expanded.quantity
-              });
-            }
-          }
-
-          // Check if tag is now fully fulfilled
-          if (tag.isFullyFulfilled()) {
-            tag.status = 'fulfilled';
-            tag.notes = `${tag.notes || ''} ${notes || ''} - Fully fulfilled by scanning on ${new Date().toISOString()}`.trim();
-            results.fully_fulfilled_tags.push(tag._id);
-          } else if (tag.isPartiallyFulfilled()) {
-            tag.notes = `${tag.notes || ''} ${notes || ''} - Partially fulfilled by scanning on ${new Date().toISOString()}`.trim();
-            results.partially_fulfilled_tags.push({
-              tag_id: tag._id,
-              sku_id: sku._id,
-              sku_code: sku.sku_code,
-              remaining: newRemaining,
-              original: skuItem.quantity
-            });
-          }
-
-          await tag.save();
-          
-          results.fulfilled_items.push({
-            barcode: barcode,
-            sku_code: sku.sku_code,
-            tag_id: tag._id,
-            reduced_by: quantityToReduce,
-            remaining: newRemaining
-          });
-
-          break; // Only fulfill one tag per scan
-        }
-      } catch (err) {
-        results.failed_scans.push({ barcode, error: err.message });
-      }
-    }
-
-    res.json({
-      message: `Scan fulfillment completed. ${results.fulfilled_items.length} items fulfilled, ${results.failed_scans.length} failed.`,
-      customer_name,
-      results
-    });
-
-  } catch (error) {
-    console.error('Scan fulfill error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Send for Install - Complete tag fulfillment
-router.post('/send-for-install', [auth, requireWriteAccess], [
-  body('customer_name').notEmpty().trim().withMessage('Customer name is required'),
-  body('tag_ids').optional().isArray().withMessage('Tag IDs must be an array'),
-  body('notes').optional().trim()
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ 
-        message: 'Validation failed',
-        errors: errors.array() 
-      });
-    }
-
-    const { customer_name, tag_ids, notes } = req.body;
-    
-    let tagsToFulfill = [];
-    const results = {
-      fulfilled: [],
-      failed: [],
-      inventory_reduced: []
-    };
-
-    // Get tags to fulfill
-    if (tag_ids && tag_ids.length > 0) {
-      tagsToFulfill = await Tag.find({
-        _id: { $in: tag_ids },
-        customer_name: customer_name,
-        status: 'active'
-      }).populate({
-        path: 'sku_items.sku_id',
-        populate: { path: 'product_details' }
-      });
-    } else {
-      tagsToFulfill = await Tag.find({
-        customer_name: customer_name,
-        status: 'active'
-      }).populate({
-        path: 'sku_items.sku_id',
-        populate: { path: 'product_details' }
-      });
-    }
-
-    // Process fulfillment
-    for (const tag of tagsToFulfill) {
-      try {
-        // Reduce inventory for all remaining quantities in the tag
-        for (const skuItem of tag.sku_items) {
-          const remainingQuantity = skuItem.remaining_quantity || skuItem.quantity;
-          if (remainingQuantity > 0) {
-            const expandedItems = await expandBundleItems(skuItem.sku_id, remainingQuantity);
-            
-            for (const expanded of expandedItems) {
-              const item = await Item.findById(expanded.item_id);
-              if (item && item.quantity >= expanded.quantity) {
-                item.quantity -= expanded.quantity;
-                await item.save();
-                
-                results.inventory_reduced.push({
-                  tag_id: tag._id,
-                  sku_id: skuItem.sku_id,
-                  item_id: item._id,
-                  previous_quantity: item.quantity + expanded.quantity,
-                  new_quantity: item.quantity,
-                  reduced_by: expanded.quantity
-                });
-              }
-            }
-            
-            // Set remaining quantity to 0
-            skuItem.remaining_quantity = 0;
-          }
-        }
-
-        // Mark tag as fulfilled
-        tag.status = 'fulfilled';
-        tag.notes = `${tag.notes || ''} ${notes || ''} - Sent for install on ${new Date().toISOString()}`.trim();
-        await tag.save();
-        
-        results.fulfilled.push(tag);
-      } catch (err) {
-        results.failed.push({ 
-          tag_id: tag._id, 
-          error: err.message 
-        });
-      }
-    }
-
-    res.json({
-      message: `Send for Install completed. ${results.fulfilled.length} tags fulfilled, ${results.failed.length} failed.`,
-      customer_name,
-      results
-    });
-
-  } catch (error) {
-    console.error('Send for install error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Product Used - Mark specific tags as used without scanning
-router.post('/mark-used', [auth, requireWriteAccess], [
-  body('tag_ids').isArray({ min: 1 }).withMessage('At least one tag ID is required'),
-  body('notes').optional().trim()
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ 
-        message: 'Validation failed',
-        errors: errors.array() 
-      });
-    }
-
-    const { tag_ids, notes } = req.body;
-    
-    const results = {
-      fulfilled: [],
-      failed: [],
-      inventory_reduced: []
-    };
-
-    // Find and process tags
-    const tags = await Tag.find({
-      _id: { $in: tag_ids },
-      status: 'active'
-    }).populate({
-      path: 'sku_items.sku_id',
-      populate: { path: 'product_details' }
-    });
-
-    for (const tag of tags) {
-      try {
-        // Reduce inventory for all remaining quantities in the tag
-        for (const skuItem of tag.sku_items) {
-          const remainingQuantity = skuItem.remaining_quantity || skuItem.quantity;
-          if (remainingQuantity > 0) {
-            const expandedItems = await expandBundleItems(skuItem.sku_id, remainingQuantity);
-            
-            for (const expanded of expandedItems) {
-              const item = await Item.findById(expanded.item_id);
-              if (item && item.quantity >= expanded.quantity) {
-                item.quantity -= expanded.quantity;
-                await item.save();
-                
-                results.inventory_reduced.push({
-                  tag_id: tag._id,
-                  sku_id: skuItem.sku_id,
-                  item_id: item._id,
-                  previous_quantity: item.quantity + expanded.quantity,
-                  new_quantity: item.quantity,
-                  reduced_by: expanded.quantity
-                });
-              }
-            }
-            
-            // Set remaining quantity to 0
-            skuItem.remaining_quantity = 0;
-          }
-        }
-
-        // Mark tag as fulfilled
-        tag.status = 'fulfilled';
-        tag.notes = `${tag.notes || ''} ${notes || ''} - Marked as used on ${new Date().toISOString()}`.trim();
-        await tag.save();
-        
-        results.fulfilled.push(tag);
-      } catch (err) {
-        results.failed.push({ 
-          tag_id: tag._id, 
-          error: err.message 
-        });
-      }
-    }
-
-    res.json({
-      message: `Product Used completed. ${results.fulfilled.length} tags marked as used, ${results.failed.length} failed.`,
-      results
-    });
-
-  } catch (error) {
-    console.error('Mark used error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Get customers with active tags (for Send for Install workflow)
-router.get('/customers', auth, async (req, res) => {
-  try {
-    const customers = await Tag.aggregate([
-      { $match: { status: 'active' } },
-      {
-        $group: {
-          _id: '$customer_name',
-          tag_count: { $sum: 1 },
-          total_sku_items: { $sum: { $size: { $ifNull: ['$sku_items', []] } } },
-          tag_types: { $addToSet: '$tag_type' },
-          oldest_date: { $min: '$createdAt' },
-          newest_date: { $max: '$createdAt' }
-        }
-      },
-      { $sort: { newest_date: -1 } }
-    ]);
-
-    res.json({
-      customers: customers.map(c => ({
-        name: c._id,
-        tag_count: c.tag_count,
-        total_sku_items: c.total_sku_items,
-        tag_types: c.tag_types,
-        date_range: {
-          oldest: c.oldest_date,
-          newest: c.newest_date
-        }
-      }))
-    });
-
-  } catch (error) {
-    console.error('Get customers error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Create batch tags (for CreateTagModalNew component)
-router.post('/batch', [auth, requireWriteAccess], [
-  body('customer_name').notEmpty().trim().withMessage('Customer name is required'),
-  body('tags').isArray({ min: 1 }).withMessage('At least one tag item is required'),
-  body('tags.*.item_id').isMongoId().withMessage('Valid item ID is required'),
-  body('tags.*.quantity').isInt({ min: 1 }).withMessage('Quantity must be at least 1'),
-  body('tag_type').optional().isIn(['stock', 'reserved', 'broken', 'imperfect'])
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { customer_name, tags, tag_type = 'reserved', notes, due_date } = req.body;
-    
-    // Convert item-based tags to SKU-based structure
-    const skuItemsMap = new Map();
-    const failed = [];
-
-    // Group items by their SKU
-    for (const tagItem of tags) {
-      try {
-        // Find the item and its associated SKU
-        const item = await Item.findById(tagItem.item_id).populate('product_details');
-        if (!item) {
-          failed.push({ item_id: tagItem.item_id, error: 'Item not found' });
-          continue;
-        }
-
-        // Find associated SKU
-        let sku = null;
-        if (item.sku_id) {
-          sku = await SKU.findById(item.sku_id);
-          if (!sku) {
-            failed.push({ item_id: tagItem.item_id, error: 'Associated SKU not found' });
-            continue;
-          }
-        } else {
-          failed.push({ item_id: tagItem.item_id, error: 'Item has no associated SKU' });
-          continue;
-        }
-
-        // Group by SKU ID
-        const skuKey = sku._id.toString();
-        if (skuItemsMap.has(skuKey)) {
-          skuItemsMap.get(skuKey).quantity += tagItem.quantity;
-        } else {
-          skuItemsMap.set(skuKey, {
-            sku_id: sku._id,
-            quantity: tagItem.quantity,
-            remaining_quantity: tagItem.quantity
-          });
-        }
-
-      } catch (error) {
-        failed.push({ item_id: tagItem.item_id, error: error.message });
-      }
-    }
-
-    if (skuItemsMap.size === 0) {
-      return res.status(400).json({
-        message: 'No valid SKU items found to create tags',
-        failed
-      });
-    }
-
-    // Create a single tag with all SKU items
+// Helper function to update inventory when tag is created/modified
+async function updateInventoryForTag(items, tagType, operation = 'reserve') {
+  const updates = [];
+  
+  for (const tagItem of items) {
     try {
-      const tag = new Tag({
-        customer_name,
-        sku_items: Array.from(skuItemsMap.values()),
-        tag_type,
-        notes: notes || '',
+      const item = await ItemNew.findById(tagItem.item_id);
+      if (!item) continue;
+      
+      const inventory = await Inventory.findOne({ sku_id: item.sku_id });
+      if (!inventory) continue;
+      
+      let updateData = {};
+      
+      switch (operation) {
+        case 'reserve':
+          // Move from available to reserved/broken/loaned based on tag type
+          if (tagType === 'reserved') {
+            updateData = {
+              $inc: {
+                available_quantity: -tagItem.quantity,
+                reserved_quantity: tagItem.quantity
+              }
+            };
+          } else if (tagType === 'broken') {
+            updateData = {
+              $inc: {
+                available_quantity: -tagItem.quantity,
+                broken_quantity: tagItem.quantity
+              }
+            };
+          } else if (tagType === 'loaned') {
+            updateData = {
+              $inc: {
+                available_quantity: -tagItem.quantity,
+                loaned_quantity: tagItem.quantity
+              }
+            };
+          }
+          break;
+          
+        case 'release':
+          // Move back to available when tag is cancelled
+          if (tagType === 'reserved') {
+            updateData = {
+              $inc: {
+                available_quantity: tagItem.quantity,
+                reserved_quantity: -tagItem.quantity
+              }
+            };
+          } else if (tagType === 'broken') {
+            updateData = {
+              $inc: {
+                available_quantity: tagItem.quantity,
+                broken_quantity: -tagItem.quantity
+              }
+            };
+          } else if (tagType === 'loaned') {
+            updateData = {
+              $inc: {
+                available_quantity: tagItem.quantity,
+                loaned_quantity: -tagItem.quantity
+              }
+            };
+          }
+          break;
+          
+        case 'fulfill':
+          // Move from reserved to used (reduce total) when fulfilled
+          if (tagType === 'reserved') {
+            updateData = {
+              $inc: {
+                reserved_quantity: -tagItem.quantity,
+                total_quantity: -tagItem.quantity
+              }
+            };
+          } else if (tagType === 'loaned') {
+            // For loans, move from loaned back to available when returned
+            updateData = {
+              $inc: {
+                loaned_quantity: -tagItem.quantity,
+                available_quantity: tagItem.quantity
+              }
+            };
+          }
+          break;
+      }
+      
+      if (Object.keys(updateData).length > 0) {
+        await Inventory.findByIdAndUpdate(inventory._id, updateData);
+        updates.push({
+          inventory_id: inventory._id,
+          item_id: tagItem.item_id,
+          operation,
+          quantity: tagItem.quantity,
+          success: true
+        });
+      }
+      
+    } catch (error) {
+      updates.push({
+        item_id: tagItem.item_id,
+        operation,
+        error: error.message,
+        success: false
+      });
+    }
+  }
+  
+  return updates;
+}
+// GET /api/tags - Get all tags with filtering and pagination
+router.get('/', 
+  auth,
+  [
+    query('page').optional().isInt({ min: 1 }).withMessage('Page must be a positive integer'),
+    query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100'),
+    query('customer_name').optional().trim(),
+    query('tag_type').optional().isIn(['reserved', 'broken', 'imperfect', 'loaned', 'stock']).withMessage('Invalid tag type'),
+    query('status').optional().isIn(['active', 'fulfilled', 'cancelled']).withMessage('Invalid status'),
+    query('project_name').optional().trim(),
+    query('search').optional().trim(),
+    query('include_items').optional().isBoolean().withMessage('include_items must be a boolean'),
+    query('overdue_only').optional().isBoolean().withMessage('overdue_only must be a boolean'),
+    query('sort_by').optional().isIn(['created_at', 'due_date', 'customer_name', 'project_name']).withMessage('Invalid sort field'),
+    query('sort_order').optional().isIn(['asc', 'desc']).withMessage('Sort order must be "asc" or "desc"')
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ 
+          message: 'Validation failed', 
+          errors: errors.array() 
+        });
+      }
+
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 50;
+      const skip = (page - 1) * limit;
+
+      // Build filter
+      const filter = {};
+      
+      if (req.query.customer_name) {
+        filter.customer_name = new RegExp(req.query.customer_name, 'i');
+      }
+      
+      if (req.query.tag_type) {
+        filter.tag_type = req.query.tag_type;
+      }
+      
+      if (req.query.status) {
+        filter.status = req.query.status;
+      } else {
+        // Default to active tags only
+        filter.status = 'active';
+      }
+      
+      if (req.query.project_name) {
+        filter.project_name = new RegExp(req.query.project_name, 'i');
+      }
+      
+      if (req.query.search) {
+        const searchRegex = new RegExp(req.query.search, 'i');
+        filter.$or = [
+          { customer_name: searchRegex },
+          { project_name: searchRegex },
+          { notes: searchRegex }
+        ];
+      }
+      
+      if (req.query.overdue_only === 'true') {
+        filter.due_date = { $lt: new Date() };
+        filter.status = 'active'; // Only active tags can be overdue
+      }
+
+      // Build sort
+      const sortField = req.query.sort_by || 'created_at';
+      const sortOrder = req.query.sort_order === 'asc' ? 1 : -1;
+      const sort = {};
+      sort[sortField] = sortOrder;
+
+      // Execute queries
+      let query = TagNew.find(filter)
+        .sort(sort)
+        .skip(skip)
+        .limit(limit);
+
+      // Include item details if requested
+      if (req.query.include_items === 'true') {
+        query = query.populate({
+          path: 'items.item_id',
+          populate: {
+            path: 'sku_id',
+            populate: { path: 'category_id' }
+          }
+        });
+      }
+
+      const [tags, totalTags] = await Promise.all([
+        query,
+        TagNew.countDocuments(filter)
+      ]);
+
+      const totalPages = Math.ceil(totalTags / limit);
+
+      // Enrich tags with summary data
+      const enrichedTags = tags.map(tag => {
+        const tagObj = tag.toObject();
+        
+        // Add calculated fields
+        tagObj.total_quantity = tag.getTotalQuantity();
+        tagObj.remaining_quantity = tag.getTotalRemainingQuantity();
+        tagObj.is_partially_fulfilled = tag.isPartiallyFulfilled();
+        tagObj.is_fully_fulfilled = tag.isFullyFulfilled();
+        tagObj.is_overdue = tag.due_date && new Date() > tag.due_date && tag.status === 'active';
+        
+        return tagObj;
+      });
+
+      res.json({
+        tags: enrichedTags,
+        pagination: {
+          currentPage: page,
+          totalPages,
+          totalTags,
+          limit,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1
+        }
+      });
+
+    } catch (error) {
+      console.error('Get tags error:', error);
+      res.status(500).json({ 
+        message: 'Failed to fetch tags', 
+        error: error.message 
+      });
+    }
+  }
+);
+
+// GET /api/tags/:id - Get a single tag by ID
+router.get('/:id', 
+  auth,
+  [
+    param('id').isMongoId().withMessage('Invalid tag ID'),
+    query('include_items').optional().isBoolean().withMessage('include_items must be a boolean')
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ 
+          message: 'Validation failed', 
+          errors: errors.array() 
+        });
+      }
+
+      let query = TagNew.findById(req.params.id);
+
+      // Include item details if requested
+      if (req.query.include_items === 'true') {
+        query = query.populate({
+          path: 'items.item_id',
+          populate: {
+            path: 'sku_id',
+            populate: { path: 'category_id' }
+          }
+        });
+      }
+
+      const tag = await query;
+
+      if (!tag) {
+        return res.status(404).json({ message: 'Tag not found' });
+      }
+
+      const tagObj = tag.toObject();
+      
+      // Add calculated fields
+      tagObj.total_quantity = tag.getTotalQuantity();
+      tagObj.remaining_quantity = tag.getTotalRemainingQuantity();
+      tagObj.is_partially_fulfilled = tag.isPartiallyFulfilled();
+      tagObj.is_fully_fulfilled = tag.isFullyFulfilled();
+      tagObj.is_overdue = tag.due_date && new Date() > tag.due_date && tag.status === 'active';
+      
+      // Calculate fulfillment progress percentage
+      const totalQty = tag.getTotalQuantity();
+      const remainingQty = tag.getTotalRemainingQuantity();
+      tagObj.fulfillment_progress = totalQty > 0 ? ((totalQty - remainingQty) / totalQty * 100) : 0;
+
+      res.json({ tag: tagObj });
+
+    } catch (error) {
+      console.error('Get tag error:', error);
+      res.status(500).json({ 
+        message: 'Failed to fetch tag', 
+        error: error.message 
+      });
+    }
+  }
+);
+
+// POST /api/tags - Create a new tag
+router.post('/', 
+  auth,
+  requireWriteAccess,
+  validateTag,
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ 
+          message: 'Validation failed', 
+          errors: errors.array() 
+        });
+      }
+
+      // Check item availability before creating tag
+      const availability = await checkItemAvailability(req.body.items);
+      const unavailableItems = availability.filter(item => !item.can_fulfill);
+      
+      if (unavailableItems.length > 0) {
+        return res.status(400).json({
+          message: 'Some items are not available in requested quantities',
+          unavailable_items: unavailableItems,
+          all_availability: availability
+        });
+      }
+
+      // Create tag data
+      const tagData = {
+        customer_name: req.body.customer_name,
+        tag_type: req.body.tag_type,
+        project_name: req.body.project_name || '',
+        items: req.body.items.map(item => ({
+          item_id: item.item_id,
+          quantity: item.quantity,
+          notes: item.notes || ''
+        })),
+        notes: req.body.notes || '',
+        due_date: req.body.due_date || null,
+        status: 'active',
         created_by: req.user.username,
-        due_date: due_date ? new Date(due_date) : undefined
-      });
+        last_updated_by: req.user.username
+      };
 
+      // Create the tag
+      const tag = new TagNew(tagData);
       await tag.save();
+
+      // Update inventory to reflect the reservation/allocation
+      const inventoryUpdates = await updateInventoryForTag(
+        req.body.items, 
+        req.body.tag_type, 
+        'reserve'
+      );
+
+      // Check if any inventory updates failed
+      const failedUpdates = inventoryUpdates.filter(update => !update.success);
+      if (failedUpdates.length > 0) {
+        console.warn('Some inventory updates failed:', failedUpdates);
+      }
+
+      // Populate item details for response
       await tag.populate({
-        path: 'sku_items.sku_id',
-        populate: { path: 'product_details' }
+        path: 'items.item_id',
+        populate: {
+          path: 'sku_id',
+          populate: { path: 'category_id' }
+        }
       });
 
-      res.status(201).json({
-        message: `Successfully created tag with ${skuItemsMap.size} SKU item(s). ${failed.length} items failed.`,
-        tags: [tag],
-        failed: failed.length > 0 ? failed : undefined
+      const tagObj = tag.toObject();
+      tagObj.total_quantity = tag.getTotalQuantity();
+      tagObj.remaining_quantity = tag.getTotalRemainingQuantity();
+      tagObj.inventory_updates = inventoryUpdates;
+
+      res.status(201).json({ 
+        message: 'Tag created successfully',
+        tag: tagObj
       });
 
     } catch (error) {
       console.error('Create tag error:', error);
-      res.status(500).json({ message: 'Failed to create tag: ' + error.message });
+      res.status(500).json({ 
+        message: 'Failed to create tag', 
+        error: error.message 
+      });
     }
-
-  } catch (error) {
-    console.error('Create batch tags error:', error);
-    res.status(500).json({ message: 'Server error' });
   }
-});
+);
 
-// Get tag statistics
-router.get('/stats', auth, async (req, res) => {
-  try {
-    const stats = await Tag.aggregate([
-      { $match: { status: 'active' } },
-      {
-        $group: {
-          _id: '$tag_type',
-          count: { $sum: 1 },
-          totalSkuItems: { $sum: { $size: { $ifNull: ['$sku_items', []] } } }
+// PUT /api/tags/:id - Update a tag
+router.put('/:id', 
+  auth,
+  requireWriteAccess,
+  [
+    param('id').isMongoId().withMessage('Invalid tag ID'),
+    body('customer_name').optional().trim().isLength({ min: 1, max: 200 }),
+    body('project_name').optional().trim().isLength({ max: 200 }),
+    body('notes').optional().trim().isLength({ max: 1000 }),
+    body('due_date').optional().isISO8601(),
+    body('status').optional().isIn(['active', 'fulfilled', 'cancelled'])
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ 
+          message: 'Validation failed', 
+          errors: errors.array() 
+        });
+      }
+
+      const tag = await TagNew.findById(req.params.id);
+      if (!tag) {
+        return res.status(404).json({ message: 'Tag not found' });
+      }
+
+      // Prepare update data
+      const updateData = {
+        last_updated_by: req.user.username
+      };
+
+      // Only update provided fields
+      if (req.body.customer_name !== undefined) updateData.customer_name = req.body.customer_name;
+      if (req.body.project_name !== undefined) updateData.project_name = req.body.project_name;
+      if (req.body.notes !== undefined) updateData.notes = req.body.notes;
+      if (req.body.due_date !== undefined) updateData.due_date = req.body.due_date;
+      
+      // Handle status changes with inventory implications
+      if (req.body.status !== undefined && req.body.status !== tag.status) {
+        updateData.status = req.body.status;
+        
+        if (req.body.status === 'cancelled' && tag.status === 'active') {
+          // Release inventory when cancelling active tag
+          await updateInventoryForTag(tag.items, tag.tag_type, 'release');
+        } else if (req.body.status === 'fulfilled' && tag.status === 'active') {
+          // Mark as fulfilled
+          updateData.fulfilled_date = new Date();
+          updateData.fulfilled_by = req.user.username;
+          await updateInventoryForTag(tag.items, tag.tag_type, 'fulfill');
         }
       }
-    ]);
 
-    const totalActiveTags = await Tag.countDocuments({ status: 'active' });
-    const uniqueCustomers = await Tag.distinct('customer_name', { status: 'active' });
+      const updatedTag = await TagNew.findByIdAndUpdate(
+        req.params.id,
+        updateData,
+        { new: true, runValidators: true }
+      ).populate({
+        path: 'items.item_id',
+        populate: {
+          path: 'sku_id',
+          populate: { path: 'category_id' }
+        }
+      });
 
-    res.json({
-      totalActiveTags,
-      uniqueCustomers: uniqueCustomers.length,
-      byTagType: stats
-    });
+      const tagObj = updatedTag.toObject();
+      tagObj.total_quantity = updatedTag.getTotalQuantity();
+      tagObj.remaining_quantity = updatedTag.getTotalRemainingQuantity();
 
-  } catch (error) {
-    console.error('Get tag stats error:', error);
-    res.status(500).json({ message: 'Server error' });
+      res.json({ 
+        message: 'Tag updated successfully',
+        tag: tagObj
+      });
+
+    } catch (error) {
+      console.error('Update tag error:', error);
+      res.status(500).json({ 
+        message: 'Failed to update tag', 
+        error: error.message 
+      });
+    }
   }
-});
+);
+
+// POST /api/tags/:id/fulfill - Partially fulfill tag items
+router.post('/:id/fulfill', 
+  auth,
+  requireWriteAccess,
+  [
+    param('id').isMongoId().withMessage('Invalid tag ID'),
+    body('fulfillment_items').isArray({ min: 1 }).withMessage('Fulfillment items required'),
+    body('fulfillment_items.*.item_id').isMongoId().withMessage('Invalid item ID'),
+    body('fulfillment_items.*.quantity_fulfilled').isInt({ min: 1 }).withMessage('Quantity must be positive')
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ 
+          message: 'Validation failed', 
+          errors: errors.array() 
+        });
+      }
+
+      const tag = await TagNew.findById(req.params.id);
+      if (!tag) {
+        return res.status(404).json({ message: 'Tag not found' });
+      }
+
+      if (tag.status !== 'active') {
+        return res.status(400).json({ message: 'Can only fulfill active tags' });
+      }
+
+      // Process each fulfillment
+      const fulfillmentResults = [];
+      for (const fulfillmentItem of req.body.fulfillment_items) {
+        try {
+          tag.fulfillItems(fulfillmentItem, req.user.username);
+          fulfillmentResults.push({
+            item_id: fulfillmentItem.item_id,
+            quantity_fulfilled: fulfillmentItem.quantity_fulfilled,
+            success: true
+          });
+        } catch (fulfillError) {
+          fulfillmentResults.push({
+            item_id: fulfillmentItem.item_id,
+            quantity_fulfilled: fulfillmentItem.quantity_fulfilled,
+            success: false,
+            error: fulfillError.message
+          });
+        }
+      }
+
+      await tag.save();
+
+      // Update inventory for fulfilled items
+      const successfulFulfillments = fulfillmentResults.filter(r => r.success);
+      if (successfulFulfillments.length > 0) {
+        await updateInventoryForTag(
+          successfulFulfillments.map(f => ({
+            item_id: f.item_id,
+            quantity: f.quantity_fulfilled
+          })),
+          tag.tag_type,
+          'fulfill'
+        );
+      }
+
+      await tag.populate({
+        path: 'items.item_id',
+        populate: {
+          path: 'sku_id',
+          populate: { path: 'category_id' }
+        }
+      });
+
+      const tagObj = tag.toObject();
+      tagObj.total_quantity = tag.getTotalQuantity();
+      tagObj.remaining_quantity = tag.getTotalRemainingQuantity();
+      tagObj.fulfillment_results = fulfillmentResults;
+
+      res.json({
+        message: 'Tag fulfillment processed',
+        tag: tagObj
+      });
+
+    } catch (error) {
+      console.error('Fulfill tag error:', error);
+      res.status(500).json({ 
+        message: 'Failed to fulfill tag', 
+        error: error.message 
+      });
+    }
+  }
+);
+
+// POST /api/tags/:id/cancel - Cancel a tag
+router.post('/:id/cancel', 
+  auth,
+  requireWriteAccess,
+  [
+    param('id').isMongoId().withMessage('Invalid tag ID'),
+    body('reason').optional().trim().isLength({ max: 500 }).withMessage('Reason cannot exceed 500 characters')
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ 
+          message: 'Validation failed', 
+          errors: errors.array() 
+        });
+      }
+
+      const tag = await TagNew.findById(req.params.id);
+      if (!tag) {
+        return res.status(404).json({ message: 'Tag not found' });
+      }
+
+      if (tag.status !== 'active') {
+        return res.status(400).json({ message: 'Can only cancel active tags' });
+      }
+
+      // Cancel the tag
+      tag.cancel(req.user.username, req.body.reason);
+      await tag.save();
+
+      // Release inventory reservations
+      await updateInventoryForTag(tag.items, tag.tag_type, 'release');
+
+      await tag.populate({
+        path: 'items.item_id',
+        populate: {
+          path: 'sku_id',
+          populate: { path: 'category_id' }
+        }
+      });
+
+      const tagObj = tag.toObject();
+      tagObj.total_quantity = tag.getTotalQuantity();
+      tagObj.remaining_quantity = tag.getTotalRemainingQuantity();
+
+      res.json({
+        message: 'Tag cancelled successfully',
+        tag: tagObj
+      });
+
+    } catch (error) {
+      console.error('Cancel tag error:', error);
+      res.status(500).json({ 
+        message: 'Failed to cancel tag', 
+        error: error.message 
+      });
+    }
+  }
+);
+
+// DELETE /api/tags/:id - Delete a tag (only if not started)
+router.delete('/:id', 
+  auth,
+  requireWriteAccess,
+  [
+    param('id').isMongoId().withMessage('Invalid tag ID')
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ 
+          message: 'Validation failed', 
+          errors: errors.array() 
+        });
+      }
+
+      const tag = await TagNew.findById(req.params.id);
+      if (!tag) {
+        return res.status(404).json({ message: 'Tag not found' });
+      }
+
+      // Can only delete tags that haven't been partially fulfilled
+      if (tag.isPartiallyFulfilled()) {
+        return res.status(400).json({ 
+          message: 'Cannot delete partially fulfilled tag. Cancel it instead.' 
+        });
+      }
+
+      // Release any inventory reservations
+      if (tag.status === 'active') {
+        await updateInventoryForTag(tag.items, tag.tag_type, 'release');
+      }
+
+      await TagNew.findByIdAndDelete(req.params.id);
+
+      res.json({ 
+        message: 'Tag deleted successfully',
+        deletedTag: {
+          _id: tag._id,
+          customer_name: tag.customer_name,
+          tag_type: tag.tag_type,
+          project_name: tag.project_name
+        }
+      });
+
+    } catch (error) {
+      console.error('Delete tag error:', error);
+      res.status(500).json({ 
+        message: 'Failed to delete tag', 
+        error: error.message 
+      });
+    }
+  }
+);
+
+// GET /api/tags/overdue - Get overdue tags
+router.get('/overdue/list', 
+  auth,
+  async (req, res) => {
+    try {
+      const overdueTags = await TagNew.getOverdueTags();
+      
+      const enrichedTags = overdueTags.map(tag => {
+        const tagObj = tag.toObject();
+        tagObj.total_quantity = tag.getTotalQuantity();
+        tagObj.remaining_quantity = tag.getTotalRemainingQuantity();
+        tagObj.days_overdue = Math.ceil((new Date() - tag.due_date) / (1000 * 60 * 60 * 24));
+        return tagObj;
+      });
+
+      res.json({
+        overdue_tags: enrichedTags,
+        count: enrichedTags.length
+      });
+
+    } catch (error) {
+      console.error('Get overdue tags error:', error);
+      res.status(500).json({ 
+        message: 'Failed to fetch overdue tags', 
+        error: error.message 
+      });
+    }
+  }
+);
+
+// GET /api/tags/customer/:customerName - Get tags by customer
+router.get('/customer/:customerName', 
+  auth,
+  [
+    param('customerName').notEmpty().withMessage('Customer name is required')
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ 
+          message: 'Validation failed', 
+          errors: errors.array() 
+        });
+      }
+
+      const tags = await TagNew.getTagsByCustomer(req.params.customerName);
+      
+      const enrichedTags = tags.map(tag => {
+        const tagObj = tag.toObject();
+        tagObj.total_quantity = tag.getTotalQuantity();
+        tagObj.remaining_quantity = tag.getTotalRemainingQuantity();
+        tagObj.is_overdue = tag.due_date && new Date() > tag.due_date && tag.status === 'active';
+        return tagObj;
+      });
+
+      res.json({
+        customer_name: req.params.customerName,
+        tags: enrichedTags,
+        count: enrichedTags.length
+      });
+
+    } catch (error) {
+      console.error('Get customer tags error:', error);
+      res.status(500).json({ 
+        message: 'Failed to fetch customer tags', 
+        error: error.message 
+      });
+    }
+  }
+);
 
 module.exports = router;
