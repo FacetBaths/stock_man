@@ -12,6 +12,9 @@ const skuRoutes = require('./routes/skus');
 const barcodeRoutes = require('./routes/barcode');
 const exportRoutes = require('./routes/export');
 
+// Import new routes for updated database architecture
+const categoryRoutes = require('./routes/categories');
+
 const app = express();
 
 // Connect to database
@@ -23,7 +26,7 @@ const allowedOrigins = process.env.NODE_ENV === 'production'
       'https://facetbaths.github.io',
       'https://stock.facetrenovations.us'
     ] 
-  : ['http://localhost:3000', 'http://127.0.0.1:3000'];
+  : ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:3001', 'http://127.0.0.1:3001'];
 
 app.use(cors({
   origin: function (origin, callback) {
@@ -59,6 +62,9 @@ app.use('/api/tags', tagRoutes);
 app.use('/api/skus', skuRoutes);
 app.use('/api/barcode', barcodeRoutes);
 app.use('/api/export', exportRoutes);
+
+// New API routes for updated database architecture
+app.use('/api/categories', categoryRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

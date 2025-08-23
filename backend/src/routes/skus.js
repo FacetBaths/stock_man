@@ -1,35 +1,68 @@
 const express = require('express');
 const { body, query, param, validationResult } = require('express-validator');
 const router = express.Router();
-const SKU = require('../models/SKU');
-const Item = require('../models/Item');
+
+// Import new models
+const SKUNew = require('../models/SKUNew');
+const Category = require('../models/Category');
+const ItemNew = require('../models/ItemNew');
+const Inventory = require('../models/Inventory');
 const { auth, requireWriteAccess } = require('../middleware/auth');
 
-// Import all product models for population
-const { 
-  Toilet, Base, Tub, Vanity, ShowerDoor, 
-  RawMaterial, Accessory, Miscellaneous 
-} = require('../models/Product');
-const Wall = require('../models/Wall');
-
-// Validation middleware
+// Validation middleware for SKU creation/updates
 const validateSKU = [
   body('sku_code')
-    .notEmpty()
-    .withMessage('SKU code is required')
+    .optional()
     .trim()
     .toUpperCase()
     .matches(/^[A-Z0-9\-_]+$/)
     .withMessage('SKU code can only contain letters, numbers, hyphens, and underscores'),
-  body('product_type')
-    .isIn(['wall', 'toilet', 'base', 'tub', 'vanity', 'shower_door', 'raw_material', 'accessory', 'miscellaneous'])
-    .withMessage('Invalid product type'),
-  body('product_details')
-    .optional(),
-  body('new_product')
+  body('name')
+    .notEmpty()
+    .withMessage('Product name is required')
+    .trim()
+    .isLength({ min: 1, max: 200 })
+    .withMessage('Product name must be between 1 and 200 characters'),
+  body('description')
     .optional()
-    .isObject()
-    .withMessage('New product must be an object'),
+    .trim()
+    .isLength({ max: 1000 })
+    .withMessage('Description cannot exceed 1000 characters'),
+  body('category_id')
+    .notEmpty()
+    .withMessage('Category is required')
+    .isMongoId()
+    .withMessage('Category ID must be a valid MongoDB ID'),
+  body('unit_cost')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('Unit cost must be a non-negative number'),
+  body('unit_price')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('Unit price must be a non-negative number'),
+  body('manufacturer_model')
+    .optional()
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage('Manufacturer model cannot exceed 100 characters'),
+  body('barcode')
+    .optional()
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage('Barcode cannot exceed 50 characters'),
+  body('weight')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('Weight must be a non-negative number'),
+  body('is_active')
+    .optional()
+    .isBoolean()
+    .withMessage('is_active must be a boolean'),
+  body('is_lendable')
+    .optional()
+    .isBoolean()
+    .withMessage('is_lendable must be a boolean'),
   body('is_bundle')
     .optional()
     .isBoolean()
@@ -38,121 +71,85 @@ const validateSKU = [
     .optional()
     .isArray()
     .withMessage('bundle_items must be an array'),
-  body('bundle_items.*.product_type')
+  body('tags')
     .optional()
-    .isIn(['wall', 'toilet', 'base', 'tub', 'vanity', 'shower_door', 'raw_material', 'accessory', 'miscellaneous'])
-    .withMessage('Invalid product type in bundle item'),
-  body('bundle_items.*.product_details')
-    .optional()
-    .isMongoId()
-    .withMessage('Bundle item product_details must be a valid MongoDB ID'),
-  body('bundle_items.*.quantity')
-    .optional()
-    .isInt({ min: 1 })
-    .withMessage('Bundle item quantity must be a positive integer'),
-  body('bundle_items.*.description')
-    .optional()
-    .trim(),
-  body('stock_thresholds.understocked')
-    .optional()
-    .isFloat({ min: 0 })
-    .withMessage('Understocked threshold must be a non-negative number'),
-  body('stock_thresholds.overstocked')
-    .optional()
-    .isFloat({ min: 0 })
-    .withMessage('Overstocked threshold must be a non-negative number'),
-  body('current_cost')
-    .optional()
-    .isFloat({ min: 0 })
-    .withMessage('Current cost must be a non-negative number'),
-  body('barcode')
-    .optional()
-    .trim(),
-  body('manufacturer_model')
-    .optional()
-    .trim(),
-  body('description')
-    .optional()
-    .trim(),
+    .isArray()
+    .withMessage('tags must be an array'),
   body('notes')
     .optional()
     .trim()
+    .isLength({ max: 1000 })
+    .withMessage('Notes cannot exceed 1000 characters')
 ];
+// Helper function to generate SKU code based on category and manufacturer model
+async function generateSKUCode(categoryId, manufacturerModel = null) {
+  try {
+    // If manufacturer model is provided, use it as SKU code (cleaned up)
+    if (manufacturerModel && manufacturerModel.trim()) {
+      const cleanedModel = manufacturerModel
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9\-_]/g, '') // Remove invalid characters
+        .substring(0, 20); // Limit length
+      
+      if (cleanedModel) {
+        // Check if this model number already exists as SKU
+        const existingSku = await SKUNew.findOne({ sku_code: cleanedModel });
+        if (!existingSku) {
+          return cleanedModel;
+        }
+        // If it exists, fall back to category-based generation
+      }
+    }
 
-// Helper function to create new product document
-async function createProductDocument(productType, productData) {
-  const typeMapping = {
-    'wall': Wall,
-    'toilet': Toilet,
-    'base': Base,
-    'tub': Tub,
-    'vanity': Vanity,
-    'shower_door': ShowerDoor,
-    'raw_material': RawMaterial,
-    'accessory': Accessory,
-    'miscellaneous': Miscellaneous
-  };
-  
-  const ProductModel = typeMapping[productType];
-  if (!ProductModel) {
-    throw new Error(`Invalid product type: ${productType}`);
+    // Fall back to category-based generation
+    const category = await Category.findById(categoryId);
+    if (!category) {
+      throw new Error('Category not found');
+    }
+
+    const year = new Date().getFullYear().toString().slice(-2);
+    const categoryPrefix = category.slug.substring(0, 3).toUpperCase();
+    
+    // Find the next sequence number for this category and year
+    const existingSkus = await SKUNew.find({
+      sku_code: new RegExp(`^${categoryPrefix}-${year}-\\d+$`)
+    }).sort({ sku_code: -1 }).limit(1);
+    
+    let nextNumber = 1;
+    if (existingSkus.length > 0) {
+      const lastSku = existingSkus[0].sku_code;
+      const lastNumber = parseInt(lastSku.split('-').pop());
+      nextNumber = lastNumber + 1;
+    }
+    
+    return `${categoryPrefix}-${year}-${nextNumber.toString().padStart(4, '0')}`;
+  } catch (error) {
+    throw new Error(`Failed to generate SKU code: ${error.message}`);
   }
-  
-  console.log(`Creating new ${productType} product with data:`, JSON.stringify(productData, null, 2));
-  
-  const product = new ProductModel(productData);
-  await product.save();
-  console.log(`Created new ${productType} product with ID:`, product._id);
-  
-  return product;
 }
-
-// Helper function to generate SKU code
-async function generateSKUCode(productType, productDetails, template = null) {
-  const year = new Date().getFullYear().toString().slice(-2);
-  const typePrefix = productType.toUpperCase().substring(0, 3);
-  
-  if (template) {
-    // Use custom template logic here if needed
-    // For now, use default generation
-  }
-  
-  // Find the next sequence number
-  const existingSkus = await SKU.find({
-    sku_code: new RegExp(`^${typePrefix}-${year}-\\d+$`)
-  }).sort({ sku_code: -1 }).limit(1);
-  
-  let nextNumber = 1;
-  if (existingSkus.length > 0) {
-    const lastSku = existingSkus[0].sku_code;
-    const lastNumber = parseInt(lastSku.split('-').pop());
-    nextNumber = lastNumber + 1;
-  }
-  
-  return `${typePrefix}-${year}-${nextNumber.toString().padStart(4, '0')}`;
-}
-
 // GET /api/skus - Get all SKUs with filtering and pagination
 router.get('/', 
   auth,
   [
     query('page').optional().isInt({ min: 1 }).withMessage('Page must be a positive integer'),
     query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100'),
-    query('product_type').optional().custom((value) => {
-      if (value === '' || value === null || value === undefined) return true;
-      return ['wall', 'toilet', 'base', 'tub', 'vanity', 'shower_door', 'raw_material', 'accessory', 'miscellaneous'].includes(value);
-    }).withMessage('Invalid product type'),
-    query('status').optional().custom((value) => {
-      if (value === '' || value === null || value === undefined) return true;
-      return ['active', 'inactive', 'discontinued'].includes(value);
-    }).withMessage('Invalid status'),
-    query('search').optional().trim()
+    query('category_id').optional().isMongoId().withMessage('Category ID must be a valid MongoDB ID'),
+    query('is_active').optional().isBoolean().withMessage('is_active must be a boolean'),
+    query('is_lendable').optional().isBoolean().withMessage('is_lendable must be a boolean'),
+    query('search').optional().trim(),
+    query('sort_by').optional().isIn(['sku_code', 'name', 'unit_cost', 'created_at']).withMessage('Invalid sort field'),
+    query('sort_order').optional().isIn(['asc', 'desc']).withMessage('Sort order must be "asc" or "desc"'),
+    query('include_inventory').optional().isBoolean().withMessage('include_inventory must be a boolean')
   ],
   async (req, res) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
+        return res.status(400).json({ 
+          message: 'Validation failed', 
+          errors: errors.array() 
+        });
       }
 
       const page = parseInt(req.query.page) || 1;
@@ -161,527 +158,480 @@ router.get('/',
 
       // Build filter
       const filter = {};
-      if (req.query.product_type && req.query.product_type.trim() !== '') {
-        filter.product_type = req.query.product_type;
+      
+      if (req.query.category_id) {
+        filter.category_id = req.query.category_id;
       }
-      if (req.query.status && req.query.status.trim() !== '') {
-        filter.status = req.query.status;
+      
+      if (req.query.is_active !== undefined) {
+        filter.is_active = req.query.is_active === 'true';
       }
-      if (req.query.search && req.query.search.trim() !== '') {
+      
+      if (req.query.is_lendable !== undefined) {
+        filter.is_lendable = req.query.is_lendable === 'true';
+      }
+      
+      if (req.query.search) {
+        const searchRegex = { $regex: req.query.search, $options: 'i' };
         filter.$or = [
-          { sku_code: { $regex: req.query.search, $options: 'i' } },
-          { description: { $regex: req.query.search, $options: 'i' } },
-          { manufacturer_model: { $regex: req.query.search, $options: 'i' } },
-          { barcode: { $regex: req.query.search, $options: 'i' } }
+          { sku_code: searchRegex },
+          { name: searchRegex },
+          { description: searchRegex },
+          { manufacturer_model: searchRegex },
+          { barcode: searchRegex }
         ];
       }
 
-      const skus = await SKU.find(filter)
-        .sort({ createdAt: -1 })
+      // Build sort
+      const sortField = req.query.sort_by || 'created_at';
+      const sortOrder = req.query.sort_order === 'asc' ? 1 : -1;
+      const sort = {};
+      sort[sortField] = sortOrder;
+
+      // Execute queries
+      let query = SKUNew.find(filter)
+        .populate('category_id', 'name slug')
+        .sort(sort)
         .skip(skip)
         .limit(limit);
 
-      const totalSkus = await SKU.countDocuments(filter);
+      const [skus, totalSkus] = await Promise.all([
+        query,
+        SKUNew.countDocuments(filter)
+      ]);
+
       const totalPages = Math.ceil(totalSkus / limit);
 
-      // Get associated items for each SKU
-      const skusWithItems = await Promise.all(skus.map(async (sku) => {
-        const items = await Item.find({ sku_id: sku._id });
-        const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
-        const stockStatus = sku.getStockStatus(totalQuantity);
+      // Enrich SKUs with inventory data if requested
+      const enrichedSkus = await Promise.all(skus.map(async (sku) => {
+        const skuObj = sku.toObject();
         
-        return {
-          ...sku.toObject(),
-          totalQuantity,
-          stockStatus,
-          itemCount: items.length
-        };
+        if (req.query.include_inventory === 'true') {
+          // Get inventory data
+          const inventory = await Inventory.findOne({ sku_id: sku._id });
+          if (inventory) {
+            skuObj.inventory = inventory.getSummary();
+          } else {
+            skuObj.inventory = {
+              total_quantity: 0,
+              available_quantity: 0,
+              reserved_quantity: 0,
+              broken_quantity: 0,
+              loaned_quantity: 0,
+              is_low_stock: false,
+              is_out_of_stock: true,
+              needs_reorder: true
+            };
+          }
+        }
+        
+        return skuObj;
       }));
 
       res.json({
-        skus: skusWithItems,
-        totalSkus,
-        totalPages,
-        currentPage: page
-      });
-    } catch (error) {
-      console.error('Get SKUs error:', error);
-      res.status(500).json({ message: 'Server error' });
-    }
-  }
-);
-
-// GET /api/skus/products/:product_type - Get available Product documents for SKU creation
-router.get('/products/:product_type',
-  auth,
-  param('product_type').isIn(['wall', 'toilet', 'base', 'tub', 'vanity', 'shower_door', 'raw_material', 'accessory', 'miscellaneous']),
-  async (req, res) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
-      }
-
-      const productType = req.params.product_type;
-      
-      // Get unique product details from existing items (which have populated product_details)
-      const items = await Item.find({ product_type: productType })
-        .populate('product_details')
-        .lean();
-      
-      // Extract unique product details
-      const uniqueProducts = new Map();
-      items.forEach(item => {
-        if (item.product_details && typeof item.product_details === 'object') {
-          const productId = item.product_details._id.toString();
-          if (!uniqueProducts.has(productId)) {
-            const details = item.product_details;
-            uniqueProducts.set(productId, {
-              _id: productId,
-              name: details.name || 
-                    `${details.product_line} ${details.color_name}` || 
-                    `${details.brand} ${details.model}` ||
-                    `${productType} product`,
-              ...details
-            });
-          }
+        skus: enrichedSkus,
+        pagination: {
+          currentPage: page,
+          totalPages,
+          totalSkus,
+          limit,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1
         }
       });
-      
-      const products = Array.from(uniqueProducts.values());
-      res.json({ products });
+
     } catch (error) {
-      console.error('Get products for SKU error:', error);
-      res.status(500).json({ message: 'Server error' });
+      console.error('Get SKUs error:', error);
+      res.status(500).json({ 
+        message: 'Failed to fetch SKUs', 
+        error: error.message 
+      });
     }
   }
 );
 
-// GET /api/skus/:id - Get specific SKU
-router.get('/:id',
+// GET /api/skus/:id - Get a single SKU by ID
+router.get('/:id', 
   auth,
-  param('id').isMongoId().withMessage('Invalid SKU ID'),
+  [
+    param('id').isMongoId().withMessage('Invalid SKU ID'),
+    query('include_inventory').optional().isBoolean().withMessage('include_inventory must be a boolean'),
+    query('include_items').optional().isBoolean().withMessage('include_items must be a boolean')
+  ],
   async (req, res) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
+        return res.status(400).json({ 
+          message: 'Validation failed', 
+          errors: errors.array() 
+        });
       }
 
-      // First get the SKU without population
-      let sku = await SKU.findById(req.params.id);
+      let query = SKUNew.findById(req.params.id)
+        .populate('category_id');
+
+      // Add bundle items population if it's a bundle
+      query = query.populate({
+        path: 'bundle_items.sku_id',
+        select: 'sku_code name unit_cost'
+      });
+
+      const sku = await query;
+
       if (!sku) {
         return res.status(404).json({ message: 'SKU not found' });
       }
 
-      // Try to populate product_details, handle errors gracefully
-      try {
-        sku = await SKU.findById(req.params.id).populate('product_details');
-      } catch (populateError) {
-        console.error('Error populating product_details:', populateError);
-        // If population fails, continue with unpopulated SKU
-      }
+      const skuObj = sku.toObject();
 
-      // Try to populate bundle_items.product_details if it's a bundle
-      if (sku.is_bundle && sku.bundle_items && sku.bundle_items.length > 0) {
-        try {
-          sku = await SKU.findById(req.params.id)
-            .populate('product_details')
-            .populate('bundle_items.product_details');
-        } catch (bundlePopulateError) {
-          console.error('Error populating bundle_items.product_details:', bundlePopulateError);
-          // If bundle population fails, use the basic populated version
+      // Include inventory data if requested
+      if (req.query.include_inventory === 'true') {
+        const inventory = await Inventory.findOne({ sku_id: sku._id });
+        if (inventory) {
+          skuObj.inventory = inventory.getSummary();
         }
       }
 
-      // Get associated items
-      const items = await Item.find({ sku_id: sku._id });
-      const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
-      const stockStatus = sku.getStockStatus(totalQuantity);
+      // Include items if requested
+      if (req.query.include_items === 'true') {
+        const items = await ItemNew.find({ sku_id: sku._id })
+          .select('serial_number condition status location notes created_at')
+          .sort({ created_at: -1 });
+        skuObj.items = items;
+      }
 
-      res.json({
-        ...sku.toObject(),
-        totalQuantity,
-        stockStatus,
-        items
-      });
+      res.json({ sku: skuObj });
+
     } catch (error) {
       console.error('Get SKU error:', error);
-      res.status(500).json({ message: 'Server error' });
+      res.status(500).json({ 
+        message: 'Failed to fetch SKU', 
+        error: error.message 
+      });
     }
   }
 );
 
-// POST /api/skus - Create new SKU
-router.post('/',
+// POST /api/skus - Create a new SKU
+router.post('/', 
   auth,
   requireWriteAccess,
   validateSKU,
   async (req, res) => {
     try {
-      console.log('Creating SKU with data:', JSON.stringify(req.body, null, 2));
-      
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        console.log('Validation errors:', errors.array());
-        return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
+        return res.status(400).json({ 
+          message: 'Validation failed', 
+          errors: errors.array() 
+        });
       }
 
-      // Bundle-specific validation
-      if (req.body.is_bundle) {
-        // For bundles, validate bundle_items
-        if (!req.body.bundle_items || !Array.isArray(req.body.bundle_items) || req.body.bundle_items.length === 0) {
-          return res.status(400).json({ 
-            message: 'Bundle SKUs must have at least one bundle item' 
-          });
-        }
-        
-        // Validate each bundle item
-        for (const [index, item] of req.body.bundle_items.entries()) {
-          if (!item.product_type) {
-            return res.status(400).json({ 
-              message: `Bundle item ${index + 1} is missing product_type` 
-            });
-          }
-          if (!item.product_details) {
-            return res.status(400).json({ 
-              message: `Bundle item ${index + 1} is missing product_details` 
-            });
-          }
-          if (!item.quantity || item.quantity < 1) {
-            return res.status(400).json({ 
-              message: `Bundle item ${index + 1} must have quantity >= 1` 
-            });
-          }
-        }
+      // Verify category exists
+      const category = await Category.findById(req.body.category_id);
+      if (!category) {
+        return res.status(400).json({ message: 'Category not found' });
+      }
+
+      // Generate SKU code if not provided
+      let skuCode = req.body.sku_code;
+      if (!skuCode) {
+        skuCode = await generateSKUCode(req.body.category_id, req.body.manufacturer_model);
       } else {
-        // For regular SKUs, validate that either product_details or new_product is provided
-        if (!req.body.product_details && !req.body.new_product) {
+        // Check if SKU code already exists
+        const existingSKU = await SKUNew.findOne({ sku_code: skuCode });
+        if (existingSKU) {
           return res.status(400).json({ 
-            message: 'Either product_details ID or new_product data must be provided' 
-          });
-        }
-        
-        if (req.body.product_details && req.body.new_product) {
-          return res.status(400).json({ 
-            message: 'Cannot provide both product_details and new_product' 
+            message: 'SKU code already exists' 
           });
         }
       }
 
-      // Check if SKU code already exists
-      const existingSku = await SKU.findOne({ sku_code: req.body.sku_code.toUpperCase() });
-      if (existingSku) {
-        return res.status(400).json({ message: 'SKU code already exists' });
-      }
-      
-      let productDetailsId = req.body.product_details;
-      
-      // If new_product is provided, create the product document first
-      if (req.body.new_product) {
-        console.log('Creating new product document for SKU...');
-        try {
-          const newProduct = await createProductDocument(req.body.product_type, req.body.new_product);
-          productDetailsId = newProduct._id;
-          console.log('Created new product document with ID:', productDetailsId);
-        } catch (productError) {
-          console.error('Failed to create product document:', productError);
-          return res.status(400).json({ 
-            message: 'Failed to create product document', 
-            error: productError.message 
-          });
-        }
-      }
-
-      // Create SKU
       const skuData = {
-        ...req.body,
-        sku_code: req.body.sku_code.toUpperCase(),
-        product_details: productDetailsId,
+        sku_code: skuCode,
+        name: req.body.name,
+        description: req.body.description || '',
+        category_id: req.body.category_id,
+        unit_cost: req.body.unit_cost || 0,
+        unit_price: req.body.unit_price || req.body.unit_cost || 0,
+        manufacturer_model: req.body.manufacturer_model || '',
+        barcode: req.body.barcode || '',
+        weight: req.body.weight || 0,
+        dimensions: {
+          length: req.body.dimensions?.length || 0,
+          width: req.body.dimensions?.width || 0,
+          height: req.body.dimensions?.height || 0,
+          unit: req.body.dimensions?.unit || 'inches'
+        },
+        is_active: req.body.is_active !== false, // Default to true
+        is_lendable: req.body.is_lendable || false,
+        is_bundle: req.body.is_bundle || false,
+        bundle_items: req.body.bundle_items || [],
+        tags: req.body.tags || [],
+        notes: req.body.notes || '',
         created_by: req.user.username,
         last_updated_by: req.user.username
       };
-      
-      // Auto-generate barcode if not provided
-      if (!skuData.barcode) {
-        // Use SKU code as barcode, removing hyphens and making it numeric-compatible
-        skuData.barcode = skuData.sku_code.replace(/-/g, '');
-        console.log(`Auto-generated barcode: ${skuData.barcode} from SKU: ${skuData.sku_code}`);
-      }
-      
-      // Remove new_product field from SKU data as it's not part of SKU schema
-      delete skuData.new_product;
 
-      console.log('Final SKU data before save:', JSON.stringify(skuData, null, 2));
-
-      // Add initial cost to history if provided
-      if (req.body.current_cost && req.body.current_cost > 0) {
-        skuData.cost_history = [{
-          cost: req.body.current_cost,
-          effective_date: new Date(),
-          updated_by: req.user.username,
-          notes: 'Initial cost'
-        }];
+      // Validate bundle items if this is a bundle
+      if (skuData.is_bundle && skuData.bundle_items.length > 0) {
+        for (const bundleItem of skuData.bundle_items) {
+          const bundleSku = await SKUNew.findById(bundleItem.sku_id);
+          if (!bundleSku) {
+            return res.status(400).json({ 
+              message: `Bundle item SKU ${bundleItem.sku_id} not found` 
+            });
+          }
+          if (bundleSku.is_bundle) {
+            return res.status(400).json({ 
+              message: 'Cannot create bundle containing other bundles' 
+            });
+          }
+        }
       }
 
-      const sku = new SKU(skuData);
-      console.log('About to save SKU...');
+      const sku = new SKUNew(skuData);
       await sku.save();
-      console.log('SKU saved successfully with ID:', sku._id);
 
-      // Automatically link existing items with matching product details
-      const matchingItems = await Item.find({
-        product_type: sku.product_type,
-        product_details: sku.product_details,
-        sku_id: { $exists: false } // Only link items without SKU
+      // Create initial inventory record
+      const inventory = new Inventory({
+        sku_id: sku._id,
+        last_updated_by: req.user.username
       });
-      
-      if (matchingItems.length > 0) {
-        await Item.updateMany(
-          {
-            product_type: sku.product_type,
-            product_details: sku.product_details,
-            sku_id: { $exists: false }
-          },
-          { sku_id: sku._id }
-        );
-        console.log(`Linked ${matchingItems.length} existing items to new SKU`);
-      }
+      await inventory.save();
 
-      // Populate product details for response
-      await sku.populate('product_details');
-      if (sku.is_bundle) {
-        await sku.populate('bundle_items.product_details');
-      }
+      // Populate category before returning
+      await sku.populate('category_id');
 
-      res.status(201).json(sku);
+      res.status(201).json({ 
+        message: 'SKU created successfully',
+        sku: {
+          ...sku.toObject(),
+          inventory: inventory.getSummary()
+        }
+      });
+
     } catch (error) {
       console.error('Create SKU error:', error);
-      console.error('Error name:', error.name);
-      console.error('Error message:', error.message);
-      if (error.errors) {
-        console.error('Validation errors:', error.errors);
-      }
       
       if (error.code === 11000) {
-        res.status(400).json({ message: 'SKU code already exists' });
-      } else if (error.name === 'ValidationError') {
-        const validationErrors = Object.keys(error.errors).map(key => ({
-          field: key,
-          message: error.errors[key].message
-        }));
-        res.status(400).json({ 
-          message: 'Database validation failed', 
-          errors: validationErrors
-        });
-      } else {
-        res.status(500).json({ 
-          message: 'Server error',
-          error: error.message 
+        const field = Object.keys(error.keyValue)[0];
+        return res.status(400).json({ 
+          message: `SKU with this ${field} already exists` 
         });
       }
+
+      res.status(500).json({ 
+        message: 'Failed to create SKU', 
+        error: error.message 
+      });
     }
   }
 );
 
-// POST /api/skus/generate - Generate SKU code
-router.post('/generate',
+// PUT /api/skus/:id - Update a SKU
+router.put('/:id', 
   auth,
   requireWriteAccess,
   [
-    body('product_type').isIn(['wall', 'toilet', 'base', 'tub', 'vanity', 'shower_door', 'raw_material', 'accessory', 'miscellaneous']),
-    body('product_details').notEmpty().withMessage('Product details ID is required'),
-    body('template').optional().trim()
+    param('id').isMongoId().withMessage('Invalid SKU ID'),
+    ...validateSKU
   ],
   async (req, res) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
+        return res.status(400).json({ 
+          message: 'Validation failed', 
+          errors: errors.array() 
+        });
       }
 
-      const skuCode = await generateSKUCode(
-        req.body.product_type,
-        req.body.product_details,
-        req.body.template
-      );
-
-      res.json({ sku_code: skuCode });
-    } catch (error) {
-      console.error('Generate SKU error:', error);
-      res.status(500).json({ message: 'Server error' });
-    }
-  }
-);
-
-// PUT /api/skus/:id - Update SKU
-router.put('/:id',
-  auth,
-  requireWriteAccess,
-  param('id').isMongoId().withMessage('Invalid SKU ID'),
-  [
-    body('sku_code')
-      .optional()
-      .trim()
-      .toUpperCase()
-      .matches(/^[A-Z0-9\-_]+$/)
-      .withMessage('SKU code can only contain letters, numbers, hyphens, and underscores'),
-    body('stock_thresholds.understocked')
-      .optional()
-      .isFloat({ min: 0 })
-      .withMessage('Understocked threshold must be a non-negative number'),
-    body('stock_thresholds.overstocked')
-      .optional()
-      .isFloat({ min: 0 })
-      .withMessage('Overstocked threshold must be a non-negative number'),
-    body('barcode').optional().trim(),
-    body('manufacturer_model').optional().trim(),
-    body('description').optional().trim(),
-    body('notes').optional().trim(),
-    body('status').optional().isIn(['active', 'inactive', 'discontinued'])
-  ],
-  async (req, res) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
-      }
-
-      const sku = await SKU.findById(req.params.id);
+      const sku = await SKUNew.findById(req.params.id);
       if (!sku) {
         return res.status(404).json({ message: 'SKU not found' });
       }
 
-      // Check if updating SKU code conflicts with existing
-      if (req.body.sku_code && req.body.sku_code !== sku.sku_code) {
-        const existingSku = await SKU.findOne({ 
-          sku_code: req.body.sku_code.toUpperCase(),
-          _id: { $ne: req.params.id }
+      // Prepare update data
+      const updateData = {
+        last_updated_by: req.user.username
+      };
+
+      // Only update provided fields
+      if (req.body.sku_code !== undefined) {
+        // Check if new SKU code conflicts
+        const existingSKU = await SKUNew.findOne({ 
+          sku_code: req.body.sku_code, 
+          _id: { $ne: req.params.id } 
         });
-        if (existingSku) {
-          return res.status(400).json({ message: 'SKU code already exists' });
+        if (existingSKU) {
+          return res.status(400).json({ 
+            message: 'SKU code already exists' 
+          });
         }
+        updateData.sku_code = req.body.sku_code;
       }
 
-      // Update fields
-      Object.keys(req.body).forEach(key => {
-        if (key === 'sku_code') {
-          sku[key] = req.body[key].toUpperCase();
-        } else if (key !== 'current_cost') { // Don't update current_cost directly
-          sku[key] = req.body[key];
+      if (req.body.name !== undefined) updateData.name = req.body.name;
+      if (req.body.description !== undefined) updateData.description = req.body.description;
+      
+      if (req.body.category_id !== undefined) {
+        // Verify new category exists
+        const category = await Category.findById(req.body.category_id);
+        if (!category) {
+          return res.status(400).json({ message: 'Category not found' });
         }
+        updateData.category_id = req.body.category_id;
+      }
+
+      if (req.body.unit_cost !== undefined) updateData.unit_cost = req.body.unit_cost;
+      if (req.body.unit_price !== undefined) updateData.unit_price = req.body.unit_price;
+      if (req.body.manufacturer_model !== undefined) updateData.manufacturer_model = req.body.manufacturer_model;
+      if (req.body.barcode !== undefined) updateData.barcode = req.body.barcode;
+      if (req.body.weight !== undefined) updateData.weight = req.body.weight;
+      if (req.body.is_active !== undefined) updateData.is_active = req.body.is_active;
+      if (req.body.is_lendable !== undefined) updateData.is_lendable = req.body.is_lendable;
+      if (req.body.is_bundle !== undefined) updateData.is_bundle = req.body.is_bundle;
+      if (req.body.bundle_items !== undefined) updateData.bundle_items = req.body.bundle_items;
+      if (req.body.tags !== undefined) updateData.tags = req.body.tags;
+      if (req.body.notes !== undefined) updateData.notes = req.body.notes;
+
+      // Handle dimensions update
+      if (req.body.dimensions) {
+        updateData.dimensions = {
+          ...sku.dimensions.toObject(),
+          ...req.body.dimensions
+        };
+      }
+
+      const updatedSKU = await SKUNew.findByIdAndUpdate(
+        req.params.id,
+        updateData,
+        { new: true, runValidators: true }
+      ).populate('category_id');
+
+      res.json({ 
+        message: 'SKU updated successfully',
+        sku: updatedSKU 
       });
 
-      sku.last_updated_by = req.user.username;
-      await sku.save();
-
-      await sku.populate('product_details');
-      res.json(sku);
     } catch (error) {
       console.error('Update SKU error:', error);
-      res.status(500).json({ message: 'Server error' });
+      
+      if (error.code === 11000) {
+        const field = Object.keys(error.keyValue)[0];
+        return res.status(400).json({ 
+          message: `SKU with this ${field} already exists` 
+        });
+      }
+
+      res.status(500).json({ 
+        message: 'Failed to update SKU', 
+        error: error.message 
+      });
     }
   }
 );
 
-// POST /api/skus/:id/cost - Add new cost to SKU
-router.post('/:id/cost',
+// DELETE /api/skus/:id - Delete a SKU
+router.delete('/:id', 
   auth,
   requireWriteAccess,
-  param('id').isMongoId().withMessage('Invalid SKU ID'),
   [
-    body('cost').isFloat({ min: 0 }).withMessage('Cost must be a non-negative number'),
-    body('notes').optional().trim()
+    param('id').isMongoId().withMessage('Invalid SKU ID')
   ],
   async (req, res) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
-      }
-
-      const sku = await SKU.findById(req.params.id);
-      if (!sku) {
-        return res.status(404).json({ message: 'SKU not found' });
-      }
-
-      await sku.addCost(req.body.cost, req.user.username, req.body.notes || '');
-      await sku.populate('product_details');
-
-      res.json(sku);
-    } catch (error) {
-      console.error('Add SKU cost error:', error);
-      res.status(500).json({ message: 'Server error' });
-    }
-  }
-);
-
-// DELETE /api/skus/:id - Delete SKU
-router.delete('/:id',
-  auth,
-  requireWriteAccess,
-  param('id').isMongoId().withMessage('Invalid SKU ID'),
-  async (req, res) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
-      }
-
-      const sku = await SKU.findById(req.params.id);
-      if (!sku) {
-        return res.status(404).json({ message: 'SKU not found' });
-      }
-
-      // Check if SKU is referenced by any items
-      const linkedItems = await Item.find({ sku_id: req.params.id });
-      if (linkedItems.length > 0) {
         return res.status(400).json({ 
-          message: `Cannot delete SKU. It is linked to ${linkedItems.length} item(s)`,
-          linkedItems: linkedItems.length
+          message: 'Validation failed', 
+          errors: errors.array() 
         });
       }
 
-      await SKU.findByIdAndDelete(req.params.id);
-      res.json({ message: 'SKU deleted successfully' });
+      const sku = await SKUNew.findById(req.params.id);
+      if (!sku) {
+        return res.status(404).json({ message: 'SKU not found' });
+      }
+
+      // Check if SKU can be safely deleted
+      const canDelete = await sku.canBeDeleted();
+      if (!canDelete.allowed) {
+        return res.status(400).json({ 
+          message: 'Cannot delete SKU', 
+          reason: canDelete.reason,
+          details: canDelete.details
+        });
+      }
+
+      // Delete associated inventory record
+      await Inventory.findOneAndDelete({ sku_id: req.params.id });
+
+      // Delete the SKU
+      await SKUNew.findByIdAndDelete(req.params.id);
+
+      res.json({ 
+        message: 'SKU deleted successfully',
+        deletedSKU: {
+          _id: sku._id,
+          sku_code: sku.sku_code,
+          name: sku.name
+        }
+      });
+
     } catch (error) {
       console.error('Delete SKU error:', error);
-      res.status(500).json({ message: 'Server error' });
+      res.status(500).json({ 
+        message: 'Failed to delete SKU', 
+        error: error.message 
+      });
     }
   }
 );
 
-// GET /api/skus/search/barcode/:barcode - Search SKU by barcode
-router.get('/search/barcode/:barcode',
+// GET /api/skus/lookup/:skuCode - Lookup SKU by code (for scanning)
+router.get('/lookup/:skuCode', 
   auth,
-  param('barcode').notEmpty().withMessage('Barcode is required'),
+  [
+    param('skuCode').notEmpty().withMessage('SKU code is required')
+  ],
   async (req, res) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
+        return res.status(400).json({ 
+          message: 'Validation failed', 
+          errors: errors.array() 
+        });
       }
 
-      const sku = await SKU.findOne({ barcode: req.params.barcode }).populate('product_details');
-      
+      const sku = await SKUNew.findOne({ 
+        sku_code: req.params.skuCode.toUpperCase(),
+        is_active: true
+      }).populate('category_id');
+
       if (!sku) {
-        return res.status(404).json({ message: 'SKU not found for barcode' });
+        return res.status(404).json({ message: 'SKU not found' });
       }
 
-      // Get associated items
-      const items = await Item.find({ sku_id: sku._id });
-      const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
-      const stockStatus = sku.getStockStatus(totalQuantity);
-
-      res.json({
-        ...sku.toObject(),
-        totalQuantity,
-        stockStatus,
-        items
+      // Get inventory data
+      const inventory = await Inventory.findOne({ sku_id: sku._id });
+      
+      res.json({ 
+        sku: {
+          ...sku.toObject(),
+          inventory: inventory ? inventory.getSummary() : null
+        }
       });
+
     } catch (error) {
-      console.error('Search SKU by barcode error:', error);
-      res.status(500).json({ message: 'Server error' });
+      console.error('SKU lookup error:', error);
+      res.status(500).json({ 
+        message: 'Failed to lookup SKU', 
+        error: error.message 
+      });
     }
   }
 );

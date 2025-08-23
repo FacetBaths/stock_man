@@ -2,11 +2,11 @@ const mongoose = require('mongoose');
 
 // Redesigned Tag schema with proper relationships
 const tagNewSchema = new mongoose.Schema({
-  // Proper customer reference instead of string
-  customer_id: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Customer',
+  // Customer/project/department name (simple string like original)
+  customer_name: {
+    type: String,
     required: true,
+    trim: true,
     index: true
   },
   
@@ -191,7 +191,7 @@ tagNewSchema.statics.getOverdueTags = function() {
   return this.find({
     status: 'active',
     due_date: { $lt: now }
-  }).populate('customer_id').populate({
+  }).populate({
     path: 'items.item_id',
     populate: {
       path: 'sku_id'
@@ -199,10 +199,9 @@ tagNewSchema.statics.getOverdueTags = function() {
   });
 };
 
-// Static method to get tags by customer
-tagNewSchema.statics.getTagsByCustomer = function(customerId) {
-  return this.find({ customer_id: customerId })
-    .populate('customer_id')
+// Static method to get tags by customer name
+tagNewSchema.statics.getTagsByCustomer = function(customerName) {
+  return this.find({ customer_name: new RegExp(customerName, 'i') })
     .populate({
       path: 'items.item_id',
       populate: {
@@ -213,7 +212,7 @@ tagNewSchema.statics.getTagsByCustomer = function(customerId) {
 };
 
 // Indexes for efficient searching
-tagNewSchema.index({ customer_id: 1, status: 1 });
+tagNewSchema.index({ customer_name: 1, status: 1 });
 tagNewSchema.index({ tag_type: 1, status: 1 });
 tagNewSchema.index({ status: 1, due_date: 1 });
 tagNewSchema.index({ created_by: 1 });
@@ -221,8 +220,11 @@ tagNewSchema.index({ project_name: 1 });
 tagNewSchema.index({ 'items.item_id': 1 });
 tagNewSchema.index({ createdAt: -1 });
 
+// Text index for customer name searching
+tagNewSchema.index({ customer_name: 'text', project_name: 'text', notes: 'text' });
+
 // Compound indexes for common queries
-tagNewSchema.index({ customer_id: 1, tag_type: 1, status: 1 });
+tagNewSchema.index({ customer_name: 1, tag_type: 1, status: 1 });
 tagNewSchema.index({ tag_type: 1, status: 1, due_date: 1 });
 
 module.exports = mongoose.model('TagNew', tagNewSchema);
