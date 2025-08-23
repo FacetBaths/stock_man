@@ -532,6 +532,36 @@ export const useInventoryStore = defineStore('inventory', () => {
     fetchItems({ page: 1 })
   }
 
+  // Backward compatibility methods for existing views
+  const loadItems = async (params?: { 
+    in_stock_only?: boolean
+    product_type?: string
+    search?: string 
+    page?: number
+  }) => {
+    // Map old parameters to new fetchItems call
+    return await fetchItems({
+      ...params,
+      // Add any additional mapping if needed
+    })
+  }
+
+  const loadStats = async () => {
+    return await fetchStats()
+  }
+
+  // Computed property for backward compatibility
+  const itemsByType = computed(() => {
+    const result: Record<string, any[]> = {}
+    items.value.forEach(item => {
+      if (!result[item.product_type]) {
+        result[item.product_type] = []
+      }
+      result[item.product_type].push(item)
+    })
+    return result
+  })
+
   return {
     // State - Inventory
     inventory,
@@ -562,6 +592,7 @@ export const useInventoryStore = defineStore('inventory', () => {
     inventoryByStatus,
     inventoryStats,
     itemsByCondition,
+    itemsByType, // Backward compatibility
     
     // Actions - Inventory
     fetchInventory,
@@ -595,6 +626,10 @@ export const useInventoryStore = defineStore('inventory', () => {
     updateInventoryFilters,
     updateItemFilters,
     clearInventoryFilters,
-    clearItemFilters
+    clearItemFilters,
+    
+    // Backward compatibility methods
+    loadItems,
+    loadStats
   }
 })

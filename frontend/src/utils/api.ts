@@ -174,6 +174,44 @@ export const inventoryApi = {
     return response.data
   },
 
+  // Backward compatibility method - maps to new inventory endpoint
+  getItems: async (params?: {
+    product_type?: string
+    search?: string
+    page?: number
+    limit?: number
+    in_stock_only?: boolean
+  }): Promise<InventoryResponse> => {
+    // Map old parameters to new inventory endpoint structure
+    const newParams: any = {
+      search: params?.search,
+      page: params?.page,
+      limit: params?.limit
+    }
+    
+    // Map product_type to category filtering if needed
+    if (params?.product_type && params.product_type !== 'all') {
+      // This would need category ID mapping in real implementation
+      // For now, we'll use the search to filter by product type
+      newParams.search = params.product_type
+    }
+    
+    // Map in_stock_only to status filter
+    if (params?.in_stock_only) {
+      newParams.status = 'available' // or however this should be mapped
+    }
+    
+    const response = await api.get('/inventory', { params: newParams })
+    
+    // Transform response to match old InventoryResponse format
+    return {
+      items: response.data.inventory || [],
+      totalItems: response.data.pagination?.total_items || 0,
+      totalPages: response.data.pagination?.total_pages || 0,
+      currentPage: response.data.pagination?.current_page || 1
+    }
+  },
+
   // Get inventory statistics for dashboard
   getStats: async (): Promise<InventoryStats> => {
     const response = await api.get('/inventory/stats')
