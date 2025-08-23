@@ -2,11 +2,13 @@
 import { onMounted, ref, onUnmounted } from "vue";
 import { RouterView, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
+import UserProfile from "@/components/UserProfile.vue";
 import packageInfo from '../../package.json';
 
 const authStore = useAuthStore();
 const router = useRouter();
 const isDesktop = ref(window.innerWidth >= 768);
+const showProfileDialog = ref(false);
 
 const updateScreenSize = () => {
   isDesktop.value = window.innerWidth >= 768;
@@ -180,6 +182,17 @@ const getVersionTooltip = () => {
                 <q-item
                   clickable
                   v-close-popup
+                  @click="showProfileDialog = true"
+                  class="menu-item"
+                >
+                  <q-item-section avatar>
+                    <q-icon name="account_circle" class="text-primary" />
+                  </q-item-section>
+                  <q-item-section class="text-dark">Profile</q-item-section>
+                </q-item>
+                <q-item
+                  clickable
+                  v-close-popup
                   @click="handleLogout"
                   class="menu-item logout-item"
                 >
@@ -203,6 +216,21 @@ const getVersionTooltip = () => {
     <div v-else>
       <RouterView />
     </div>
+
+    <!-- Profile Dialog -->
+    <q-dialog v-model="showProfileDialog" maximized>
+      <q-card class="full-width full-height">
+        <q-card-section class="row items-center q-pb-none">
+          <div class="text-h6">User Profile</div>
+          <q-space />
+          <q-btn icon="close" flat round dense v-close-popup />
+        </q-card-section>
+        
+        <q-card-section class="q-pt-none full-height">
+          <UserProfile />
+        </q-card-section>
+      </q-card>
+    </q-dialog>
   </q-app>
 </template>
 

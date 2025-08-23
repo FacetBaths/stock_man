@@ -2,6 +2,9 @@ import axios from 'axios'
 import type { 
   LoginCredentials, 
   LoginResponse, 
+  TokenRefreshResponse,
+  UpdateProfileRequest,
+  ChangePasswordRequest,
   User, 
   InventoryResponse, 
   InventoryStats, 
@@ -36,23 +39,77 @@ const api = axios.create({
   }
 })
 
-// Request interceptor to add auth token
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
+let authStore: any = null
+
+// Helper to get auth store instance (lazy loaded to avoid circular dependency)
+const getAuthStore = async () => {
+  if (!authStore) {
+    const { useAuthStore } = await import('@/stores/auth')
+    authStore = useAuthStore()
   }
+  return authStore
+}
+
+// Request interceptor to add auth token with automatic refresh
+api.interceptors.request.use(async (config) => {
+  try {
+    const store = await getAuthStore()
+    const accessToken = await store.getValidAccessToken()
+    
+    if (accessToken) {
+      config.headers.Authorization = `Bearer ${accessToken}`
+    } else {
+      // Fallback to legacy token for backward compatibility
+      const legacyToken = localStorage.getItem('token')
+      if (legacyToken) {
+        config.headers.Authorization = `Bearer ${legacyToken}`
+      }
+    }
+  } catch (error) {
+    console.warn('Failed to get access token:', error)
+    // Continue with request without token
+  }
+  
   return config
+}, (error) => {
+  return Promise.reject(error)
 })
 
-// Response interceptor to handle auth errors
+// Response interceptor to handle auth errors and token refresh
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('token')
-      localStorage.removeItem('user')
-      window.location.href = '/#/login'
+      try {
+        const store = await getAuthStore()
+        
+        // If we have a refresh token, try to refresh
+        if (store.refreshToken) {
+          try {
+            await store.refreshTokens()
+            // Retry the original request with new token
+            const newToken = await store.getValidAccessToken()
+            if (newToken && error.config) {
+              error.config.headers.Authorization = `Bearer ${newToken}`
+              return api.request(error.config)
+            }
+          } catch (refreshError) {
+            console.error('Token refresh failed during request retry:', refreshError)
+            // Fall through to logout
+          }
+        }
+        
+        // If refresh fails or no refresh token, logout
+        await store.logout()
+        window.location.href = '/#/login'
+      } catch (storeError) {
+        // Fallback to legacy logout
+        localStorage.removeItem('accessToken')
+        localStorage.removeItem('refreshToken')
+        localStorage.removeItem('token')
+        localStorage.removeItem('user')
+        window.location.href = '/#/login'
+      }
     }
     return Promise.reject(error)
   }
@@ -64,12 +121,32 @@ export const authApi = {
     return response.data
   },
 
-  logout: async (): Promise<void> => {
-    await api.post('/auth/logout')
+  refreshToken: async (refreshToken: string): Promise<TokenRefreshResponse> => {
+    const response = await api.post('/auth/refresh', { refreshToken })
+    return response.data
+  },
+
+  logout: async (refreshToken?: string): Promise<void> => {
+    if (refreshToken) {
+      await api.post('/auth/logout', { refreshToken })
+    } else {
+      // Fallback for legacy logout
+      await api.post('/auth/logout')
+    }
   },
 
   getCurrentUser: async (): Promise<{ user: User }> => {
     const response = await api.get('/auth/me')
+    return response.data
+  },
+
+  updateProfile: async (profileData: UpdateProfileRequest): Promise<{ message: string; user: User }> => {
+    const response = await api.put('/auth/profile', profileData)
+    return response.data
+  },
+
+  changePassword: async (passwordData: ChangePasswordRequest): Promise<{ message: string }> => {
+    const response = await api.post('/auth/change-password', passwordData)
     return response.data
   }
 }

@@ -1,6 +1,23 @@
 export interface User {
+  id: string
   username: string
-  role: 'admin' | 'warehouse_manager' | 'sales_rep'
+  email: string
+  firstName: string
+  lastName: string
+  role: 'admin' | 'warehouse_manager' | 'sales_rep' | 'viewer'
+  isActive: boolean
+  isEmailVerified?: boolean
+  lastLogin?: string
+  fullName?: string
+  preferences?: {
+    theme: string
+    language: string
+    notifications: {
+      email: boolean
+      lowStock: boolean
+      systemAlerts: boolean
+    }
+  }
 }
 
 export interface LoginCredentials {
@@ -10,8 +27,30 @@ export interface LoginCredentials {
 
 export interface LoginResponse {
   message: string
-  token: string
+  accessToken: string
+  refreshToken: string
   user: User
+}
+
+export interface TokenRefreshRequest {
+  refreshToken: string
+}
+
+export interface TokenRefreshResponse {
+  message: string
+  accessToken: string
+  user: User
+}
+
+export interface UpdateProfileRequest {
+  firstName?: string
+  lastName?: string
+  email?: string
+}
+
+export interface ChangePasswordRequest {
+  currentPassword: string
+  newPassword: string
 }
 
 export interface WallDetails {
