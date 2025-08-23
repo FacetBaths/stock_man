@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import type { Item, WallDetails, ProductDetails } from '@/types'
 import { TAG_TYPES } from '@/types'
@@ -91,7 +91,7 @@ const formatTotalInvested = (item: Item) => {
   }).format(total)
 }
 
-const canViewCost = (authStore.user?.role === 'admin' || authStore.user?.role === 'warehouse_manager')
+const canViewCost = computed(() => authStore.hasPermission('view_cost') || authStore.hasRole(['admin', 'warehouse_manager']))
 
 // Helper function to get tag status badges
 const getTagStatusBadges = (item: Item) => {

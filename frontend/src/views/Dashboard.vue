@@ -174,7 +174,7 @@ const formatTotalValue = (value?: number) => {
   }).format(value)
 }
 
-const canViewCost = computed(() => authStore.user?.role === 'admin' || authStore.user?.role === 'warehouse_manager')
+const canViewCost = computed(() => authStore.hasPermission('view_cost') || authStore.hasRole(['admin', 'warehouse_manager']))
 
 onMounted(async () => {
   await loadItems()
