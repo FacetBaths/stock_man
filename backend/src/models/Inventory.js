@@ -353,4 +353,4 @@ inventorySchema.index({ total_value: -1 });
 // Compound indexes for complex queries
 inventorySchema.index({ is_active: 1, available_quantity: 1, reorder_point: 1 });
 
-module.exports = mongoose.model('Inventory', inventorySchema);
+module.exports = mongoose.model('Inventory', inventorySchema, 'inventory');

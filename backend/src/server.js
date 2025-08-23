@@ -15,6 +15,7 @@ const exportRoutes = require('./routes/export');
 // Import new routes for updated database architecture
 const categoryRoutes = require('./routes/categories');
 const usersRoutes = require('./routes/users');
+const unassignedItemsRoutes = require('./routes/unassigned-items');
 
 const app = express();
 
@@ -67,6 +68,7 @@ app.use('/api/export', exportRoutes);
 // New API routes for updated database architecture
 app.use('/api/categories', categoryRoutes);
 app.use('/api/users', usersRoutes);
+app.use('/api/unassigned-items', unassignedItemsRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
