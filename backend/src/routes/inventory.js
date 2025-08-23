@@ -3,7 +3,8 @@ const { body, validationResult } = require('express-validator');
 const Inventory = require('../models/Inventory');
 const SKUNew = require('../models/SKUNew');
 const TagNew = require('../models/TagNew');
-const { auth, requireWriteAccess } = require('../middleware/auth');
+const { auth, requireRole, requireWriteAccess } = require('../middleware/authEnhanced');
+const AuditLog = require('../models/AuditLog');
 
 const router = express.Router();
 
@@ -360,6 +361,26 @@ router.put('/:sku_id', [auth, requireWriteAccess, ...validateInventoryUpdate], a
       }
     });
 
+    // Log inventory update
+    await AuditLog.logEvent({
+      event_type: 'update',
+      entity_type: 'inventory',
+      entity_id: inventory._id,
+      user_id: req.user.id,
+      user_name: req.user.username,
+      action: 'Inventory Settings Updated',
+      description: `Updated inventory settings for SKU ${inventory.sku_id.sku_code}`,
+      changes: {
+        before: {},  // Could track original values if needed
+        after: updates
+      },
+      metadata: {
+        sku_code: inventory.sku_id.sku_code,
+        ip_address: req.ip || req.connection?.remoteAddress
+      },
+      category: 'business'
+    });
+
     res.json({
       message: 'Inventory updated successfully',
       inventory
@@ -413,6 +434,19 @@ router.post('/:sku_id/receive', [auth, requireWriteAccess], [
     await inventory.save();
     await inventory.populate('sku_id', 'sku_code description');
 
+    // Log stock receipt
+    await AuditLog.logInventoryMovement({
+      sku_id: inventory.sku_id._id,
+      item_id: null,
+      from_status: null,
+      to_status: 'available',
+      quantity: quantity,
+      user_id: req.user.id,
+      user_name: req.user.username,
+      reason: `Received new stock${cost ? ` at $${cost} per unit` : ''}`,
+      tag_id: null
+    });
+
     res.json({
       message: `Successfully received ${quantity} units`,
       inventory,
@@ -457,6 +491,19 @@ router.post('/:sku_id/move', [auth, requireWriteAccess, ...validateStockMovement
     inventory.moveInventory(from_status, to_status, quantity, updatedBy);
     await inventory.save();
     await inventory.populate('sku_id', 'sku_code description');
+
+    // Log inventory movement
+    await AuditLog.logInventoryMovement({
+      sku_id: inventory.sku_id._id,
+      item_id: null,
+      from_status: from_status,
+      to_status: to_status,
+      quantity: quantity,
+      user_id: req.user.id,
+      user_name: req.user.username,
+      reason: reason || 'Stock movement',
+      tag_id: null
+    });
 
     res.json({
       message: `Successfully moved ${quantity} units from ${from_status} to ${to_status}`,

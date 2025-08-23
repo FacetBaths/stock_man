@@ -7,7 +7,8 @@ const SKUNew = require('../models/SKUNew');
 const Category = require('../models/Category');
 const ItemNew = require('../models/ItemNew');
 const Inventory = require('../models/Inventory');
-const { auth, requireWriteAccess } = require('../middleware/auth');
+const { auth, requireRole, requireWriteAccess } = require('../middleware/authEnhanced');
+const AuditLog = require('../models/AuditLog');
 
 // Validation middleware for SKU creation/updates
 const validateSKU = [

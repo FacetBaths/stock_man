@@ -7,7 +7,8 @@ const TagNew = require('../models/TagNew');
 const ItemNew = require('../models/ItemNew');
 const SKUNew = require('../models/SKUNew');
 const Inventory = require('../models/Inventory');
-const { auth, requireWriteAccess } = require('../middleware/auth');
+const { auth, requireRole, requireWriteAccess } = require('../middleware/authEnhanced');
+const AuditLog = require('../models/AuditLog');
 
 // Validation middleware for tag creation/updates
 const validateTag = [
@@ -496,6 +497,19 @@ router.post('/',
       tagObj.remaining_quantity = tag.getTotalRemainingQuantity();
       tagObj.inventory_updates = inventoryUpdates;
 
+      // Log tag creation
+      await AuditLog.logTagEvent({
+        event_type: 'tag_created',
+        tag_id: tag._id,
+        customer_id: tag.customer_name,
+        user_id: req.user.id,
+        user_name: req.user.username,
+        tag_type: tag.tag_type,
+        items_count: tag.items.length,
+        total_quantity: tagObj.total_quantity,
+        reason: null
+      });
+
       res.status(201).json({ 
         message: 'Tag created successfully',
         tag: tagObj
@@ -732,6 +746,19 @@ router.post('/:id/cancel',
       const tagObj = tag.toObject();
       tagObj.total_quantity = tag.getTotalQuantity();
       tagObj.remaining_quantity = tag.getTotalRemainingQuantity();
+
+      // Log tag cancellation
+      await AuditLog.logTagEvent({
+        event_type: 'tag_cancelled',
+        tag_id: tag._id,
+        customer_id: tag.customer_name,
+        user_id: req.user.id,
+        user_name: req.user.username,
+        tag_type: tag.tag_type,
+        items_count: tag.items.length,
+        total_quantity: tagObj.total_quantity,
+        reason: req.body.reason
+      });
 
       res.json({
         message: 'Tag cancelled successfully',
