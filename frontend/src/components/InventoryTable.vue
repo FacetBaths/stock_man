@@ -179,6 +179,85 @@ const getPrimaryTagStatus = (item: Item) => {
   return { text: 'Available', color: 'positive', clickable: false }
 }
 
+// Helper function to get product type from the inventory data structure
+const getProductType = (item: any) => {
+  // Handle new inventory API structure (has nested sku and category)
+  if (item.sku && item.category) {
+    return item.category.name.toLowerCase() || 'unknown'
+  }
+  // Handle legacy item structure
+  if (item.product_type) {
+    return item.product_type
+  }
+  // Fallback
+  return 'unknown'
+}
+
+// Helper to get SKU code from either structure
+const getSKUCode = (item: any) => {
+  if (item.sku && item.sku.sku_code) {
+    return item.sku.sku_code
+  }
+  if (item.sku_code) {
+    return item.sku_code
+  }
+  return null
+}
+
+// Helper to get barcode from either structure
+const getBarcode = (item: any) => {
+  if (item.sku && item.sku.barcode) {
+    return item.sku.barcode
+  }
+  if (item.barcode) {
+    return item.barcode
+  }
+  return null
+}
+
+// Helper to format product details for new structure
+const formatProductDetailsNew = (item: any) => {
+  if (item.sku) {
+    return {
+      primary: item.sku.name || 'Unknown Product',
+      secondary: item.sku.description || ''
+    }
+  }
+  return formatProductDetails(item)
+}
+
+// Helper to get quantity from new structure
+const getQuantity = (item: any) => {
+  // New inventory structure uses total_quantity
+  if (item.total_quantity !== undefined) {
+    return item.total_quantity
+  }
+  // Legacy structure uses quantity
+  if (item.quantity !== undefined) {
+    return item.quantity
+  }
+  return 0
+}
+
+// Helper to get available quantity from new structure
+const getAvailableQuantityNew = (item: any) => {
+  if (item.available_quantity !== undefined) {
+    return item.available_quantity
+  }
+  return getQuantity(item)
+}
+
+// Helper to get cost from either structure
+const getCost = (item: any) => {
+  if (item.sku && item.sku.unit_cost !== undefined) {
+    return item.sku.unit_cost
+  }
+  if (item.cost !== undefined) {
+    return item.cost
+  }
+  return 0
+}
+
 // Handle tag status click
 const handleTagStatusClick = (item: Item) => {
   const status = getPrimaryTagStatus(item)
@@ -239,21 +318,21 @@ const handleTagStatusClick = (item: Item) => {
           v-for="item in items" 
           :key="item._id" 
           class="inventory-item"
-          :class="`type-${item.product_type}`"
+          :class="`type-${getProductType(item)}`"
           @click="canWrite ? emit('edit', item) : null"
           :style="{ cursor: canWrite ? 'pointer' : 'default' }"
         >
           <div class="item-row">
             <!-- Details Section -->
             <div class="item-section details-section">
-              <div class="product-type-banner" :class="`type-banner-${item.product_type}`">
-                {{ item.product_type.replace('_', ' ').toUpperCase() }}
+              <div class="product-type-banner" :class="`type-banner-${getProductType(item)}`">
+                {{ getProductType(item).replace('_', ' ').toUpperCase() }}
               </div>
               <div class="item-title">
-                {{ formatProductDetails(item).primary }}
+                {{ formatProductDetailsNew(item).primary }}
               </div>
-              <div v-if="formatProductDetails(item).secondary" class="item-subtitle">
-                {{ formatProductDetails(item).secondary }}
+              <div v-if="formatProductDetailsNew(item).secondary" class="item-subtitle">
+                {{ formatProductDetailsNew(item).secondary }}
               </div>
               <div v-if="item.notes" class="item-notes">
                 <q-icon name="note" size="xs" class="q-mr-xs" />{{ item.notes }}
@@ -262,20 +341,20 @@ const handleTagStatusClick = (item: Item) => {
 
             <!-- SKU Section -->
             <div class="item-section sku-section">
-              <div v-if="item.sku_code" class="sku-display">
+              <div v-if="getSKUCode(item)" class="sku-display">
                 <q-chip
                   color="purple"
                   text-color="white"
                   size="sm"
-                  :label="item.sku_code"
+                  :label="getSKUCode(item)"
                   class="sku-chip"
                   icon="qr_code"
                 >
                   <q-tooltip>SKU Code</q-tooltip>
                 </q-chip>
-                <div v-if="item.barcode" class="barcode-display">
+                <div v-if="getBarcode(item)" class="barcode-display">
                   <q-icon name="barcode_reader" size="xs" class="q-mr-xs" />
-                  <span class="barcode-text">{{ item.barcode }}</span>
+                  <span class="barcode-text">{{ getBarcode(item) }}</span>
                 </div>
               </div>
               <div v-else class="no-sku-display">
@@ -297,10 +376,10 @@ const handleTagStatusClick = (item: Item) => {
               <div class="quantity-display">
                 <!-- Total Quantity Badge -->
                 <q-badge 
-                  :color="getStockStatus(item.quantity).color" 
-                  :label="item.quantity.toString()"
+                  :color="getStockStatus(getQuantity(item)).color" 
+                  :label="getQuantity(item).toString()"
                   class="total-quantity-badge"
-                  :title="`Total: ${item.quantity} items`"
+                  :title="`Total: ${getQuantity(item)} items`"
                 />
                 
                 <!-- Reserved/Available Breakdown -->
@@ -334,19 +413,19 @@ const handleTagStatusClick = (item: Item) => {
 
             <!-- Cost Section (if can view cost) -->
             <div v-if="canViewCost" class="item-section cost-section">
-              <div class="cost-label">{{ formatCost(item.cost) }}</div>
+              <div class="cost-label">{{ formatCost(getCost(item)) }}</div>
               <div class="total-invested-label">
-                Total: {{ formatTotalInvested(item) }}
+                Total: {{ formatCost(getCost(item) * getQuantity(item)) }}
               </div>
             </div>
 
             <!-- Status & Info Section -->
             <div class="item-section status-section">
               <q-chip 
-                :color="getStockStatus(item.quantity).color"
+                :color="getStockStatus(getQuantity(item)).color"
                 text-color="white"
                 size="sm"
-                :label="getStockStatus(item.quantity).text"
+                :label="getStockStatus(getQuantity(item)).text"
                 class="status-chip"
               />
               <div class="location-label">
