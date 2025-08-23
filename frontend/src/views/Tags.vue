@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { useTagStore } from '@/stores/tag'
+import { useCategoryStore } from '@/stores/category'
 import { tagApi } from '@/utils/api'
 import type { Tag, Item } from '@/types'
 import { TAG_TYPES } from '@/types'
@@ -11,56 +13,42 @@ import ProductUsedDialog from '@/components/ProductUsedDialog.vue'
 import { useQuasar } from 'quasar'
 
 const authStore = useAuthStore()
+const tagStore = useTagStore()
+const categoryStore = useCategoryStore()
 const $q = useQuasar()
 
-const tags = ref<Tag[]>([])
-const isLoading = ref(false)
-const error = ref<string | null>(null)
+// Use store state instead of local state
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const tagToEdit = ref<Tag | null>(null)
 const showSendForInstallDialog = ref(false)
 const showProductUsedDialog = ref(false)
 const selectedTags = ref<Tag[]>([])
-const customers = ref<Array<{
-  name: string
-  tag_count: number
-  total_quantity: number
-  tag_types: string[]
-}>>([])
 
-// Stats
-const stats = ref<{
-  totalActiveTags: number
-  uniqueCustomers: number
-  byTagType: Array<{ _id: string; count: number; totalQuantity: number }>
-} | null>(null)
-
-// Filters
-const statusFilter = ref('active')
-const tagTypeFilter = ref('all')
-const customerFilter = ref('')
-
-const filteredTags = computed(() => {
-  let filtered = tags.value
-
-  if (statusFilter.value !== 'all') {
-    filtered = filtered.filter(tag => tag.status === statusFilter.value)
+// Filters - sync with store filters
+const statusFilter = computed({
+  get: () => tagStore.filters.status || 'active',
+  set: (value) => {
+    tagStore.updateFilters({ status: value === 'all' ? '' : value })
   }
-
-  if (tagTypeFilter.value !== 'all') {
-    filtered = filtered.filter(tag => tag.tag_type === tagTypeFilter.value)
-  }
-
-  if (customerFilter.value.trim()) {
-    const search = customerFilter.value.toLowerCase().trim()
-    filtered = filtered.filter(tag => 
-      tag.customer_name.toLowerCase().includes(search)
-    )
-  }
-
-  return filtered
 })
+
+const tagTypeFilter = computed({
+  get: () => tagStore.filters.tag_type || 'all',
+  set: (value) => {
+    tagStore.updateFilters({ tag_type: value === 'all' ? '' : value })
+  }
+})
+
+const customerFilter = computed({
+  get: () => tagStore.filters.customer_name || '',
+  set: (value) => {
+    tagStore.updateFilters({ customer_name: value.trim() })
+  }
+})
+
+// Use store computed properties
+const filteredTags = computed(() => tagStore.filteredTags)
 
 const getTagTypeColor = (tagType: string) => {
   const type = TAG_TYPES.find(t => t.value === tagType)
@@ -76,31 +64,13 @@ const getStatusColor = (status: string) => {
   }
 }
 
+// Updated methods to use store
 const loadTags = async () => {
-  try {
-    isLoading.value = true
-    error.value = null
-    const response = await tagApi.getTags({
-      status: statusFilter.value === 'all' ? undefined : statusFilter.value,
-      tag_type: tagTypeFilter.value === 'all' ? undefined : tagTypeFilter.value,
-      customer_name: customerFilter.value.trim() || undefined
-    })
-    tags.value = response.tags
-  } catch (err: any) {
-    error.value = err.message || 'Failed to load tags'
-    console.error('Load tags error:', err)
-  } finally {
-    isLoading.value = false
-  }
+  await tagStore.fetchTags()
 }
 
 const loadStats = async () => {
-  try {
-    const response = await tagApi.getStats()
-    stats.value = response
-  } catch (err: any) {
-    console.error('Load stats error:', err)
-  }
+  await tagStore.fetchStats()
 }
 
 const handleEditTag = (tag: Tag) => {
@@ -110,41 +80,28 @@ const handleEditTag = (tag: Tag) => {
 
 const handleCreateSuccess = async () => {
   showCreateModal.value = false
-  await loadTags()
-  await loadStats()
+  await Promise.all([loadTags(), loadStats()])
 }
 
 const handleEditSuccess = async () => {
   showEditModal.value = false
   tagToEdit.value = null
-  await loadTags()
-  await loadStats()
+  await Promise.all([loadTags(), loadStats()])
 }
 
 const handleDeleteTag = async (tag: Tag) => {
   if (confirm(`Are you sure you want to delete tag for ${tag.customer_name}?`)) {
     try {
-      await tagApi.deleteTag(tag._id)
-      await loadTags()
-      await loadStats()
+      await tagStore.deleteTag(tag._id)
+      await Promise.all([loadTags(), loadStats()])
     } catch (err: any) {
-      error.value = err.message || 'Failed to delete tag'
+      tagStore.error = err.message || 'Failed to delete tag'
     }
   }
 }
 
 const clearError = () => {
-  error.value = null
-}
-
-// Load customers for Send for Install
-const loadCustomers = async () => {
-  try {
-    const response = await tagApi.getCustomers()
-    customers.value = response.customers
-  } catch (err: any) {
-    console.error('Load customers error:', err)
-  }
+  tagStore.clearError()
 }
 
 // Send for Install workflow
@@ -277,13 +234,13 @@ const tableColumns = [
               Track and manage inventory tags for customers, projects, and reservations
             </p>
           </div>
-          <div class="col-auto" v-if="stats">
+          <div class="col-auto" v-if="tagStore.stats">
             <div class="row q-gutter-md">
               <q-chip color="primary" text-color="white" icon="local_offer">
-                {{ stats.totalActiveTags }} Active Tags
+                {{ tagStore.stats.totalActiveTags }} Active Tags
               </q-chip>
               <q-chip color="positive" text-color="white" icon="people">
-                {{ stats.uniqueCustomers }} Customers
+                {{ tagStore.stats.uniqueCustomers }} Customers
               </q-chip>
             </div>
           </div>

@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useInventoryStore } from '@/stores/inventory'
+import { useCategoryStore } from '@/stores/category'
 import { PRODUCT_TYPES } from '@/types'
 import InventoryTable from '@/components/InventoryTable.vue'
 import AddItemModal from '@/components/AddItemModal.vue'
@@ -11,6 +12,7 @@ import type { Item } from '@/types'
 
 const authStore = useAuthStore()
 const inventoryStore = useInventoryStore()
+const categoryStore = useCategoryStore()
 
 const activeTab = ref('all')
 const searchQuery = ref('')
@@ -85,9 +87,22 @@ const handleInStockToggle = () => {
   loadItems()
 }
 
+// Updated methods for new store architecture
 const loadItems = async () => {
-  await inventoryStore.loadItems({
-    in_stock_only: showInStockOnly.value
+  // Use the new fetchItems method for individual items
+  await inventoryStore.fetchItems({
+    filters: {
+      ...inventoryStore.itemFilters,
+      in_stock_only: showInStockOnly.value
+    }
+  })
+}
+
+const loadInventory = async () => {
+  // Load aggregated inventory data
+  await inventoryStore.fetchInventory({
+    search: searchQuery.value.trim(),
+    status: showInStockOnly.value ? 'adequate' : 'all'
   })
 }
 
@@ -99,7 +114,6 @@ const handleQuickScan = () => {
   showQuickScanModal.value = true
 }
 
-
 const handleEditItem = (item: Item) => {
   itemToEdit.value = item
   showEditModal.value = true
@@ -109,6 +123,7 @@ const handleDeleteItem = async (item: Item) => {
   if (confirm(`Are you sure you want to delete this ${item.product_type} item?`)) {
     try {
       await inventoryStore.deleteItem(item._id)
+      await loadItems() // Refresh after delete
     } catch (error) {
       console.error('Delete error:', error)
     }
@@ -117,23 +132,26 @@ const handleDeleteItem = async (item: Item) => {
 
 const handleAddSuccess = () => {
   showAddModal.value = false
+  loadItems() // Refresh after add
 }
 
 const handleEditSuccess = () => {
   showEditModal.value = false
   itemToEdit.value = null
+  loadItems() // Refresh after edit
 }
-
 
 const handleQuickScanSuccess = () => {
   showQuickScanModal.value = false
-  // Reload inventory data after batch processing
-  loadItems()
+  loadItems() // Refresh after batch processing
 }
 
 onMounted(async () => {
-  await loadItems()
-  await inventoryStore.loadStats()
+  await Promise.all([
+    categoryStore.fetchCategories(), // Load categories for filtering
+    loadItems(),
+    inventoryStore.fetchStats()
+  ])
 })
 
 // Watch for filter changes

@@ -443,6 +443,8 @@ import { ref, onMounted, computed } from 'vue'
 import { useQuasar } from 'quasar'
 import { useAuthStore } from '@/stores/auth'
 import { useSKUStore } from '@/stores/sku'
+import { useCategoryStore } from '@/stores/category'
+import { useInventoryStore } from '@/stores/inventory'
 import { inventoryApi } from '@/utils/api'
 import { PRODUCT_TYPES, type SKU, type Item } from '@/types'
 import StockStatusChip from '@/components/StockStatusChip.vue'
@@ -454,6 +456,8 @@ import ExportDialog from '@/components/ExportDialog.vue'
 const $q = useQuasar()
 const authStore = useAuthStore()
 const skuStore = useSKUStore()
+const categoryStore = useCategoryStore()
+const inventoryStore = useInventoryStore()
 
 // State
 const selectedSKUs = ref<SKU[]>([])
@@ -590,16 +594,25 @@ const getStatusColor = (status: string) => {
   return colors[status] || 'grey'
 }
 
-const refreshData = () => {
-  skuStore.fetchSKUs()
+const refreshData = async () => {
+  await skuStore.fetchSKUs({
+    include_inventory: true, // Include inventory data for stock status
+    ...skuStore.filters
+  })
 }
 
-const applyFilters = () => {
-  skuStore.updateFilters(skuStore.filters)
+const applyFilters = async () => {
+  await skuStore.fetchSKUs({
+    include_inventory: true,
+    ...skuStore.filters
+  })
 }
 
-const clearFilters = () => {
+const clearFilters = async () => {
   skuStore.clearFilters()
+  await skuStore.fetchSKUs({
+    include_inventory: true
+  })
 }
 
 const onTableRequest = (props: any) => {
