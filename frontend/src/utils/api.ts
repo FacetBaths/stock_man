@@ -26,7 +26,14 @@ import type {
   CreateMissingRequest,
   TagAssignmentRequest,
   LinkExistingRequest,
-  ExportOptions
+  ExportOptions,
+  Category,
+  CategoryResponse,
+  CreateCategoryRequest,
+  UpdateCategoryRequest,
+  UseItemsRequest,
+  FulfillTagRequest,
+  Inventory
 } from '@/types'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
@@ -151,67 +158,228 @@ export const authApi = {
   }
 }
 
+// New architecture: Inventory API for aggregated inventory data
 export const inventoryApi = {
-  getItems: async (params?: {
-    product_type?: string
+  // Get inventory overview with filtering and pagination
+  getInventory: async (params?: {
+    category_id?: string
     search?: string
+    status?: 'all' | 'low_stock' | 'out_of_stock' | 'overstock' | 'needs_reorder'
     page?: number
     limit?: number
-    in_stock_only?: boolean
-  }): Promise<InventoryResponse> => {
+    sort_by?: string
+    sort_order?: 'asc' | 'desc'
+  }) => {
     const response = await api.get('/inventory', { params })
     return response.data
   },
 
+  // Get inventory statistics for dashboard
   getStats: async (): Promise<InventoryStats> => {
     const response = await api.get('/inventory/stats')
     return response.data
   },
 
-  createItem: async (item: CreateItemRequest): Promise<{ message: string; item: Item }> => {
-    const response = await api.post('/inventory', item)
+  // Get detailed inventory for specific SKU
+  getSKUInventory: async (skuId: string) => {
+    const response = await api.get(`/inventory/${skuId}`)
     return response.data
   },
 
-  updateItem: async (id: string, updates: UpdateItemRequest): Promise<{ message: string; item: Item }> => {
-    const response = await api.put(`/inventory/${id}`, updates)
+  // Update inventory settings/thresholds
+  updateInventorySettings: async (skuId: string, updates: {
+    available?: number
+    reserved?: number
+    broken?: number
+    loaned?: number
+    minimum_stock_level?: number
+    reorder_point?: number
+    maximum_stock_level?: number
+    primary_location?: string
+    average_cost?: number
+    locations?: Array<{ location_name: string; quantity: number }>
+  }) => {
+    const response = await api.put(`/inventory/${skuId}`, updates)
     return response.data
   },
 
-  deleteItem: async (id: string): Promise<{ message: string }> => {
-    const response = await api.delete(`/inventory/${id}`)
-    return response.data
-  },
-
-  batchUpdateInventory: async (data: {
-    scanned_items: Array<{ barcode: string; quantity: number; sku_id?: string }>
+  // Receive new stock
+  receiveStock: async (skuId: string, data: {
+    quantity: number
+    cost?: number
     location?: string
     notes?: string
-  }): Promise<{
-    message: string
-    summary: {
-      total: number
-      updated: number
-      created: number
-      failed: number
-    }
-    results: {
-      updated: Array<{ barcode: string; item_id: string; previous_quantity: number; new_quantity: number }>
-      created: Array<{ barcode: string; item: Item }>
-      failed: Array<{ barcode: string; error: string }>
-    }
-  }> => {
-    const response = await api.post('/barcode/update-inventory', data)
+  }) => {
+    const response = await api.post(`/inventory/${skuId}/receive`, data)
+    return response.data
+  },
+
+  // Move inventory between statuses
+  moveStock: async (skuId: string, data: {
+    quantity: number
+    from_status: string
+    to_status: string
+    reason?: string
+    notes?: string
+  }) => {
+    const response = await api.post(`/inventory/${skuId}/move`, data)
+    return response.data
+  },
+
+  // Remove inventory (damage, theft, etc.)
+  removeStock: async (skuId: string, data: {
+    quantity: number
+    from_status: string
+    reason: string
+    notes?: string
+  }) => {
+    const response = await api.post(`/inventory/${skuId}/remove`, data)
+    return response.data
+  },
+
+  // Get alerts
+  getLowStockAlerts: async () => {
+    const response = await api.get('/inventory/alerts/low-stock')
+    return response.data
+  },
+
+  getOutOfStockAlerts: async () => {
+    const response = await api.get('/inventory/alerts/out-of-stock')
+    return response.data
+  },
+
+  getReorderAlerts: async () => {
+    const response = await api.get('/inventory/alerts/reorder')
+    return response.data
+  },
+
+  // Reports
+  getValuationReport: async (categoryId?: string) => {
+    const response = await api.get('/inventory/reports/valuation', {
+      params: categoryId ? { category_id: categoryId } : undefined
+    })
+    return response.data
+  },
+
+  getMovementReport: async (params?: {
+    days?: number
+    category_id?: string
+    sku_id?: string
+  }) => {
+    const response = await api.get('/inventory/reports/movement', { params })
+    return response.data
+  },
+
+  // Sync inventory from existing data
+  syncInventory: async (forceRebuild = false) => {
+    const response = await api.post('/inventory/sync', { force_rebuild: forceRebuild })
     return response.data
   }
 }
 
+// New architecture: Items API for individual item instances
+export const itemsApi = {
+  // Get items with filtering
+  getItems: async (params?: {
+    sku_id?: string
+    condition?: string
+    location?: string
+    search?: string
+    page?: number
+    limit?: number
+  }) => {
+    const response = await api.get('/items', { params })
+    return response.data
+  },
+
+  // Get single item
+  getItem: async (id: string) => {
+    const response = await api.get(`/items/${id}`)
+    return response.data
+  },
+
+  // Create new item instance
+  createItem: async (item: CreateItemRequest) => {
+    const response = await api.post('/items', item)
+    return response.data
+  },
+
+  // Update item
+  updateItem: async (id: string, updates: UpdateItemRequest) => {
+    const response = await api.put(`/items/${id}`, updates)
+    return response.data
+  },
+
+  // Delete item
+  deleteItem: async (id: string) => {
+    const response = await api.delete(`/items/${id}`)
+    return response.data
+  },
+
+  // Use items (track usage)
+  useItems: async (id: string, data: UseItemsRequest) => {
+    const response = await api.post(`/items/${id}/use`, data)
+    return response.data
+  }
+}
+
+// New architecture: Category API
+export const categoryApi = {
+  // Get all categories with optional filtering
+  getCategories: async (params?: {
+    active_only?: boolean
+    parent_id?: string | null
+    include_children?: boolean
+    search?: string
+  }): Promise<CategoryResponse> => {
+    const response = await api.get('/categories', { params })
+    return response.data
+  },
+
+  // Get single category with stats
+  getCategory: async (id: string): Promise<{ category: Category }> => {
+    const response = await api.get(`/categories/${id}`)
+    return response.data
+  },
+
+  // Create new category
+  createCategory: async (category: CreateCategoryRequest): Promise<{ message: string; category: Category }> => {
+    const response = await api.post('/categories', category)
+    return response.data
+  },
+
+  // Update category
+  updateCategory: async (id: string, updates: UpdateCategoryRequest): Promise<{ message: string; category: Category }> => {
+    const response = await api.put(`/categories/${id}`, updates)
+    return response.data
+  },
+
+  // Delete category
+  deleteCategory: async (id: string): Promise<{ message: string }> => {
+    const response = await api.delete(`/categories/${id}`)
+    return response.data
+  },
+
+  // Get category hierarchy tree
+  getHierarchy: async () => {
+    const response = await api.get('/categories/hierarchy/tree')
+    return response.data
+  }
+}
+
+// Updated Tag API for new architecture
 export const tagApi = {
+  // Get tags with enhanced filtering
   getTags: async (params?: {
-    item_id?: string
     customer_name?: string
-    status?: string
-    tag_type?: string
+    tag_type?: 'reserved' | 'broken' | 'imperfect' | 'loaned' | 'stock'
+    status?: 'active' | 'fulfilled' | 'cancelled'
+    project_name?: string
+    search?: string
+    include_items?: boolean
+    overdue_only?: boolean
+    sort_by?: 'created_at' | 'due_date' | 'customer_name' | 'project_name'
+    sort_order?: 'asc' | 'desc'
     page?: number
     limit?: number
   }): Promise<TagResponse> => {
@@ -219,163 +387,132 @@ export const tagApi = {
     return response.data
   },
 
-  getItemTags: async (itemId: string): Promise<ItemTagsResponse> => {
-    const response = await api.get(`/tags/item/${itemId}`)
+  // Get single tag with details
+  getTag: async (id: string, includeItems = false): Promise<{ tag: Tag }> => {
+    const response = await api.get(`/tags/${id}`, {
+      params: { include_items: includeItems }
+    })
     return response.data
   },
 
+  // Create new tag
   createTag: async (tag: CreateTagRequest): Promise<{ message: string; tag: Tag }> => {
     const response = await api.post('/tags', tag)
     return response.data
   },
 
+  // Update tag
   updateTag: async (id: string, updates: UpdateTagRequest): Promise<{ message: string; tag: Tag }> => {
     const response = await api.put(`/tags/${id}`, updates)
     return response.data
   },
 
+  // Delete tag
   deleteTag: async (id: string): Promise<{ message: string }> => {
     const response = await api.delete(`/tags/${id}`)
     return response.data
   },
 
-  getStats: async (): Promise<{
-    totalActiveTags: number
-    uniqueCustomers: number
-    byTagType: Array<{ _id: string; count: number; totalQuantity: number }>
-  }> => {
+  // Partially fulfill tag items
+  fulfillTag: async (id: string, fulfillmentItems: Array<{
+    item_id: string
+    quantity_fulfilled: number
+  }>): Promise<{ message: string; tag: Tag }> => {
+    const response = await api.post(`/tags/${id}/fulfill`, {
+      fulfillment_items: fulfillmentItems
+    })
+    return response.data
+  },
+
+  // Get tag statistics
+  getStats: async () => {
     const response = await api.get('/tags/stats')
     return response.data
   },
 
-  createBatchTags: async (data: {
-    tag_type: string
-    customer_name: string
-    notes?: string
-    due_date?: string
-    tags: Array<{ item_id: string; quantity: number }>
-  }): Promise<{ message: string; tags: Tag[] }> => {
-    const response = await api.post('/tags/batch', data)
-    return response.data
-  },
-
-  lookupBySku: async (skuCode: string): Promise<{ item: Item & { availableQuantity: number }; sku: SKU }> => {
-    const response = await api.get(`/tags/lookup-sku/${encodeURIComponent(skuCode)}`)
-    return response.data
-  },
-
-  sendForInstall: async (data: {
-    customer_name: string
-    scanned_barcodes?: string[]
-    tag_ids?: string[]
-    notes?: string
-  }): Promise<{
-    message: string
-    customer_name: string
-    results: {
-      fulfilled: Tag[]
-      failed: Array<{ barcode?: string; tag_id?: string; error: string }>
-      inventory_reduced: Array<{
-        item_id: string
-        previous_quantity: number
-        new_quantity: number
-        reduced_by: number
-      }>
-    }
-  }> => {
-    const response = await api.post('/tags/send-for-install', data)
-    return response.data
-  },
-
-  markUsed: async (data: {
-    tag_ids: string[]
-    notes?: string
-  }): Promise<{
-    message: string
-    results: {
-      fulfilled: Tag[]
-      failed: Array<{ tag_id: string; error: string }>
-      inventory_reduced: Array<{
-        item_id: string
-        previous_quantity: number
-        new_quantity: number
-        reduced_by: number
-      }>
-    }
-  }> => {
-    const response = await api.post('/tags/mark-used', data)
-    return response.data
-  },
-
-  getCustomers: async (): Promise<{
-    customers: Array<{
-      name: string
-      tag_count: number
-      total_quantity: number
-      tag_types: string[]
-      date_range: {
-        oldest: string
-        newest: string
-      }
-    }>
-  }> => {
+  // Get all customers from tags
+  getCustomers: async () => {
     const response = await api.get('/tags/customers')
     return response.data
   }
 }
 
+// Updated SKU API for new architecture
 export const skuApi = {
+  // Get SKUs with enhanced filtering
   getSKUs: async (params?: {
-    product_type?: string
-    status?: string
+    category_id?: string
+    is_active?: boolean
+    is_lendable?: boolean
     search?: string
+    sort_by?: 'sku_code' | 'name' | 'unit_cost' | 'created_at'
+    sort_order?: 'asc' | 'desc'
+    include_inventory?: boolean
     page?: number
     limit?: number
-  }): Promise<SKUResponse> => {
+  }): Promise<{ 
+    skus: SKU[]
+    pagination: {
+      currentPage: number
+      totalPages: number
+      totalSkus: number
+      limit: number
+      hasNextPage: boolean
+      hasPrevPage: boolean
+    }
+  }> => {
     const response = await api.get('/skus', { params })
     return response.data
   },
 
-  getSKU: async (id: string): Promise<SKU> => {
-    const response = await api.get(`/skus/${id}`)
+  // Get single SKU with optional inventory and items
+  getSKU: async (id: string, params?: {
+    include_inventory?: boolean
+    include_items?: boolean
+  }): Promise<{ sku: SKU }> => {
+    const response = await api.get(`/skus/${id}`, { params })
     return response.data
   },
 
-  createSKU: async (sku: CreateSKURequest): Promise<SKU> => {
+  // Create new SKU
+  createSKU: async (sku: CreateSKURequest): Promise<{ message: string; sku: SKU }> => {
     const response = await api.post('/skus', sku)
     return response.data
   },
 
-  updateSKU: async (id: string, updates: UpdateSKURequest): Promise<SKU> => {
+  // Update SKU
+  updateSKU: async (id: string, updates: UpdateSKURequest): Promise<{ message: string; sku: SKU }> => {
     const response = await api.put(`/skus/${id}`, updates)
     return response.data
   },
 
+  // Delete SKU
   deleteSKU: async (id: string): Promise<{ message: string }> => {
     const response = await api.delete(`/skus/${id}`)
     return response.data
   },
 
+  // Lookup SKU by code (for barcode scanning)
+  lookupSKU: async (skuCode: string): Promise<{ sku: SKU }> => {
+    const response = await api.get(`/skus/lookup/${encodeURIComponent(skuCode)}`)
+    return response.data
+  },
+
+  // Legacy methods for backward compatibility
   generateSKUCode: async (data: {
-    product_type: string
-    product_details: string
-    template?: string
+    category_id: string
+    manufacturer_model?: string
   }): Promise<{ sku_code: string }> => {
     const response = await api.post('/skus/generate', data)
     return response.data
   },
 
-  addCost: async (id: string, costData: AddCostRequest): Promise<SKU> => {
+  addCost: async (id: string, costData: AddCostRequest): Promise<{ message: string; sku: SKU }> => {
     const response = await api.post(`/skus/${id}/cost`, costData)
     return response.data
   },
 
-  getProductsForSKU: async (productType: string): Promise<{ products: any[] }> => {
-    const response = await api.get(`/skus/products/${productType}`)
-    return response.data
-  },
-
-  searchByBarcode: async (barcode: string): Promise<SKU> => {
+  searchByBarcode: async (barcode: string): Promise<{ sku: SKU }> => {
     const response = await api.get(`/skus/search/barcode/${encodeURIComponent(barcode)}`)
     return response.data
   }

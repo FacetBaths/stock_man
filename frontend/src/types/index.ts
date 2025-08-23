@@ -53,45 +53,188 @@ export interface ChangePasswordRequest {
   newPassword: string
 }
 
-export interface WallDetails {
-  product_line: string
-  color_name: string
-  dimensions: string
-  finish: string
-}
-
-export interface ProductDetails {
-  name: string
-  brand?: string
-  model?: string
-  color?: string
-  dimensions?: string
-  finish?: string
-  description?: string
-  specifications?: Record<string, string>
-}
-
-export interface Item {
+// New Category system for hierarchical organization
+export interface Category {
   _id: string
-  product_type: 'wall' | 'toilet' | 'base' | 'tub' | 'vanity' | 'shower_door' | 'raw_material' | 'accessory' | 'miscellaneous'
-  product_details: WallDetails | ProductDetails
-  quantity: number
-  location?: string
-  notes?: string
-  cost?: number
-  sku_id?: string | SKU
-  stock_thresholds?: StockThresholds
-  stockStatus?: StockStatus
+  name: string
+  slug: string
+  description?: string
+  parent_id?: string | Category
+  children?: Category[]
+  is_tool_category: boolean
+  status: 'active' | 'inactive'
+  sort_order: number
+  created_by: string
+  last_updated_by: string
   createdAt: string
   updatedAt: string
-  tagSummary?: {
+}
+
+// Enhanced SKU model - Single source of truth
+export interface SKU {
+  _id: string
+  sku_code: string
+  category_id: string | Category
+  
+  // Core product information
+  name: string
+  description?: string
+  brand?: string
+  model?: string
+  
+  // Category-specific details (polymorphic)
+  details: {
+    // For walls:
+    product_line?: string
+    color_name?: string
+    dimensions?: string
+    finish?: string
+    
+    // For tools:
+    tool_type?: string
+    manufacturer?: string
+    serial_number?: string
+    voltage?: string
+    features?: string[]
+    
+    // Common fields:
+    weight?: number
+    specifications?: Record<string, any>
+  }
+  
+  // Costing information
+  unit_cost: number
+  currency: string
+  cost_history: Array<{
+    cost: number
+    effective_date: string
+    updated_by: string
+    notes?: string
+    createdAt: string
+    updatedAt: string
+  }>
+  
+  // Status and metadata
+  status: 'active' | 'discontinued' | 'pending'
+  barcode?: string
+  
+  supplier_info: {
+    supplier_name: string
+    supplier_sku: string
+    lead_time_days: number
+  }
+  
+  images: string[]
+  
+  stock_thresholds: {
+    understocked: number
+    overstocked: number
+  }
+  
+  // Bundle configuration
+  is_bundle: boolean
+  bundle_items: Array<{
+    sku_id: string | SKU
+    quantity: number
+    notes?: string
+  }>
+  
+  created_by: string
+  last_updated_by: string
+  createdAt: string
+  updatedAt: string
+  
+  // Computed fields from backend
+  inventory?: Inventory
+  total_quantity?: number
+  available_quantity?: number
+  stock_status?: StockStatus
+}
+
+// New Item model - Individual instances only
+export interface Item {
+  _id: string
+  sku_id: string | SKU
+  
+  // Instance-specific information only
+  serial_number?: string
+  condition: 'new' | 'used' | 'damaged' | 'refurbished'
+  location: string
+  notes?: string
+  
+  // Purchase information (instance-specific)
+  purchase_date?: string
+  purchase_price?: number
+  batch_number?: string
+  
+  // Quantity for this specific item instance
+  quantity: number
+  
+  // Usage history tracking
+  usage_history: Array<{
+    quantity_used: number
+    used_for: string
+    location?: string
+    project_name?: string
+    customer_name?: string
+    notes?: string
+    used_by: string
+    used_date: string
+  }>
+  
+  created_by: string
+  last_updated_by: string
+  createdAt: string
+  updatedAt: string
+}
+
+// New Inventory model - Real-time aggregation
+export interface Inventory {
+  _id: string
+  sku_id: string | SKU
+  
+  // Real-time quantity tracking by status
+  quantities: {
+    total: number
+    available: number
     reserved: number
     broken: number
-    imperfect: number
-    stock: number
-    totalTagged: number
+    loaned: number
   }
-  tags?: Tag[]
+  
+  // Location tracking
+  locations: Array<{
+    location: string
+    quantity: number
+  }>
+  
+  // Financial information
+  valuation: {
+    total_value: number
+    average_cost: number
+    last_cost: number
+  }
+  
+  // Status flags
+  status_flags: {
+    is_low_stock: boolean
+    is_out_of_stock: boolean
+    is_overstocked: boolean
+    has_reservations: boolean
+    has_broken_items: boolean
+  }
+  
+  // Last activity tracking
+  last_movement: {
+    type: 'received' | 'reserved' | 'used' | 'transferred'
+    quantity: number
+    date: string
+    user: string
+    notes?: string
+  }
+  
+  last_updated: string
+  updatedAt: string
 }
 
 export interface InventoryStats {
@@ -133,56 +276,204 @@ export interface InventoryResponse {
   currentPage: number
 }
 
-export interface CreateItemRequest {
-  product_type: string
-  product_details: WallDetails | ProductDetails
-  quantity: number
-  location?: string
-  notes?: string
-  cost?: number
-  sku_id?: string
+// New architecture request/response models
+export interface CreateSKURequest {
+  sku_code: string
+  category_id: string
+  name: string
+  description?: string
+  brand?: string
+  model?: string
+  details: {
+    product_line?: string
+    color_name?: string
+    dimensions?: string
+    finish?: string
+    tool_type?: string
+    manufacturer?: string
+    serial_number?: string
+    voltage?: string
+    features?: string[]
+    weight?: number
+    specifications?: Record<string, any>
+  }
+  unit_cost?: number
+  currency?: string
   barcode?: string
+  supplier_info?: {
+    supplier_name: string
+    supplier_sku: string
+    lead_time_days: number
+  }
+  images?: string[]
+  stock_thresholds?: {
+    understocked: number
+    overstocked: number
+  }
+}
+
+export interface UpdateSKURequest {
+  sku_code?: string
+  category_id?: string
+  name?: string
+  description?: string
+  brand?: string
+  model?: string
+  details?: Partial<{
+    product_line?: string
+    color_name?: string
+    dimensions?: string
+    finish?: string
+    tool_type?: string
+    manufacturer?: string
+    serial_number?: string
+    voltage?: string
+    features?: string[]
+    weight?: number
+    specifications?: Record<string, any>
+  }>
+  unit_cost?: number
+  currency?: string
+  status?: 'active' | 'discontinued' | 'pending'
+  barcode?: string
+  supplier_info?: Partial<{
+    supplier_name: string
+    supplier_sku: string
+    lead_time_days: number
+  }>
+  images?: string[]
+  stock_thresholds?: Partial<{
+    understocked: number
+    overstocked: number
+  }>
+}
+
+export interface CreateItemRequest {
+  sku_id: string
+  serial_number?: string
+  condition?: 'new' | 'used' | 'damaged' | 'refurbished'
+  location: string
+  notes?: string
+  purchase_date?: string
+  purchase_price?: number
+  batch_number?: string
+  quantity: number
 }
 
 export interface UpdateItemRequest {
-  quantity?: number
+  serial_number?: string
+  condition?: 'new' | 'used' | 'damaged' | 'refurbished'
   location?: string
   notes?: string
-  cost?: number
-  product_details?: Partial<WallDetails | ProductDetails>
-  sku_id?: string | null
+  purchase_date?: string
+  purchase_price?: number
+  batch_number?: string
+  quantity?: number
 }
 
+// Use items functionality
+export interface UseItemsRequest {
+  quantity_used: number
+  used_for: string
+  location?: string
+  project_name?: string
+  customer_name?: string
+  notes?: string
+}
+
+// Category management
+export interface CreateCategoryRequest {
+  name: string
+  slug?: string
+  description?: string
+  parent_id?: string
+  is_tool_category?: boolean
+  sort_order?: number
+}
+
+export interface UpdateCategoryRequest {
+  name?: string
+  slug?: string
+  description?: string
+  parent_id?: string
+  is_tool_category?: boolean
+  status?: 'active' | 'inactive'
+  sort_order?: number
+}
+
+// New Tag model with proper relationships
 export interface Tag {
   _id: string
-  item_id: string | Item
   customer_name: string
-  quantity: number
-  tag_type: 'stock' | 'reserved' | 'broken' | 'imperfect' | 'expected' | 'partial_shipment' | 'backorder'
-  notes?: string
-  created_by: string
+  tag_type: 'reserved' | 'broken' | 'imperfect' | 'loaned' | 'stock'
   status: 'active' | 'fulfilled' | 'cancelled'
+  
+  // Items in this tag (proper item references)
+  items: Array<{
+    item_id: string | Item
+    quantity: number
+    remaining_quantity: number
+    notes?: string
+  }>
+  
+  // Metadata
+  notes?: string
   due_date?: string
+  project_name?: string
+  
+  // Tracking
+  created_by: string
+  last_updated_by: string
+  
+  // Fulfillment tracking
+  fulfilled_date?: string
+  fulfilled_by?: string
+  
   createdAt: string
   updatedAt: string
+  
+  // Computed properties (populated by backend)
+  total_quantity?: number
+  total_remaining_quantity?: number
+  total_value?: number
+  is_partially_fulfilled?: boolean
+  is_fully_fulfilled?: boolean
 }
 
+// Create tag request for new architecture
 export interface CreateTagRequest {
-  item_id: string
   customer_name: string
-  quantity: number
-  tag_type?: string
+  tag_type?: 'reserved' | 'broken' | 'imperfect' | 'loaned' | 'stock'
+  items: Array<{
+    item_id: string
+    quantity: number
+    notes?: string
+  }>
   notes?: string
   due_date?: string
+  project_name?: string
 }
 
+// Update tag request for new architecture
 export interface UpdateTagRequest {
   customer_name?: string
-  quantity?: number
-  tag_type?: string
+  tag_type?: 'reserved' | 'broken' | 'imperfect' | 'loaned' | 'stock'
+  items?: Array<{
+    item_id: string
+    quantity: number
+    remaining_quantity?: number
+    notes?: string
+  }>
   notes?: string
-  status?: string
+  status?: 'active' | 'fulfilled' | 'cancelled'
   due_date?: string
+  project_name?: string
+}
+
+// Fulfill tag items request
+export interface FulfillTagRequest {
+  item_id: string
+  quantity_fulfilled: number
 }
 
 export interface TagResponse {
@@ -216,12 +507,25 @@ export const TAG_TYPES = [
   { value: 'reserved', label: 'Reserved', color: '#007bff' },
   { value: 'broken', label: 'Broken', color: '#dc3545' },
   { value: 'imperfect', label: 'Imperfect', color: '#fd7e14' },
-  { value: 'expected', label: 'Expected', color: '#6f42c1' },
-  { value: 'partial_shipment', label: 'Partial Shipment', color: '#17a2b8' },
-  { value: 'backorder', label: 'Backorder', color: '#ffc107' }
+  { value: 'loaned', label: 'Loaned', color: '#6f42c1' }
 ] as const
 
-// SKU-related interfaces
+// Response models
+export interface SKUResponse {
+  skus: SKU[]
+  totalSkus: number
+  totalPages: number
+  currentPage: number
+}
+
+export interface CategoryResponse {
+  categories: Category[]
+  totalCategories: number
+  totalPages: number
+  currentPage: number
+}
+
+// Legacy interfaces for compatibility
 export interface StockThresholds {
   understocked: number
   overstocked: number
@@ -234,61 +538,6 @@ export interface CostHistoryEntry {
   notes?: string
   createdAt: string
   updatedAt: string
-}
-
-export interface SKU {
-  _id: string
-  sku_code: string
-  product_type: 'wall' | 'toilet' | 'base' | 'tub' | 'vanity' | 'shower_door' | 'raw_material' | 'accessory' | 'miscellaneous'
-  product_details: WallDetails | ProductDetails | string
-  current_cost: number
-  cost_history: CostHistoryEntry[]
-  stock_thresholds: StockThresholds
-  is_auto_generated: boolean
-  generation_template?: string
-  manufacturer_model?: string
-  barcode?: string
-  description?: string
-  notes?: string
-  created_by: string
-  last_updated_by: string
-  status: 'active' | 'inactive' | 'discontinued'
-  createdAt: string
-  updatedAt: string
-  // Enhanced fields from API responses
-  totalQuantity?: number
-  stockStatus?: 'understocked' | 'adequate' | 'overstocked'
-  itemCount?: number
-  items?: Item[]
-}
-
-export interface CreateSKURequest {
-  sku_code: string
-  product_type: string
-  product_details: string
-  current_cost?: number
-  stock_thresholds?: StockThresholds
-  manufacturer_model?: string
-  barcode?: string
-  description?: string
-  notes?: string
-}
-
-export interface UpdateSKURequest {
-  sku_code?: string
-  stock_thresholds?: StockThresholds
-  manufacturer_model?: string
-  barcode?: string
-  description?: string
-  notes?: string
-  status?: 'active' | 'inactive' | 'discontinued'
-}
-
-export interface SKUResponse {
-  skus: SKU[]
-  totalSkus: number
-  totalPages: number
-  currentPage: number
 }
 
 export interface AddCostRequest {

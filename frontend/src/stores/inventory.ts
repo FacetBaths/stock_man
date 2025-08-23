@@ -1,87 +1,324 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { Item, InventoryStats, CreateItemRequest, UpdateItemRequest } from '@/types'
-import { inventoryApi } from '@/utils/api'
+import type { 
+  Item, 
+  InventoryStats, 
+  CreateItemRequest, 
+  UpdateItemRequest,
+  UseItemsRequest,
+  Inventory
+} from '@/types'
+import { inventoryApi, itemsApi } from '@/utils/api'
 
 export const useInventoryStore = defineStore('inventory', () => {
-  const items = ref<Item[]>([])
+  // New architecture: Aggregated inventory data
+  const inventory = ref<any[]>([])
   const stats = ref<InventoryStats | null>(null)
+  const currentSKUInventory = ref<any | null>(null)
+  
+  // Individual items for the new Items API
+  const items = ref<Item[]>([])
+  const currentItem = ref<Item | null>(null)
+  
+  // Loading states
   const isLoading = ref(false)
   const isCreating = ref(false)
   const isUpdating = ref(false)
   const isDeleting = ref(false)
-  const isUsing = ref(false)
+  const isReceiving = ref(false)
+  const isMoving = ref(false)
+  const isRemoving = ref(false)
+  const isSyncing = ref(false)
   const error = ref<string | null>(null)
   
-  const totalItems = ref(0)
-  const totalPages = ref(0)
-  const currentPage = ref(1)
+  // Pagination
+  const pagination = ref({
+    total_items: 0,
+    total_pages: 0,
+    current_page: 1,
+    items_per_page: 50
+  })
   
-  // Current filters
-  const currentProductType = ref<string>('all')
-  const currentSearch = ref<string>('')
-  const showInStockOnly = ref(false)
-
-  const itemsByType = computed(() => {
-    const grouped: Record<string, Item[]> = {}
-    items.value.forEach(item => {
-      if (!grouped[item.product_type]) {
-        grouped[item.product_type] = []
-      }
-      grouped[item.product_type].push(item)
-    })
-    return grouped
+  // Current filters for inventory
+  const inventoryFilters = ref({
+    category_id: '',
+    search: '',
+    status: 'all' as 'all' | 'low_stock' | 'out_of_stock' | 'overstock' | 'needs_reorder',
+    sort_by: 'sku_code',
+    sort_order: 'asc' as 'asc' | 'desc'
+  })
+  
+  // Current filters for items
+  const itemFilters = ref({
+    sku_id: '',
+    condition: '',
+    location: '',
+    search: ''
   })
 
-  const filteredItems = computed(() => {
-    if (currentProductType.value === 'all') {
-      return items.value
+  // Computed properties for inventory
+  const inventoryByStatus = computed(() => {
+    const result = {
+      low_stock: [] as any[],
+      out_of_stock: [] as any[],
+      overstock: [] as any[],
+      adequate: [] as any[]
     }
-    return items.value.filter(item => item.product_type === currentProductType.value)
+    
+    inventory.value.forEach(item => {
+      if (item.is_low_stock) result.low_stock.push(item)
+      else if (item.is_out_of_stock) result.out_of_stock.push(item)
+      else if (item.is_overstock) result.overstock.push(item)
+      else result.adequate.push(item)
+    })
+    
+    return result
   })
 
-  const loadItems = async (params?: {
-    product_type?: string
+  const inventoryStats = computed(() => {
+    return {
+      totalSKUs: inventory.value.length,
+      lowStock: inventoryByStatus.value.low_stock.length,
+      outOfStock: inventoryByStatus.value.out_of_stock.length,
+      overstock: inventoryByStatus.value.overstock.length,
+      totalValue: inventory.value.reduce((sum, item) => sum + (item.total_value || 0), 0),
+      totalQuantity: inventory.value.reduce((sum, item) => sum + (item.total_quantity || 0), 0)
+    }
+  })
+
+  // Computed properties for items
+  const itemsByCondition = computed(() => {
+    const result: Record<string, Item[]> = {}
+    items.value.forEach(item => {
+      if (!result[item.condition]) {
+        result[item.condition] = []
+      }
+      result[item.condition].push(item)
+    })
+    return result
+  })
+
+  // Actions for inventory management
+  const fetchInventory = async (params?: {
+    category_id?: string
     search?: string
+    status?: 'all' | 'low_stock' | 'out_of_stock' | 'overstock' | 'needs_reorder'
     page?: number
-    in_stock_only?: boolean
+    limit?: number
+    sort_by?: string
+    sort_order?: 'asc' | 'desc'
   }) => {
     try {
       isLoading.value = true
       error.value = null
       
-      // Update current filters
-      if (params?.product_type !== undefined) currentProductType.value = params.product_type
-      if (params?.search !== undefined) currentSearch.value = params.search
-      if (params?.in_stock_only !== undefined) showInStockOnly.value = params.in_stock_only
-      if (params?.page !== undefined) currentPage.value = params.page
+      // Update filters
+      if (params) {
+        inventoryFilters.value = { ...inventoryFilters.value, ...params }
+      }
 
-      const response = await inventoryApi.getItems({
-        product_type: currentProductType.value !== 'all' ? currentProductType.value : undefined,
-        search: currentSearch.value || undefined,
-        page: currentPage.value,
-        in_stock_only: showInStockOnly.value
+      const response = await inventoryApi.getInventory({
+        ...inventoryFilters.value,
+        page: params?.page || inventoryFilters.value.current_page
       })
       
-      items.value = response.items
-      totalItems.value = response.totalItems
-      totalPages.value = response.totalPages
-      currentPage.value = response.currentPage
+      inventory.value = response.inventory
+      pagination.value = {
+        total_items: response.pagination.total_items,
+        total_pages: response.pagination.total_pages,
+        current_page: response.pagination.current_page,
+        items_per_page: response.pagination.items_per_page
+      }
       
+      return response
     } catch (err: any) {
-      error.value = err.response?.data?.message || 'Failed to load inventory'
-      console.error('Load items error:', err)
+      error.value = err.response?.data?.message || 'Failed to fetch inventory'
+      throw err
     } finally {
       isLoading.value = false
     }
   }
 
-  const loadStats = async () => {
+  const fetchStats = async () => {
     try {
       const response = await inventoryApi.getStats()
       stats.value = response
+      return response
     } catch (err: any) {
-      console.error('Load stats error:', err)
+      error.value = err.response?.data?.message || 'Failed to fetch stats'
+      throw err
+    }
+  }
+
+  const fetchSKUInventory = async (skuId: string) => {
+    try {
+      isLoading.value = true
+      error.value = null
+      
+      const response = await inventoryApi.getSKUInventory(skuId)
+      currentSKUInventory.value = response
+      
+      return response
+    } catch (err: any) {
+      error.value = err.response?.data?.message || 'Failed to fetch SKU inventory'
+      throw err
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  const updateInventorySettings = async (skuId: string, updates: {
+    available?: number
+    reserved?: number
+    broken?: number
+    loaned?: number
+    minimum_stock_level?: number
+    reorder_point?: number
+    maximum_stock_level?: number
+    primary_location?: string
+    average_cost?: number
+  }) => {
+    try {
+      isUpdating.value = true
+      error.value = null
+      
+      const response = await inventoryApi.updateInventorySettings(skuId, updates)
+      
+      // Update in inventory list if exists
+      const index = inventory.value.findIndex(item => item.sku_id === skuId)
+      if (index !== -1) {
+        inventory.value[index] = { ...inventory.value[index], ...response.inventory }
+      }
+      
+      return response
+    } catch (err: any) {
+      error.value = err.response?.data?.message || 'Failed to update inventory settings'
+      throw err
+    } finally {
+      isUpdating.value = false
+    }
+  }
+
+  const receiveStock = async (skuId: string, data: {
+    quantity: number
+    cost?: number
+    location?: string
+    notes?: string
+  }) => {
+    try {
+      isReceiving.value = true
+      error.value = null
+      
+      const response = await inventoryApi.receiveStock(skuId, data)
+      
+      // Refresh inventory data
+      await fetchInventory()
+      await fetchStats()
+      
+      return response
+    } catch (err: any) {
+      error.value = err.response?.data?.message || 'Failed to receive stock'
+      throw err
+    } finally {
+      isReceiving.value = false
+    }
+  }
+
+  const moveStock = async (skuId: string, data: {
+    quantity: number
+    from_status: string
+    to_status: string
+    reason?: string
+    notes?: string
+  }) => {
+    try {
+      isMoving.value = true
+      error.value = null
+      
+      const response = await inventoryApi.moveStock(skuId, data)
+      
+      // Refresh inventory data
+      await fetchInventory()
+      await fetchStats()
+      
+      return response
+    } catch (err: any) {
+      error.value = err.response?.data?.message || 'Failed to move stock'
+      throw err
+    } finally {
+      isMoving.value = false
+    }
+  }
+
+  const removeStock = async (skuId: string, data: {
+    quantity: number
+    from_status: string
+    reason: string
+    notes?: string
+  }) => {
+    try {
+      isRemoving.value = true
+      error.value = null
+      
+      const response = await inventoryApi.removeStock(skuId, data)
+      
+      // Refresh inventory data
+      await fetchInventory()
+      await fetchStats()
+      
+      return response
+    } catch (err: any) {
+      error.value = err.response?.data?.message || 'Failed to remove stock'
+      throw err
+    } finally {
+      isRemoving.value = false
+    }
+  }
+
+  // Actions for items management
+  const fetchItems = async (params?: {
+    sku_id?: string
+    condition?: string
+    location?: string
+    search?: string
+    page?: number
+    limit?: number
+  }) => {
+    try {
+      isLoading.value = true
+      error.value = null
+      
+      // Update filters
+      if (params) {
+        itemFilters.value = { ...itemFilters.value, ...params }
+      }
+
+      const response = await itemsApi.getItems(itemFilters.value)
+      items.value = response.items
+      
+      return response
+    } catch (err: any) {
+      error.value = err.response?.data?.message || 'Failed to fetch items'
+      throw err
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  const fetchItem = async (id: string) => {
+    try {
+      isLoading.value = true
+      error.value = null
+      
+      const response = await itemsApi.getItem(id)
+      currentItem.value = response.item
+      
+      return response.item
+    } catch (err: any) {
+      error.value = err.response?.data?.message || 'Failed to fetch item'
+      throw err
+    } finally {
+      isLoading.value = false
     }
   }
 
@@ -90,11 +327,14 @@ export const useInventoryStore = defineStore('inventory', () => {
       isCreating.value = true
       error.value = null
       
-      const response = await inventoryApi.createItem(itemData)
+      const response = await itemsApi.createItem(itemData)
       
-      // Reload items to get updated list
-      await loadItems()
-      await loadStats()
+      // Add to local items list
+      items.value.unshift(response.item)
+      
+      // Refresh inventory data
+      await fetchInventory()
+      await fetchStats()
       
       return response
     } catch (err: any) {
@@ -110,15 +350,18 @@ export const useInventoryStore = defineStore('inventory', () => {
       isUpdating.value = true
       error.value = null
       
-      const response = await inventoryApi.updateItem(id, updates)
+      const response = await itemsApi.updateItem(id, updates)
       
-      // Update the item in the local state
+      // Update in local state
       const index = items.value.findIndex(item => item._id === id)
       if (index !== -1) {
         items.value[index] = response.item
       }
       
-      await loadStats()
+      // Update current item if it's the same
+      if (currentItem.value?._id === id) {
+        currentItem.value = response.item
+      }
       
       return response
     } catch (err: any) {
@@ -134,13 +377,19 @@ export const useInventoryStore = defineStore('inventory', () => {
       isDeleting.value = true
       error.value = null
       
-      await inventoryApi.deleteItem(id)
+      await itemsApi.deleteItem(id)
       
-      // Remove the item from local state
+      // Remove from local state
       items.value = items.value.filter(item => item._id !== id)
-      totalItems.value = Math.max(0, totalItems.value - 1)
       
-      await loadStats()
+      // Clear current item if it was deleted
+      if (currentItem.value?._id === id) {
+        currentItem.value = null
+      }
+      
+      // Refresh inventory data
+      await fetchInventory()
+      await fetchStats()
       
     } catch (err: any) {
       error.value = err.response?.data?.message || 'Failed to delete item'
@@ -150,87 +399,202 @@ export const useInventoryStore = defineStore('inventory', () => {
     }
   }
 
-  const useItem = async (id: string, usageData: {
-    quantity_used: number
-    used_for: string
-    location?: string
-    project_name?: string
-    customer_name?: string
-    notes?: string
-  }) => {
+  const useItems = async (id: string, usageData: UseItemsRequest) => {
     try {
-      isUsing.value = true
+      isUpdating.value = true
       error.value = null
       
-      const response = await inventoryApi.useItem(id, usageData)
+      const response = await itemsApi.useItems(id, usageData)
       
-      // Update the item in the local state with new quantity
+      // Update in local state
       const index = items.value.findIndex(item => item._id === id)
       if (index !== -1) {
         items.value[index] = response.item
       }
       
-      await loadStats()
+      // Refresh inventory data
+      await fetchInventory()
+      await fetchStats()
       
       return response
     } catch (err: any) {
-      error.value = err.response?.data?.message || 'Failed to use item'
+      error.value = err.response?.data?.message || 'Failed to use items'
       throw err
     } finally {
-      isUsing.value = false
+      isUpdating.value = false
     }
   }
 
-  const getUsageHistory = async (id: string) => {
+  // Alerts and reports
+  const fetchLowStockAlerts = async () => {
     try {
-      const response = await inventoryApi.getUsageHistory(id)
-      return response
+      return await inventoryApi.getLowStockAlerts()
     } catch (err: any) {
-      error.value = err.response?.data?.message || 'Failed to get usage history'
+      error.value = err.response?.data?.message || 'Failed to fetch low stock alerts'
       throw err
     }
   }
 
+  const fetchOutOfStockAlerts = async () => {
+    try {
+      return await inventoryApi.getOutOfStockAlerts()
+    } catch (err: any) {
+      error.value = err.response?.data?.message || 'Failed to fetch out of stock alerts'
+      throw err
+    }
+  }
+
+  const fetchReorderAlerts = async () => {
+    try {
+      return await inventoryApi.getReorderAlerts()
+    } catch (err: any) {
+      error.value = err.response?.data?.message || 'Failed to fetch reorder alerts'
+      throw err
+    }
+  }
+
+  const fetchValuationReport = async (categoryId?: string) => {
+    try {
+      return await inventoryApi.getValuationReport(categoryId)
+    } catch (err: any) {
+      error.value = err.response?.data?.message || 'Failed to fetch valuation report'
+      throw err
+    }
+  }
+
+  const fetchMovementReport = async (params?: {
+    days?: number
+    category_id?: string
+    sku_id?: string
+  }) => {
+    try {
+      return await inventoryApi.getMovementReport(params)
+    } catch (err: any) {
+      error.value = err.response?.data?.message || 'Failed to fetch movement report'
+      throw err
+    }
+  }
+
+  // Sync inventory
+  const syncInventory = async (forceRebuild = false) => {
+    try {
+      isSyncing.value = true
+      error.value = null
+      
+      const response = await inventoryApi.syncInventory(forceRebuild)
+      
+      // Refresh all data after sync
+      await fetchInventory()
+      await fetchStats()
+      
+      return response
+    } catch (err: any) {
+      error.value = err.response?.data?.message || 'Failed to sync inventory'
+      throw err
+    } finally {
+      isSyncing.value = false
+    }
+  }
+
+  // Helper functions
   const clearError = () => {
     error.value = null
   }
 
-  const setFilters = (filters: {
-    product_type?: string
-    search?: string
-    in_stock_only?: boolean
-  }) => {
-    if (filters.product_type !== undefined) currentProductType.value = filters.product_type
-    if (filters.search !== undefined) currentSearch.value = filters.search
-    if (filters.in_stock_only !== undefined) showInStockOnly.value = filters.in_stock_only
-    currentPage.value = 1 // Reset to first page when filters change
+  const updateInventoryFilters = (newFilters: Partial<typeof inventoryFilters.value>) => {
+    inventoryFilters.value = { ...inventoryFilters.value, ...newFilters }
+    fetchInventory({ page: 1 })
+  }
+
+  const updateItemFilters = (newFilters: Partial<typeof itemFilters.value>) => {
+    itemFilters.value = { ...itemFilters.value, ...newFilters }
+    fetchItems({ page: 1 })
+  }
+
+  const clearInventoryFilters = () => {
+    inventoryFilters.value = {
+      category_id: '',
+      search: '',
+      status: 'all',
+      sort_by: 'sku_code',
+      sort_order: 'asc'
+    }
+    fetchInventory({ page: 1 })
+  }
+
+  const clearItemFilters = () => {
+    itemFilters.value = {
+      sku_id: '',
+      condition: '',
+      location: '',
+      search: ''
+    }
+    fetchItems({ page: 1 })
   }
 
   return {
+    // State - Inventory
+    inventory,
+    currentSKUInventory,
+    inventoryFilters,
+    
+    // State - Items  
     items,
+    currentItem,
+    itemFilters,
+    
+    // State - General
     stats,
+    pagination,
+    
+    // Loading states
     isLoading,
     isCreating,
     isUpdating,
     isDeleting,
-    isUsing,
+    isReceiving,
+    isMoving,
+    isRemoving,
+    isSyncing,
     error,
-    totalItems,
-    totalPages,
-    currentPage,
-    currentProductType,
-    currentSearch,
-    showInStockOnly,
-    itemsByType,
-    filteredItems,
-    loadItems,
-    loadStats,
+    
+    // Computed
+    inventoryByStatus,
+    inventoryStats,
+    itemsByCondition,
+    
+    // Actions - Inventory
+    fetchInventory,
+    fetchStats,
+    fetchSKUInventory,
+    updateInventorySettings,
+    receiveStock,
+    moveStock,
+    removeStock,
+    
+    // Actions - Items
+    fetchItems,
+    fetchItem,
     createItem,
     updateItem,
     deleteItem,
-    useItem,
-    getUsageHistory,
+    useItems,
+    
+    // Actions - Alerts & Reports
+    fetchLowStockAlerts,
+    fetchOutOfStockAlerts,
+    fetchReorderAlerts,
+    fetchValuationReport,
+    fetchMovementReport,
+    
+    // Actions - Sync
+    syncInventory,
+    
+    // Helpers
     clearError,
-    setFilters
+    updateInventoryFilters,
+    updateItemFilters,
+    clearInventoryFilters,
+    clearItemFilters
   }
 })
