@@ -127,7 +127,7 @@ export const useSKUStore = defineStore('sku', () => {
   // Actions for new architecture
   const fetchSKUs = async (params?: {
     category_id?: string
-    is_active?: boolean
+    status?: 'active' | 'discontinued' | 'pending'
     is_lendable?: boolean
     search?: string
     sort_by?: 'sku_code' | 'name' | 'unit_cost' | 'created_at'

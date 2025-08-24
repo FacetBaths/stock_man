@@ -560,7 +560,7 @@ export const skuApi = {
   // Get SKUs with enhanced filtering
   getSKUs: async (params?: {
     category_id?: string
-    is_active?: boolean
+    status?: 'active' | 'discontinued' | 'pending'
     is_lendable?: boolean
     search?: string
     sort_by?: 'sku_code' | 'name' | 'unit_cost' | 'created_at'
