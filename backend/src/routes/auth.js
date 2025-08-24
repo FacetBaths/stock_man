@@ -315,14 +315,22 @@ router.post('/logout', [
   auth,
   body('refreshToken').optional()
 ], async (req, res) => {
+  console.log('=== LOGOUT ROUTE CALLED ===')
+  console.log('User:', req.user?.username)
+  console.log('Request body:', req.body)
+  
   try {
     const { refreshToken } = req.body;
+    console.log('Refresh token provided:', !!refreshToken)
 
     if (refreshToken) {
+      console.log('Attempting to remove refresh token from user...')
       // Remove the specific refresh token
       await req.user.removeRefreshToken(refreshToken);
+      console.log('Refresh token removed successfully')
     }
 
+    console.log('Logging audit event...')
     // Log logout
     await AuditLog.logEvent({
       event_type: 'authentication',
@@ -339,12 +347,17 @@ router.post('/logout', [
       category: 'security',
       severity: 'low'
     });
+    console.log('Audit event logged successfully')
 
+    console.log('Sending response...')
     res.json({ message: 'Logout successful' });
+    console.log('=== LOGOUT ROUTE COMPLETED ===')
 
   } catch (error) {
-    console.error('Logout error:', error);
-    res.status(500).json({ message: 'Server error during logout' });
+    console.error('=== LOGOUT ROUTE ERROR ===')
+    console.error('Error details:', error)
+    console.error('Error stack:', error.stack)
+    res.status(500).json({ message: 'Server error during logout', error: error.message });
   }
 });
 

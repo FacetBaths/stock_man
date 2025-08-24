@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useInventoryStore } from '@/stores/inventory'
-import { PRODUCT_TYPES } from '@/types'
+import { useCategoryStore } from '@/stores/category'
 import InventoryTable from '@/components/InventoryTable.vue'
 import AddItemModal from '@/components/AddItemModal.vue'
 import EditItemModal from '@/components/EditItemModal.vue'
@@ -11,86 +11,91 @@ import type { Item } from '@/types'
 
 const authStore = useAuthStore()
 const inventoryStore = useInventoryStore()
+const categoryStore = useCategoryStore()
 
-const activeTab = ref('all')
+// Updated for new inventory system
+const activeFilter = ref('all')
+const selectedCategory = ref('')
 const searchQuery = ref('')
-const showInStockOnly = ref(false)
+const showLowStockOnly = ref(false)
 const showAddModal = ref(false)
 const showEditModal = ref(false)
 const showQuickScanModal = ref(false)
 const itemToEdit = ref<Item | null>(null)
 
-const availableTabs = computed(() => {
-  const tabs = [{ value: 'all', label: 'All Items' }, ...PRODUCT_TYPES]
-  return tabs
+// Available filters for the new inventory system
+const availableFilters = computed(() => [
+  { value: 'all', label: 'All Items' },
+  { value: 'low_stock', label: 'Low Stock' },
+  { value: 'out_of_stock', label: 'Out of Stock' },
+  { value: 'needs_reorder', label: 'Need Reorder' },
+  { value: 'overstock', label: 'Overstock' }
+])
+
+// Available categories for filtering
+const availableCategories = computed(() => {
+  const categories = [{ _id: '', name: 'All Categories' }]
+  if (categoryStore.categories) {
+    categories.push(...categoryStore.categories)
+  }
+  return categories
 })
 
-const filteredItems = computed(() => {
-  let items = inventoryStore.items
-
-  // Apply search filter first (global search)
-  if (searchQuery.value.trim()) {
-    const search = searchQuery.value.toLowerCase().trim()
-    items = items.filter(item => {
-      const details = item.product_details as any
-      
-      // Check SKU code and barcode first
-      if (item.sku_code?.toLowerCase().includes(search) || item.barcode?.toLowerCase().includes(search)) {
-        return true
-      }
-      
-      if (item.product_type === 'wall') {
-        return (
-          details.product_line?.toLowerCase().includes(search) ||
-          details.color_name?.toLowerCase().includes(search) ||
-          details.dimensions?.toLowerCase().includes(search) ||
-          details.finish?.toLowerCase().includes(search)
-        )
-      } else {
-        return (
-          details.name?.toLowerCase().includes(search) ||
-          details.brand?.toLowerCase().includes(search) ||
-          details.model?.toLowerCase().includes(search) ||
-          details.color?.toLowerCase().includes(search) ||
-          details.dimensions?.toLowerCase().includes(search) ||
-          details.finish?.toLowerCase().includes(search) ||
-          details.description?.toLowerCase().includes(search)
-        )
-      }
-    })
-  }
-
-  // Then apply tab filter (unless searching, which overrides tabs)
-  if (!searchQuery.value.trim() && activeTab.value !== 'all') {
-    items = items.filter(item => item.product_type === activeTab.value)
-  }
-
-  // Apply stock filter
-  if (showInStockOnly.value) {
-    items = items.filter(item => item.quantity > 0)
-  }
-
-  return items
+// Display inventory items (aggregated SKU-level data)
+const displayItems = computed(() => {
+  return inventoryStore.inventory || []
 })
 
-const handleTabClick = (tab: string) => {
-  activeTab.value = tab
-  // Don't clear search when switching tabs - let search override tab filtering
+// Stats for dashboard cards - use computed values from inventory data
+const dashboardStats = computed(() => {
+  const inventory = inventoryStore.inventory || []
+  
+  return {
+    totalSKUs: inventory.length,
+    totalItems: inventory.reduce((sum, item) => sum + (item.total_quantity || 0), 0),
+    inStock: inventory.filter(item => (item.available_quantity || 0) > 0).length,
+    totalValue: inventory.reduce((sum, item) => sum + (item.total_value || 0), 0),
+    lowStock: inventory.filter(item => item.is_low_stock).length,
+    outOfStock: inventory.filter(item => item.is_out_of_stock).length,
+    needReorder: inventory.filter(item => item.needs_reorder).length,
+    overstock: inventory.filter(item => item.is_overstock).length
+  }
+})
+
+const handleFilterClick = (filter: string) => {
+  activeFilter.value = filter
+  loadInventory()
 }
 
 const handleSearch = () => {
-  // Search will override tab filtering automatically through computed property
-  loadItems()
+  loadInventory()
 }
 
-const handleInStockToggle = () => {
-  loadItems()
+const handleLowStockToggle = () => {
+  loadInventory()
 }
 
-const loadItems = async () => {
-  await inventoryStore.loadItems({
-    in_stock_only: showInStockOnly.value
-  })
+const loadInventory = async () => {
+  const params: any = {}
+  
+  // Apply search filter
+  if (searchQuery.value.trim()) {
+    params.search = searchQuery.value.trim()
+  }
+  
+  // Apply category filter
+  if (selectedCategory.value) {
+    params.category_id = selectedCategory.value
+  }
+  
+  // Apply status filter
+  if (activeFilter.value !== 'all') {
+    params.status = activeFilter.value
+  } else if (showLowStockOnly.value) {
+    params.status = 'low_stock'
+  }
+  
+  await inventoryStore.fetchInventory(params)
 }
 
 const handleAddItem = () => {
@@ -101,16 +106,45 @@ const handleQuickScan = () => {
   showQuickScanModal.value = true
 }
 
-
-const handleEditItem = (item: Item) => {
-  itemToEdit.value = item
-  showEditModal.value = true
+// Updated for new inventory structure
+const handleEditItem = (inventoryItem: any) => {
+  // For new inventory structure, we'll edit the SKU details
+  // Convert inventory item to a format the existing modal can handle
+  if (inventoryItem.sku) {
+    // Create a compatible item object from the inventory data
+    const compatibleItem = {
+      _id: inventoryItem.sku._id,
+      sku_code: inventoryItem.sku.sku_code,
+      product_type: inventoryItem.category?.name?.toLowerCase() || 'miscellaneous',
+      quantity: inventoryItem.total_quantity,
+      cost: inventoryItem.sku.unit_cost || inventoryItem.average_cost,
+      location: inventoryItem.primary_location || 'Warehouse',
+      notes: inventoryItem.sku.notes || '',
+      barcode: inventoryItem.sku.barcode,
+      product_details: {
+        name: inventoryItem.sku.name,
+        description: inventoryItem.sku.description,
+        brand: inventoryItem.sku.brand,
+        model: inventoryItem.sku.model
+      },
+      updatedAt: inventoryItem.updatedAt,
+      createdAt: inventoryItem.createdAt
+    }
+    
+    itemToEdit.value = compatibleItem as any
+    showEditModal.value = true
+  } else {
+    console.log('Cannot edit inventory item without SKU data:', inventoryItem)
+  }
 }
 
-const handleDeleteItem = async (item: Item) => {
-  if (confirm(`Are you sure you want to delete this ${item.product_type} item?`)) {
+const handleDeleteItem = async (inventoryItem: any) => {
+  if (confirm(`Are you sure you want to delete inventory for ${inventoryItem.sku?.name || inventoryItem.sku?.sku_code}?`)) {
     try {
-      await inventoryStore.deleteItem(item._id)
+      // In the new structure, we don't delete inventory records directly
+      // We might remove stock or deactivate the SKU instead
+      console.log('Delete inventory item:', inventoryItem)
+      // TODO: Implement appropriate action (remove all stock, deactivate SKU, etc.)
     } catch (error) {
       console.error('Delete error:', error)
     }
@@ -130,8 +164,8 @@ const handleEditSuccess = () => {
 const handleQuickScanSuccess = () => {
   showQuickScanModal.value = false
   // Reload inventory data after batch processing
-  loadItems()
-  inventoryStore.loadStats()
+  loadInventory()
+  inventoryStore.fetchStats()
 }
 
 const handleLogout = async () => {
@@ -177,17 +211,20 @@ const formatTotalValue = (value?: number) => {
 const canViewCost = computed(() => authStore.hasPermission('view_cost') || authStore.hasRole(['admin', 'warehouse_manager']))
 
 onMounted(async () => {
-  await loadItems()
-  await inventoryStore.loadStats()
+  await Promise.all([
+    categoryStore.fetchCategories(),
+    loadInventory(),
+    inventoryStore.fetchStats()
+  ])
 })
 
 // Watch for filter changes
-watch([searchQuery, showInStockOnly], () => {
+watch([searchQuery, showLowStockOnly, activeFilter, selectedCategory], () => {
   // Debounce search
   if (searchQuery.value.trim()) {
     setTimeout(handleSearch, 300)
   } else {
-    loadItems()
+    loadInventory()
   }
 }, { deep: true })
 </script>
@@ -228,13 +265,22 @@ watch([searchQuery, showInStockOnly], () => {
       </div>
 
       <!-- Stats Overview -->
-      <div v-if="inventoryStore.stats" class="stats-section q-mb-lg" data-aos="fade-up" data-aos-delay="100">
+      <div class="stats-section q-mb-lg" data-aos="fade-up" data-aos-delay="100">
         <div class="stats-cards-container">
+          <!-- Total SKUs Card -->
+          <q-card class="glass-card stat-card text-center">
+            <q-card-section class="q-pa-md">
+              <q-icon name="qr_code" class="text-h4 text-primary q-mb-xs" />
+              <div class="text-h4 text-dark text-weight-bold">{{ dashboardStats.totalSKUs }}</div>
+              <div class="text-body2 text-dark opacity-80">SKUs Managed</div>
+            </q-card-section>
+          </q-card>
+          
           <!-- Total Items Card -->
           <q-card class="glass-card stat-card text-center">
             <q-card-section class="q-pa-md">
-              <q-icon name="inventory" class="text-h4 text-primary q-mb-xs" />
-              <div class="text-h4 text-dark text-weight-bold">{{ inventoryStore.stats.totalItems }}</div>
+              <q-icon name="inventory" class="text-h4 text-info q-mb-xs" />
+              <div class="text-h4 text-dark text-weight-bold">{{ dashboardStats.totalItems }}</div>
               <div class="text-body2 text-dark opacity-80">Total Items</div>
             </q-card-section>
           </q-card>
@@ -243,8 +289,8 @@ watch([searchQuery, showInStockOnly], () => {
           <q-card class="glass-card stat-card text-center">
             <q-card-section class="q-pa-md">
               <q-icon name="check_circle" class="text-h4 text-positive q-mb-xs" />
-              <div class="text-h4 text-dark text-weight-bold">{{ inventoryStore.stats.totalInStock }}</div>
-              <div class="text-body2 text-dark opacity-80">In Stock</div>
+              <div class="text-h4 text-dark text-weight-bold">{{ dashboardStats.inStock }}</div>
+              <div class="text-body2 text-dark opacity-80">SKUs In Stock</div>
             </q-card-section>
           </q-card>
           
@@ -252,59 +298,35 @@ watch([searchQuery, showInStockOnly], () => {
           <q-card v-if="canViewCost" class="glass-card stat-card text-center total-value-card">
             <q-card-section class="q-pa-md">
               <q-icon name="attach_money" class="text-h4 text-accent q-mb-xs" />
-              <div class="text-h4 text-dark text-weight-bold">{{ formatTotalValue(inventoryStore.stats.totalValue) }}</div>
+              <div class="text-h4 text-dark text-weight-bold">{{ formatTotalValue(dashboardStats.totalValue) }}</div>
               <div class="text-body2 text-dark opacity-80">Total Value</div>
-              <div v-if="inventoryStore.stats.itemsWithCost" class="text-caption text-dark opacity-60 q-mt-xs">
-                {{ inventoryStore.stats.itemsWithCost }} items with cost
-              </div>
             </q-card-section>
           </q-card>
           
-          <!-- Reserved Card -->
-          <q-card v-if="inventoryStore.stats.tagStatus" class="glass-card stat-card text-center reserved-card">
-            <q-card-section class="q-pa-md">
-              <q-icon name="bookmark" class="text-h4 text-info q-mb-xs" />
-              <div class="text-h4 text-dark text-weight-bold">{{ inventoryStore.stats.tagStatus.reserved.uniqueItemCount }}</div>
-              <div class="text-body2 text-dark opacity-80">Reserved Items</div>
-              <div v-if="inventoryStore.stats.tagStatus.reserved.totalQuantity > 0" class="text-caption text-dark opacity-60 q-mt-xs">
-                {{ inventoryStore.stats.tagStatus.reserved.totalQuantity }} total quantity
-              </div>
-            </q-card-section>
-          </q-card>
-          
-          <!-- Imperfect Card -->
-          <q-card v-if="inventoryStore.stats.tagStatus" class="glass-card stat-card text-center imperfect-card">
+          <!-- Low Stock Card -->
+          <q-card class="glass-card stat-card text-center warning-card">
             <q-card-section class="q-pa-md">
               <q-icon name="warning" class="text-h4 text-warning q-mb-xs" />
-              <div class="text-h4 text-dark text-weight-bold">{{ inventoryStore.stats.tagStatus.imperfect.uniqueItemCount }}</div>
-              <div class="text-body2 text-dark opacity-80">Imperfect Items</div>
-              <div v-if="inventoryStore.stats.tagStatus.imperfect.totalQuantity > 0" class="text-caption text-dark opacity-60 q-mt-xs">
-                {{ inventoryStore.stats.tagStatus.imperfect.totalQuantity }} total quantity
-              </div>
+              <div class="text-h4 text-dark text-weight-bold">{{ dashboardStats.lowStock }}</div>
+              <div class="text-body2 text-dark opacity-80">Low Stock</div>
             </q-card-section>
           </q-card>
           
-          <!-- Broken Card -->
-          <q-card v-if="inventoryStore.stats.tagStatus" class="glass-card stat-card text-center broken-card">
+          <!-- Out of Stock Card -->
+          <q-card class="glass-card stat-card text-center negative-card">
             <q-card-section class="q-pa-md">
-              <q-icon name="broken_image" class="text-h4 text-negative q-mb-xs" />
-              <div class="text-h4 text-dark text-weight-bold">{{ inventoryStore.stats.tagStatus.broken.uniqueItemCount }}</div>
-              <div class="text-body2 text-dark opacity-80">Broken Items</div>
-              <div v-if="inventoryStore.stats.tagStatus.broken.totalQuantity > 0" class="text-caption text-dark opacity-60 q-mt-xs">
-                {{ inventoryStore.stats.tagStatus.broken.totalQuantity }} total quantity
-              </div>
+              <q-icon name="error" class="text-h4 text-negative q-mb-xs" />
+              <div class="text-h4 text-dark text-weight-bold">{{ dashboardStats.outOfStock }}</div>
+              <div class="text-body2 text-dark opacity-80">Out of Stock</div>
             </q-card-section>
           </q-card>
           
-          <!-- SKU Coverage Card -->
-          <q-card class="glass-card stat-card text-center sku-card">
+          <!-- Need Reorder Card -->
+          <q-card class="glass-card stat-card text-center reorder-card">
             <q-card-section class="q-pa-md">
-              <q-icon name="qr_code" class="text-h4 text-teal q-mb-xs" />
-              <div class="text-h4 text-dark text-weight-bold">{{ inventoryStore.stats.skuCoverage?.percentage || 0 }}%</div>
-              <div class="text-body2 text-dark opacity-80">SKU Coverage</div>
-              <div v-if="inventoryStore.stats.skuCoverage" class="text-caption text-dark opacity-60 q-mt-xs">
-                {{ inventoryStore.stats.skuCoverage.itemsWithSKUs || 0 }}/{{ inventoryStore.stats.skuCoverage.totalItems || 0 }} items
-              </div>
+              <q-icon name="shopping_cart" class="text-h4 text-orange q-mb-xs" />
+              <div class="text-h4 text-dark text-weight-bold">{{ dashboardStats.needReorder }}</div>
+              <div class="text-body2 text-dark opacity-80">Need Reorder</div>
             </q-card-section>
           </q-card>
           
@@ -312,7 +334,7 @@ watch([searchQuery, showInStockOnly], () => {
           <q-card class="glass-card stat-card text-center">
             <q-card-section class="q-pa-md">
               <q-icon name="schedule" class="text-h4 text-grey-6 q-mb-xs" />
-              <div class="text-h6 text-dark text-weight-bold">{{ formatLastUpdated(inventoryStore.stats.lastUpdated) }}</div>
+              <div class="text-h6 text-dark text-weight-bold">{{ formatLastUpdated(inventoryStore.stats?.lastUpdated) }}</div>
               <div class="text-body2 text-dark opacity-80">Last Updated</div>
             </q-card-section>
           </q-card>
@@ -329,7 +351,7 @@ watch([searchQuery, showInStockOnly], () => {
                 <q-input
                   v-model="searchQuery"
                   filled
-                  placeholder="Search inventory (SKU, barcode, product name)..."
+                  placeholder="Search inventory (SKU, name, description)..."
                   class="search-input"
                   style="min-width: 300px"
                 >
@@ -339,14 +361,34 @@ watch([searchQuery, showInStockOnly], () => {
                 </q-input>
               </div>
               
-              <!-- In Stock Filter -->
+              <!-- Category Filter -->
+              <div class="col-auto">
+                <q-select
+                  v-model="selectedCategory"
+                  :options="availableCategories"
+                  option-value="_id"
+                  option-label="name"
+                  emit-value
+                  map-options
+                  filled
+                  label="Category"
+                  class="category-select"
+                  style="min-width: 180px"
+                >
+                  <template v-slot:prepend>
+                    <q-icon name="category" class="text-dark" />
+                  </template>
+                </q-select>
+              </div>
+              
+              <!-- Low Stock Filter -->
               <div class="col-auto">
                 <q-checkbox
-                  v-model="showInStockOnly"
-                  @update:model-value="handleInStockToggle"
-                  label="In Stock Only"
+                  v-model="showLowStockOnly"
+                  @update:model-value="handleLowStockToggle"
+                  label="Low Stock Only"
                   class="text-dark"
-                  color="primary"
+                  color="warning"
                 />
               </div>
             </div>
@@ -377,29 +419,29 @@ watch([searchQuery, showInStockOnly], () => {
         </div>
       </div>
 
-      <!-- Tabs -->
+      <!-- Filter Tabs -->
       <div class="tabs-section glass-card q-mb-lg" data-aos="fade-up" data-aos-delay="300">
         <q-tabs
-          v-model="activeTab"
-          @update:model-value="handleTabClick"
+          v-model="activeFilter"
+          @update:model-value="handleFilterClick"
           class="custom-tabs"
           indicator-color="primary"
           align="left"
         >
           <q-tab
-            v-for="tab in availableTabs"
-            :key="tab.value"
-            :name="tab.value"
-            :label="tab.label"
+            v-for="filter in availableFilters"
+            :key="filter.value"
+            :name="filter.value"
+            :label="filter.label"
             class="tab-item"
           >
             <q-badge
-              v-if="inventoryStore.itemsByType[tab.value]"
-              color="primary"
+              v-if="filter.value !== 'all' && dashboardStats[filter.value.replace('_', '')] > 0"
+              :color="filter.value === 'out_of_stock' ? 'negative' : filter.value === 'low_stock' ? 'warning' : 'primary'"
               floating
               rounded
             >
-              {{ inventoryStore.itemsByType[tab.value]?.length || 0 }}
+              {{ dashboardStats[filter.value.replace('_', '')] || 0 }}
             </q-badge>
           </q-tab>
         </q-tabs>
@@ -435,7 +477,7 @@ watch([searchQuery, showInStockOnly], () => {
       <!-- Inventory Table -->
       <div v-else class="table-container glass-card" data-aos="fade-up" data-aos-delay="400">
         <InventoryTable
-          :items="filteredItems"
+          :items="displayItems"
           :can-write="authStore.canWrite"
           @edit="handleEditItem"
           @delete="handleDeleteItem"

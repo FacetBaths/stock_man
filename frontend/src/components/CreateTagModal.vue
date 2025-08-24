@@ -12,12 +12,12 @@ const emit = defineEmits<{
 
 const authStore = useAuthStore()
 
-// Form data
-const formData = ref<CreateTagRequest>({
+// Form data (internal format for this modal)
+const formData = ref({
   item_id: '',
   customer_name: '',
   quantity: 1,
-  tag_type: 'reserved',
+  tag_type: 'reserved' as const,
   notes: '',
   due_date: ''
 })
@@ -157,11 +157,18 @@ const handleSubmit = async () => {
     isSubmitting.value = true
     error.value = null
     
+    // Convert old single-item format to new multi-item format
     const submitData: CreateTagRequest = {
-      ...formData.value,
       customer_name: formData.value.customer_name.trim(),
+      tag_type: formData.value.tag_type,
+      items: [{
+        item_id: formData.value.item_id,
+        quantity: formData.value.quantity,
+        notes: ''
+      }],
       notes: formData.value.notes?.trim(),
-      due_date: formData.value.due_date || undefined
+      due_date: formData.value.due_date || undefined,
+      project_name: ''
     }
     
     await tagApi.createTag(submitData)

@@ -21,11 +21,12 @@ const authStore = useAuthStore()
 // Form data
 const formData = ref<UpdateTagRequest>({
   customer_name: '',
-  quantity: 1,
   tag_type: 'reserved',
   notes: '',
   status: 'active',
-  due_date: ''
+  due_date: '',
+  project_name: '',
+  items: []
 })
 
 // Component state
@@ -117,11 +118,17 @@ const getStatusColor = (status: string) => {
 const initializeForm = () => {
   formData.value = {
     customer_name: props.tag.customer_name,
-    quantity: props.tag.quantity,
     tag_type: props.tag.tag_type,
     notes: props.tag.notes || '',
     status: props.tag.status,
-    due_date: props.tag.due_date ? new Date(props.tag.due_date).toISOString().split('T')[0] : ''
+    due_date: props.tag.due_date ? new Date(props.tag.due_date).toISOString().split('T')[0] : '',
+    project_name: props.tag.project_name || '',
+    items: props.tag.items?.map(item => ({
+      item_id: typeof item.item_id === 'object' ? item.item_id._id : item.item_id,
+      quantity: item.quantity,
+      remaining_quantity: item.remaining_quantity,
+      notes: item.notes || ''
+    })) || []
   }
 }
 
@@ -130,18 +137,13 @@ const loadItemDetails = async () => {
     isLoading.value = true
     error.value = null
     
-    // If item_id is already an object, use it; otherwise fetch it
-    if (typeof props.tag.item_id === 'object') {
-      selectedItem.value = props.tag.item_id
-    } else {
-      // We would need to fetch the item details here
-      // For now, we'll load all available items to find the current one
-      const response = await inventoryApi.getItems({
-        limit: 1000
-      })
-      availableItems.value = response.items
-      selectedItem.value = response.items.find(item => item._id === props.tag.item_id) || null
-    }
+    // For new architecture, we don't have a single item_id
+    // Instead, we need to work with the items array
+    // The backend should have already populated the item details
+    // So we don't need to fetch anything extra here
+    
+    // Just set loading to false since we're using the populated tag data
+    isLoading.value = false
   } catch (err: any) {
     error.value = err.message || 'Failed to load item details'
     console.error('Load item details error:', err)
@@ -153,14 +155,6 @@ const loadItemDetails = async () => {
 const validateForm = () => {
   if (!formData.value.customer_name?.trim()) {
     error.value = 'Please fill in the required field'
-    return false
-  }
-  if (!formData.value.quantity || formData.value.quantity < 1) {
-    error.value = 'Quantity must be at least 1'
-    return false
-  }
-  if (selectedItem.value && formData.value.quantity > maxQuantityForSelectedItem.value) {
-    error.value = `Quantity cannot exceed available stock plus current tag quantity (${maxQuantityForSelectedItem.value})`
     return false
   }
   return true
@@ -175,11 +169,12 @@ const handleSubmit = async () => {
     
     const submitData: UpdateTagRequest = {
       customer_name: formData.value.customer_name?.trim(),
-      quantity: formData.value.quantity,
       tag_type: formData.value.tag_type,
       notes: formData.value.notes?.trim(),
       status: formData.value.status,
-      due_date: formData.value.due_date || undefined
+      due_date: formData.value.due_date || undefined,
+      project_name: formData.value.project_name?.trim() || undefined,
+      items: formData.value.items
     }
     
     await tagApi.updateTag(props.tag._id, submitData)

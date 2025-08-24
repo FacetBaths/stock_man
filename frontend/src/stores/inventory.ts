@@ -539,11 +539,29 @@ export const useInventoryStore = defineStore('inventory', () => {
     search?: string 
     page?: number
   }) => {
-    // Map old parameters to new fetchItems call
-    return await fetchItems({
-      ...params,
-      // Add any additional mapping if needed
-    })
+    // The original loadItems actually called the inventory endpoint, not items
+    // So we should call inventoryApi.getItems() which maps to /inventory
+    try {
+      isLoading.value = true
+      error.value = null
+      
+      const response = await inventoryApi.getItems({
+        product_type: params?.product_type,
+        search: params?.search,
+        page: params?.page,
+        in_stock_only: params?.in_stock_only
+      })
+      
+      // Map the response to the items array (backward compatibility)
+      items.value = response.items || []
+      
+      return response
+    } catch (err: any) {
+      error.value = err.response?.data?.message || 'Failed to load items'
+      throw err
+    } finally {
+      isLoading.value = false
+    }
   }
 
   const loadStats = async () => {

@@ -34,7 +34,7 @@ const tagDetails = ref({
 const taggedItems = ref<TaggedItem[]>([])
 const skuInput = ref('')
 const isScanning = ref(false)
-const showItemSelector = ref(false)
+const showItemSelector = ref(true) // Show by default for better UX
 const availableItems = ref<Item[]>([])
 const itemSearchQuery = ref('')
 const itemTypeFilter = ref('all')
@@ -177,10 +177,11 @@ const handleSkuInput = async () => {
     error.value = null
 
     // Check if item already added
-    const existingIndex = taggedItems.value.findIndex(ti => 
-      ti.sku?.sku_code === skuCode || 
-      ti.item.sku_id === skuCode
-    )
+    const existingIndex = taggedItems.value.findIndex(ti => {
+      const item = ti.item
+      const sku = typeof item.sku_id === 'object' ? item.sku_id : null
+      return sku?.sku_code === skuCode
+    })
 
     if (existingIndex >= 0) {
       // Increment quantity of existing item
@@ -189,11 +190,29 @@ const handleSkuInput = async () => {
       return
     }
 
-    // Look up item by SKU
-    const response = await tagApi.lookupBySku(skuCode)
+    // Look up SKU and find associated items
+    const response = await inventoryApi.getItems({
+      search: skuCode,
+      limit: 100
+    })
+    
+    // Find items that match the SKU code
+    const matchingItems = response.items.filter(item => {
+      const sku = typeof item.sku_id === 'object' ? item.sku_id : null
+      return sku?.sku_code === skuCode && item.quantity > 0
+    })
+
+    if (matchingItems.length === 0) {
+      error.value = `No available items found for SKU: ${skuCode}`
+      setTimeout(() => error.value = null, 3000)
+      return
+    }
+
+    // Add the first matching item (or let user choose if multiple)
+    const selectedItem = matchingItems[0]
     const taggedItem: TaggedItem = {
-      item: response.item,
-      sku: response.sku,
+      item: { ...selectedItem, availableQuantity: selectedItem.quantity },
+      sku: typeof selectedItem.sku_id === 'object' ? selectedItem.sku_id : undefined,
       quantity: 1
     }
 
@@ -210,14 +229,65 @@ const handleSkuInput = async () => {
 
 // Item Selection
 const loadAvailableItems = async () => {
+  console.log('=== Starting loadAvailableItems ===')
+  
   try {
-    const response = await inventoryApi.getItems({
-      in_stock_only: true,
+    console.log('Calling inventoryApi.getInventory...')
+    
+    const response = await inventoryApi.getInventory({
+      status: 'all',
       limit: 1000
     })
-    availableItems.value = response.items.filter(item => item.quantity > 0)
+    
+    console.log('API call completed successfully!')
+    console.log('Full response:', JSON.stringify(response, null, 2))
+    console.log('Response keys:', Object.keys(response))
+    
+    if (response.inventory) {
+      console.log('Found inventory array with', response.inventory.length, 'items')
+      
+      if (response.inventory.length > 0) {
+        console.log('First raw inventory item:', JSON.stringify(response.inventory[0], null, 2))
+      }
+      
+      // Filter for available items
+      const availableInventory = response.inventory.filter(inv => {
+        console.log(`Checking item ${inv.sku?.sku_code}: available_quantity = ${inv.available_quantity}`)
+        return inv.available_quantity > 0
+      })
+      
+      console.log('Items with available quantity:', availableInventory.length)
+      
+      // Convert inventory records to item-like objects that can be tagged
+      availableItems.value = availableInventory.map(inv => {
+        const converted = {
+          _id: inv.sku._id, // Use SKU ID as the item ID for tagging
+          sku_id: inv.sku,
+          product_type: inv.sku.product_type || 'miscellaneous',
+          product_details: inv.sku.details || { name: inv.sku.description || inv.sku.sku_code },
+          location: inv.primary_location || 'Not specified',
+          quantity: inv.available_quantity, // Available quantity for this SKU
+          serial_number: inv.sku.sku_code
+        }
+        console.log('Converted item:', converted)
+        return converted
+      })
+    } else {
+      console.log('No inventory array found in response')
+      availableItems.value = []
+    }
+    
+    console.log('Final available items count:', availableItems.value.length)
+    
   } catch (err: any) {
-    console.error('Load items error:', err)
+    console.error('=== API ERROR ====')
+    console.error('Error details:', err)
+    console.error('Error message:', err.message)
+    console.error('Error response:', err.response?.data)
+    console.error('Error status:', err.response?.status)
+    console.error('===================')
+    
+    error.value = `Failed to load items: ${err.message}. Check console for details.`
   }
 }
 
@@ -289,17 +359,25 @@ const handleSubmit = async () => {
       customer_name: tagDetails.value.customer_name.trim(),
       notes: tagDetails.value.notes?.trim(),
       due_date: tagDetails.value.due_date || undefined,
-      tags: taggedItems.value.map(ti => ({
+      project_name: '', // Add project_name if needed
+      items: taggedItems.value.map(ti => ({
         item_id: ti.item._id,
-        quantity: ti.quantity
+        quantity: ti.quantity,
+        notes: '' // Add notes for individual items if needed
       }))
     }
 
-    await tagApi.createBatchTags(submitData)
+    // Debug: Log the exact payload being sent
+    console.log('=== CREATE TAG REQUEST ===')
+    console.log('Payload:', JSON.stringify(submitData, null, 2))
+    console.log('Tagged items:', taggedItems.value)
+    console.log('==========================')
+
+    await tagApi.createTag(submitData)
     emit('success')
   } catch (err: any) {
-    error.value = err.response?.data?.message || err.message || 'Failed to create tags'
-    console.error('Create tags error:', err)
+    error.value = err.response?.data?.message || err.message || 'Failed to create tag'
+    console.error('Create tag error:', err)
   } finally {
     isSubmitting.value = false
   }
@@ -322,6 +400,9 @@ const focusSkuInput = async () => {
 }
 
 onMounted(() => {
+  // Pre-load available items for better UX
+  loadAvailableItems()
+  
   if (currentStep.value === 2) {
     focusSkuInput()
   }

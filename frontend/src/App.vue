@@ -34,13 +34,57 @@ onUnmounted(() => {
 });
 
 const handleLogout = async () => {
-  await authStore.logout();
-  router.push("/login");
+  console.log('=== HANDLELOGOUT CALLED FROM APP.VUE ===')
+  console.log('Current route:', router.currentRoute.value.path)
+  console.log('Auth store state before logout:', {
+    isAuthenticated: authStore.isAuthenticated,
+    user: authStore.user?.username
+  })
+  
+  try {
+    console.log('Calling authStore.logout()...')
+    await authStore.logout();
+    console.log('authStore.logout() completed successfully')
+    
+    console.log('Pushing to /login route...')
+    await router.push("/login");
+    console.log('Router push completed')
+    
+  } catch (error) {
+    console.error('Error in handleLogout:', error)
+  }
+  
+  console.log('=== HANDLELOGOUT COMPLETED ===')
+};
+
+// Test API connectivity
+const testApiConnection = async () => {
+  console.log('=== TESTING API CONNECTION ===')
+  console.log('API_BASE_URL from env:', import.meta.env.VITE_API_URL)
+  
+  try {
+    // Test direct fetch to health endpoint
+    console.log('Testing direct fetch to health endpoint...')
+    const response = await fetch('http://localhost:5000/api/health')
+    console.log('Health endpoint response status:', response.status)
+    const data = await response.json()
+    console.log('Health endpoint data:', data)
+    
+    // Test with axios api instance
+    console.log('Testing with axios api instance...')
+    const { healthApi } = await import('@/utils/api')
+    const healthResponse = await healthApi.check()
+    console.log('Axios health response:', healthResponse)
+    
+  } catch (error) {
+    console.error('API connection test failed:', error)
+  }
+  
+  console.log('=== API CONNECTION TEST COMPLETED ===')
 };
 
 const navTabs = [
   { path: "/dashboard", label: "Dashboard", icon: "dashboard" },
-  { path: "/inventory", label: "Inventory", icon: "inventory_2" },
   { path: "/tags", label: "Tags", icon: "local_offer" },
   { path: "/skus", label: "SKU Management", icon: "qr_code" },
 ];
@@ -117,6 +161,16 @@ const getVersionTooltip = () => {
           </div>
 
           <q-space />
+
+          <!-- Temporary API Test Button -->
+          <q-btn 
+            flat 
+            color="white"
+            label="Test API"
+            @click="testApiConnection"
+            class="q-mr-md"
+            size="sm"
+          />
 
           <!-- Mobile Menu Button -->
           <q-btn

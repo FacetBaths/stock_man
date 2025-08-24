@@ -59,12 +59,13 @@ const validateTag = [
     .withMessage('Status must be active, fulfilled, or cancelled')
 ];
 // Helper function to check item availability and validate quantities
+// Proper architecture: Tags reference Items, Items reference SKUs
 async function checkItemAvailability(items) {
   const availability = [];
   
   for (const tagItem of items) {
     try {
-      // Get the item details
+      // Get the item details (this should be an actual Item ID)
       const item = await ItemNew.findById(tagItem.item_id)
         .populate({
           path: 'sku_id',
@@ -80,7 +81,18 @@ async function checkItemAvailability(items) {
         continue;
       }
       
-      // Get current inventory status
+      // Check if the item itself has sufficient quantity
+      if (tagItem.quantity > item.quantity) {
+        availability.push({
+          item_id: tagItem.item_id,
+          item_details: item,
+          error: `Item only has ${item.quantity} units, requested ${tagItem.quantity}`,
+          can_fulfill: false
+        });
+        continue;
+      }
+      
+      // Get current inventory status for this SKU
       const inventory = await Inventory.findOne({ sku_id: item.sku_id });
       if (!inventory) {
         availability.push({
@@ -92,7 +104,7 @@ async function checkItemAvailability(items) {
         continue;
       }
       
-      // Check if enough quantity is available
+      // Check if enough quantity is available in inventory
       const availableQuantity = inventory.available_quantity || 0;
       const canFulfill = tagItem.quantity <= availableQuantity;
       
@@ -118,14 +130,17 @@ async function checkItemAvailability(items) {
 }
 
 // Helper function to update inventory when tag is created/modified
+// Proper architecture: Items reference SKUs, update inventory based on SKU
 async function updateInventoryForTag(items, tagType, operation = 'reserve') {
   const updates = [];
   
   for (const tagItem of items) {
     try {
+      // Get the item to find its SKU
       const item = await ItemNew.findById(tagItem.item_id);
       if (!item) continue;
       
+      // Update inventory for the SKU
       const inventory = await Inventory.findOne({ sku_id: item.sku_id });
       if (!inventory) continue;
       
@@ -228,6 +243,167 @@ async function updateInventoryForTag(items, tagType, operation = 'reserve') {
   
   return updates;
 }
+// GET /api/tags/stats - Get tag statistics
+router.get('/stats', 
+  auth,
+  async (req, res) => {
+    try {
+      // Get overall tag statistics
+      const tagStats = await TagNew.aggregate([
+        {
+          $group: {
+            _id: null,
+            total_tags: { $sum: 1 },
+            active_tags: { $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] } },
+            fulfilled_tags: { $sum: { $cond: [{ $eq: ['$status', 'fulfilled'] }, 1, 0] } },
+            cancelled_tags: { $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] } }
+          }
+        }
+      ]);
+
+      // Get tag statistics by type
+      const tagsByType = await TagNew.aggregate([
+        {
+          $group: {
+            _id: '$tag_type',
+            count: { $sum: 1 },
+            active_count: { $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] } },
+            fulfilled_count: { $sum: { $cond: [{ $eq: ['$status', 'fulfilled'] }, 1, 0] } },
+            cancelled_count: { $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] } }
+          }
+        },
+        { $sort: { _id: 1 } }
+      ]);
+
+      // Get overdue tags count
+      const overdueCount = await TagNew.countDocuments({
+        status: 'active',
+        due_date: { $lt: new Date() }
+      });
+
+      // Get recent activity (last 30 days)
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      
+      const recentActivity = await TagNew.aggregate([
+        {
+          $match: {
+            created_at: { $gte: thirtyDaysAgo }
+          }
+        },
+        {
+          $group: {
+            _id: {
+              $dateToString: {
+                format: "%Y-%m-%d",
+                date: "$created_at"
+              }
+            },
+            tags_created: { $sum: 1 }
+          }
+        },
+        { $sort: { _id: -1 } },
+        { $limit: 30 }
+      ]);
+
+      const summary = tagStats.length > 0 ? tagStats[0] : {
+        total_tags: 0,
+        active_tags: 0,
+        fulfilled_tags: 0,
+        cancelled_tags: 0
+      };
+
+      res.json({
+        summary: {
+          ...summary,
+          overdue_tags: overdueCount
+        },
+        by_type: tagsByType,
+        recent_activity: recentActivity
+      });
+
+    } catch (error) {
+      console.error('Get tag stats error:', error);
+      res.status(500).json({ 
+        message: 'Failed to fetch tag statistics', 
+        error: error.message 
+      });
+    }
+  }
+);
+
+// GET /api/tags/overdue - Get overdue tags
+router.get('/overdue/list',
+  auth,
+  async (req, res) => {
+    try {
+      const overdueTags = await TagNew.getOverdueTags();
+      
+      const enrichedTags = overdueTags.map(tag => {
+        const tagObj = tag.toObject();
+        tagObj.total_quantity = tag.getTotalQuantity();
+        tagObj.remaining_quantity = tag.getTotalRemainingQuantity();
+        tagObj.days_overdue = Math.ceil((new Date() - tag.due_date) / (1000 * 60 * 60 * 24));
+        return tagObj;
+      });
+
+      res.json({
+        overdue_tags: enrichedTags,
+        count: enrichedTags.length
+      });
+
+    } catch (error) {
+      console.error('Get overdue tags error:', error);
+      res.status(500).json({ 
+        message: 'Failed to fetch overdue tags', 
+        error: error.message 
+      });
+    }
+  }
+);
+
+// GET /api/tags/customer/:customerName - Get tags by customer
+router.get('/customer/:customerName', 
+  auth,
+  [
+    param('customerName').notEmpty().withMessage('Customer name is required')
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ 
+          message: 'Validation failed', 
+          errors: errors.array() 
+        });
+      }
+
+      const tags = await TagNew.getTagsByCustomer(req.params.customerName);
+      
+      const enrichedTags = tags.map(tag => {
+        const tagObj = tag.toObject();
+        tagObj.total_quantity = tag.getTotalQuantity();
+        tagObj.remaining_quantity = tag.getTotalRemainingQuantity();
+        tagObj.is_overdue = tag.due_date && new Date() > tag.due_date && tag.status === 'active';
+        return tagObj;
+      });
+
+      res.json({
+        customer_name: req.params.customerName,
+        tags: enrichedTags,
+        count: enrichedTags.length
+      });
+
+    } catch (error) {
+      console.error('Get customer tags error:', error);
+      res.status(500).json({ 
+        message: 'Failed to fetch customer tags', 
+        error: error.message 
+      });
+    }
+  }
+);
+
 // GET /api/tags - Get all tags with filtering and pagination
 router.get('/', 
   auth,
@@ -235,12 +411,18 @@ router.get('/',
     query('page').optional().isInt({ min: 1 }).withMessage('Page must be a positive integer'),
     query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100'),
     query('customer_name').optional().trim(),
-    query('tag_type').optional().isIn(['reserved', 'broken', 'imperfect', 'loaned', 'stock']).withMessage('Invalid tag type'),
-    query('status').optional().isIn(['active', 'fulfilled', 'cancelled']).withMessage('Invalid status'),
+    query('tag_type').optional().custom((value) => {
+      if (!value || value === '') return true; // Allow empty string
+      return ['reserved', 'broken', 'imperfect', 'loaned', 'stock'].includes(value);
+    }).withMessage('Invalid tag type'),
+    query('status').optional().custom((value) => {
+      if (!value || value === '') return true; // Allow empty string
+      return ['active', 'fulfilled', 'cancelled'].includes(value);
+    }).withMessage('Invalid status'),
     query('project_name').optional().trim(),
     query('search').optional().trim(),
-    query('include_items').optional().isBoolean().withMessage('include_items must be a boolean'),
-    query('overdue_only').optional().isBoolean().withMessage('overdue_only must be a boolean'),
+    query('include_items').optional().isIn(['true', 'false']).withMessage('include_items must be true or false'),
+    query('overdue_only').optional().isIn(['true', 'false']).withMessage('overdue_only must be true or false'),
     query('sort_by').optional().isIn(['created_at', 'due_date', 'customer_name', 'project_name']).withMessage('Invalid sort field'),
     query('sort_order').optional().isIn(['asc', 'desc']).withMessage('Sort order must be "asc" or "desc"')
   ],
@@ -429,17 +611,32 @@ router.post('/',
   validateTag,
   async (req, res) => {
     try {
+      // Debug: Log the exact request body received
+      console.log('=== CREATE TAG REQUEST RECEIVED ===')
+      console.log('Request body:', JSON.stringify(req.body, null, 2))
+      console.log('Request headers:', req.headers['content-type'])
+      console.log('=====================================')
+      
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
+        console.log('=== VALIDATION ERRORS ===')
+        console.log('Validation failed for request body:', JSON.stringify(req.body, null, 2))
+        console.log('Validation errors:', JSON.stringify(errors.array(), null, 2))
+        console.log('==========================')
         return res.status(400).json({ 
           message: 'Validation failed', 
           errors: errors.array() 
         });
       }
 
+      console.log('=== VALIDATION PASSED, CHECKING AVAILABILITY ===')
+      
       // Check item availability before creating tag
+      console.log('Checking availability for items:', req.body.items)
       const availability = await checkItemAvailability(req.body.items);
+      console.log('Availability results:', JSON.stringify(availability, null, 2))
       const unavailableItems = availability.filter(item => !item.can_fulfill);
+      console.log('Unavailable items count:', unavailableItems.length)
       
       if (unavailableItems.length > 0) {
         return res.status(400).json({
@@ -825,78 +1022,6 @@ router.delete('/:id',
       console.error('Delete tag error:', error);
       res.status(500).json({ 
         message: 'Failed to delete tag', 
-        error: error.message 
-      });
-    }
-  }
-);
-
-// GET /api/tags/overdue - Get overdue tags
-router.get('/overdue/list', 
-  auth,
-  async (req, res) => {
-    try {
-      const overdueTags = await TagNew.getOverdueTags();
-      
-      const enrichedTags = overdueTags.map(tag => {
-        const tagObj = tag.toObject();
-        tagObj.total_quantity = tag.getTotalQuantity();
-        tagObj.remaining_quantity = tag.getTotalRemainingQuantity();
-        tagObj.days_overdue = Math.ceil((new Date() - tag.due_date) / (1000 * 60 * 60 * 24));
-        return tagObj;
-      });
-
-      res.json({
-        overdue_tags: enrichedTags,
-        count: enrichedTags.length
-      });
-
-    } catch (error) {
-      console.error('Get overdue tags error:', error);
-      res.status(500).json({ 
-        message: 'Failed to fetch overdue tags', 
-        error: error.message 
-      });
-    }
-  }
-);
-
-// GET /api/tags/customer/:customerName - Get tags by customer
-router.get('/customer/:customerName', 
-  auth,
-  [
-    param('customerName').notEmpty().withMessage('Customer name is required')
-  ],
-  async (req, res) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ 
-          message: 'Validation failed', 
-          errors: errors.array() 
-        });
-      }
-
-      const tags = await TagNew.getTagsByCustomer(req.params.customerName);
-      
-      const enrichedTags = tags.map(tag => {
-        const tagObj = tag.toObject();
-        tagObj.total_quantity = tag.getTotalQuantity();
-        tagObj.remaining_quantity = tag.getTotalRemainingQuantity();
-        tagObj.is_overdue = tag.due_date && new Date() > tag.due_date && tag.status === 'active';
-        return tagObj;
-      });
-
-      res.json({
-        customer_name: req.params.customerName,
-        tags: enrichedTags,
-        count: enrichedTags.length
-      });
-
-    } catch (error) {
-      console.error('Get customer tags error:', error);
-      res.status(500).json({ 
-        message: 'Failed to fetch customer tags', 
         error: error.message 
       });
     }

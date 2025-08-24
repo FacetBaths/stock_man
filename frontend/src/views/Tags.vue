@@ -17,13 +17,18 @@ const tagStore = useTagStore()
 const categoryStore = useCategoryStore()
 const $q = useQuasar()
 
-// Use store state instead of local state
+// Local state for modals
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const tagToEdit = ref<Tag | null>(null)
 const showSendForInstallDialog = ref(false)
 const showProductUsedDialog = ref(false)
 const selectedTags = ref<Tag[]>([])
+
+// Store state computed properties
+const error = computed(() => tagStore.error)
+const isLoading = computed(() => tagStore.isLoading)
+const stats = computed(() => tagStore.tagStats)
 
 // Filters - sync with store filters
 const statusFilter = computed({
@@ -47,8 +52,8 @@ const customerFilter = computed({
   }
 })
 
-// Use store computed properties
-const filteredTags = computed(() => tagStore.filteredTags)
+// Use store computed properties  
+const filteredTags = computed(() => tagStore.tags)
 
 const getTagTypeColor = (tagType: string) => {
   const type = TAG_TYPES.find(t => t.value === tagType)
@@ -73,9 +78,19 @@ const loadStats = async () => {
   await tagStore.fetchStats()
 }
 
-const handleEditTag = (tag: Tag) => {
-  tagToEdit.value = tag
-  showEditModal.value = true
+const handleEditTag = async (tag: Tag) => {
+  try {
+    // Fetch the tag with populated items to ensure we have all the details
+    const fullTag = await tagStore.fetchTag(tag._id, true)
+    tagToEdit.value = fullTag
+    showEditModal.value = true
+  } catch (err: any) {
+    $q.notify({
+      type: 'negative', 
+      message: `Failed to load tag details: ${err.message}`,
+      timeout: 3000
+    })
+  }
 }
 
 const handleCreateSuccess = async () => {
@@ -130,23 +145,27 @@ const formatDate = (dateString: string) => {
   return new Date(dateString).toLocaleDateString()
 }
 
-const getSKUItemsDisplay = (skuItems: any[]) => {
-  if (!skuItems || skuItems.length === 0) return 'No items'
+const getItemsDisplay = (items: any[]) => {
+  if (!items || items.length === 0) return 'No items'
   
-  return skuItems.map(skuItem => {
-    const sku = skuItem.sku_id
-    if (!sku) return 'Unknown SKU'
+  return items.map(tagItem => {
+    // Handle populated vs unpopulated item references
+    const item = typeof tagItem.item_id === 'object' ? tagItem.item_id : null
+    if (!item) return `Item ${tagItem.item_id} (${tagItem.remaining_quantity || tagItem.quantity})`
     
-    const quantity = skuItem.remaining_quantity || skuItem.quantity
-    let displayName = sku.sku_code
+    const sku = typeof item.sku_id === 'object' ? item.sku_id : null
+    if (!sku) return `Unknown SKU (${tagItem.remaining_quantity || tagItem.quantity})`
+    
+    const quantity = tagItem.remaining_quantity || tagItem.quantity
+    let displayName = sku.sku_code || 'Unknown SKU'
     
     // Add product details if available
-    if (sku.product_details) {
-      const details = sku.product_details
-      if (sku.product_type === 'wall') {
+    if (sku.details) {
+      const details = sku.details
+      if (details.product_line && details.color_name) {
         displayName += ` (${details.product_line} - ${details.color_name})`
-      } else if (details.name) {
-        displayName += ` (${details.name})`
+      } else if (sku.name) {
+        displayName += ` (${sku.name})`
       } else if (details.brand) {
         displayName += ` (${details.brand})`
       }
@@ -156,9 +175,9 @@ const getSKUItemsDisplay = (skuItems: any[]) => {
   }).join(', ')
 }
 
-const getTotalQuantity = (skuItems: any[]) => {
-  if (!skuItems) return 0
-  return skuItems.reduce((sum, item) => sum + (item.remaining_quantity || item.quantity), 0)
+const getTotalQuantity = (items: any[]) => {
+  if (!items) return 0
+  return items.reduce((sum, item) => sum + (item.remaining_quantity || item.quantity), 0)
 }
 
 onMounted(async () => {
@@ -168,9 +187,9 @@ onMounted(async () => {
 const tableColumns = [
   {
     name: 'items',
-    label: 'SKU Items',
-    field: 'sku_items',
-    format: (skuItems: any[]) => getSKUItemsDisplay(skuItems),
+    label: 'Items',
+    field: 'items',
+    format: (items: any[]) => getItemsDisplay(items),
     align: 'left',
     sortable: false
   },
@@ -191,8 +210,8 @@ const tableColumns = [
   {
     name: 'quantity',
     label: 'Total Quantity',
-    field: 'sku_items',
-    format: (skuItems: any[]) => getTotalQuantity(skuItems),
+    field: 'items',
+    format: (items: any[]) => getTotalQuantity(items),
     align: 'center',
     sortable: false
   },
@@ -234,13 +253,13 @@ const tableColumns = [
               Track and manage inventory tags for customers, projects, and reservations
             </p>
           </div>
-          <div class="col-auto" v-if="tagStore.stats">
+          <div class="col-auto" v-if="stats">
             <div class="row q-gutter-md">
               <q-chip color="primary" text-color="white" icon="local_offer">
-                {{ tagStore.stats.totalActiveTags }} Active Tags
+                {{ stats.active }} Active Tags
               </q-chip>
               <q-chip color="positive" text-color="white" icon="people">
-                {{ tagStore.stats.uniqueCustomers }} Customers
+                {{ stats.uniqueCustomers }} Customers
               </q-chip>
             </div>
           </div>
@@ -248,15 +267,14 @@ const tableColumns = [
       </div>
 
       <!-- Tag Type Stats -->
-      <div v-if="stats?.byTagType?.length" class="stats-section q-mb-lg" data-aos="fade-up" data-aos-delay="100">
+      <div v-if="stats?.byType" class="stats-section q-mb-lg" data-aos="fade-up" data-aos-delay="100">
         <div class="row q-gutter-md">
-          <div v-for="stat in stats.byTagType" :key="stat._id" class="col">
-            <q-card class="glass-card stat-card text-center">
+          <div v-for="(count, tagType) in stats.byType" :key="tagType" class="col">
+            <q-card class="glass-card stat-card text-center" v-if="count > 0">
               <q-card-section class="q-pa-md">
-                <q-icon name="label" class="text-h4 q-mb-xs" :style="{ color: getTagTypeColor(stat._id) }" />
-                <div class="text-h6 text-dark text-weight-bold">{{ stat.count }}</div>
-                <div class="text-body2 text-dark opacity-80 text-capitalize">{{ stat._id }} Tags</div>
-                <div class="text-caption text-dark opacity-60">{{ stat.totalQuantity }} items</div>
+                <q-icon name="label" class="text-h4 q-mb-xs" :style="{ color: getTagTypeColor(tagType) }" />
+                <div class="text-h6 text-dark text-weight-bold">{{ count }}</div>
+                <div class="text-body2 text-dark opacity-80 text-capitalize">{{ tagType }} Tags</div>
               </q-card-section>
             </q-card>
           </div>
@@ -406,9 +424,9 @@ const tableColumns = [
         >
           <template v-slot:body-cell-items="props">
             <q-td :props="props" style="max-width: 400px">
-              <div class="sku-items-display">
-                <div v-if="props.row.sku_items && props.row.sku_items.length > 0" class="q-gutter-xs">
-                  <div v-for="(skuItem, index) in props.row.sku_items" :key="index" class="sku-item-chip">
+              <div class="items-display">
+                <div v-if="props.row.items && props.row.items.length > 0" class="q-gutter-xs">
+                  <div v-for="(tagItem, index) in props.row.items" :key="index" class="item-chip">
                     <q-chip 
                       size="sm" 
                       color="blue-grey-2" 
@@ -417,21 +435,26 @@ const tableColumns = [
                       class="q-mb-xs"
                     >
                       <span class="text-weight-medium">
-                        {{ skuItem.sku_id?.sku_code || 'Unknown SKU' }}
+                        <template v-if="typeof tagItem.item_id === 'object' && tagItem.item_id?.sku_id">
+                          {{ tagItem.item_id.sku_id.sku_code || 'Unknown SKU' }}
+                        </template>
+                        <template v-else>
+                          Item {{ tagItem.item_id }}
+                        </template>
                       </span>
-                      <span v-if="skuItem.sku_id?.product_details" class="q-ml-xs text-caption">
-                        (<template v-if="skuItem.sku_id.product_type === 'wall'">
-                          {{ skuItem.sku_id.product_details.product_line }} - {{ skuItem.sku_id.product_details.color_name }}
+                      <span v-if="typeof tagItem.item_id === 'object' && tagItem.item_id?.sku_id?.details" class="q-ml-xs text-caption">
+                        (<template v-if="tagItem.item_id.sku_id.details.product_line && tagItem.item_id.sku_id.details.color_name">
+                          {{ tagItem.item_id.sku_id.details.product_line }} - {{ tagItem.item_id.sku_id.details.color_name }}
                         </template>
-                        <template v-else-if="skuItem.sku_id.product_details.name">
-                          {{ skuItem.sku_id.product_details.name }}
+                        <template v-else-if="tagItem.item_id.sku_id.name">
+                          {{ tagItem.item_id.sku_id.name }}
                         </template>
-                        <template v-else-if="skuItem.sku_id.product_details.brand">
-                          {{ skuItem.sku_id.product_details.brand }}
+                        <template v-else-if="tagItem.item_id.sku_id.details.brand">
+                          {{ tagItem.item_id.sku_id.details.brand }}
                         </template>)
                       </span>
                       <q-badge color="primary" floating transparent>
-                        {{ skuItem.remaining_quantity || skuItem.quantity }}
+                        {{ tagItem.remaining_quantity || tagItem.quantity }}
                       </q-badge>
                     </q-chip>
                   </div>

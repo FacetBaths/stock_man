@@ -14,11 +14,11 @@ import router from './router'
 const app = createApp(App)
 
 app.use(Quasar, {
-  plugins: {
+  plugins: [
     Loading,
     Notify,
     Dialog
-  },
+  ],
   config: {
     brand: {
       primary: '#9945FF',

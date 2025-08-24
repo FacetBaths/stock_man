@@ -31,10 +31,16 @@ const generateRefreshToken = (user) => {
 
 // Enhanced JWT verification middleware
 const auth = async (req, res, next) => {
+  console.log('=== AUTH MIDDLEWARE CALLED ===')
+  console.log('Request URL:', req.originalUrl)
+  console.log('Request method:', req.method)
+  
   try {
     const token = req.header('Authorization')?.replace('Bearer ', '');
+    console.log('Token extracted:', !!token)
     
     if (!token) {
+      console.log('No token found, returning 401')
       await logSecurityEvent(null, 'AUTH_MISSING_TOKEN', req);
       return res.status(401).json({ 
         message: 'No token provided, access denied',
@@ -42,10 +48,13 @@ const auth = async (req, res, next) => {
       });
     }
 
+    console.log('Verifying token...')
     let decoded;
     try {
       decoded = jwt.verify(token, process.env.JWT_SECRET);
+      console.log('Token decoded successfully, user ID:', decoded.id)
     } catch (error) {
+      console.log('Token verification failed:', error.name)
       if (error.name === 'TokenExpiredError') {
         await logSecurityEvent(null, 'AUTH_TOKEN_EXPIRED', req);
         return res.status(401).json({ 
@@ -61,9 +70,13 @@ const auth = async (req, res, next) => {
       }
     }
 
+    console.log('Finding user in database...')
     // Verify user still exists and is active
     const user = await User.findById(decoded.id).select('+passwordChangedAt');
+    console.log('User found:', !!user)
+    
     if (!user || !user.isActive) {
+      console.log('User not found or inactive')
       await logSecurityEvent(decoded.id, 'AUTH_USER_NOT_FOUND', req);
       return res.status(401).json({ 
         message: 'User not found or inactive',
@@ -73,6 +86,7 @@ const auth = async (req, res, next) => {
 
     // Check if user is locked
     if (user.isLocked) {
+      console.log('User account is locked')
       await logSecurityEvent(user._id, 'AUTH_ACCOUNT_LOCKED', req);
       return res.status(423).json({ 
         message: 'Account is temporarily locked due to multiple failed login attempts',
@@ -82,6 +96,7 @@ const auth = async (req, res, next) => {
 
     // Check if password was changed after token was issued
     if (user.changedPasswordAfter(decoded.iat)) {
+      console.log('Password changed after token was issued')
       await logSecurityEvent(user._id, 'AUTH_PASSWORD_CHANGED', req);
       return res.status(401).json({ 
         message: 'Password recently changed. Please log in again.',
@@ -89,21 +104,16 @@ const auth = async (req, res, next) => {
       });
     }
 
-    // Attach user to request
-    req.user = {
-      id: user._id,
-      username: user.username,
-      email: user.email,
-      role: user.role,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      fullName: user.fullName,
-      preferences: user.preferences
-    };
+    console.log('Auth checks passed, attaching user to request')
+    // Attach user to request - Need to attach the full user object for logout route
+    req.user = user; // Use full user object instead of just data
     
+    console.log('Calling next() to continue to route handler')
     next();
   } catch (error) {
-    console.error('Auth middleware error:', error);
+    console.error('=== AUTH MIDDLEWARE ERROR ===')
+    console.error('Error details:', error)
+    console.error('Error stack:', error.stack)
     await logSecurityEvent(null, 'AUTH_SYSTEM_ERROR', req, { error: error.message });
     res.status(500).json({ 
       message: 'Authentication system error',

@@ -183,7 +183,20 @@ const getPrimaryTagStatus = (item: Item) => {
 const getProductType = (item: any) => {
   // Handle new inventory API structure (has nested sku and category)
   if (item.sku && item.category) {
-    return item.category.name.toLowerCase() || 'unknown'
+    // Map category names to product types for styling consistency
+    const categoryName = item.category.name.toLowerCase()
+    const categoryToTypeMap: { [key: string]: string } = {
+      'walls': 'wall',
+      'accessories': 'accessory',
+      'toilets': 'toilet',
+      'bases': 'base',
+      'tubs': 'tub',
+      'vanities': 'vanity',
+      'shower doors': 'shower_door',
+      'raw materials': 'raw_material',
+      'miscellaneous': 'miscellaneous'
+    }
+    return categoryToTypeMap[categoryName] || categoryName
   }
   // Handle legacy item structure
   if (item.product_type) {
@@ -252,10 +265,45 @@ const getCost = (item: any) => {
   if (item.sku && item.sku.unit_cost !== undefined) {
     return item.sku.unit_cost
   }
+  if (item.average_cost !== undefined) {
+    return item.average_cost
+  }
   if (item.cost !== undefined) {
     return item.cost
   }
   return 0
+}
+
+// Helper to get total value from new inventory structure
+const getTotalValue = (item: any) => {
+  if (item.total_value !== undefined) {
+    return item.total_value
+  }
+  return getCost(item) * getQuantity(item)
+}
+
+// Helper to get stock status for new inventory structure
+const getStockStatusNew = (item: any) => {
+  if (item.is_out_of_stock) {
+    return { class: 'out-of-stock', text: 'Out of Stock', color: 'negative' }
+  }
+  if (item.is_low_stock) {
+    return { class: 'low-stock', text: 'Low Stock', color: 'warning' }
+  }
+  if (item.is_overstock) {
+    return { class: 'overstock', text: 'Overstock', color: 'orange' }
+  }
+  if (item.needs_reorder) {
+    return { class: 'needs-reorder', text: 'Reorder', color: 'info' }
+  }
+  const availableQty = getAvailableQuantityNew(item)
+  if (availableQty === 0) {
+    return { class: 'out-of-stock', text: 'Out of Stock', color: 'negative' }
+  }
+  if (availableQty <= 5) {
+    return { class: 'low-stock', text: 'Low Stock', color: 'warning' }
+  }
+  return { class: 'in-stock', text: 'In Stock', color: 'positive' }
 }
 
 // Handle tag status click

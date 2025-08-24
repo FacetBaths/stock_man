@@ -86,38 +86,57 @@ api.interceptors.request.use(async (config) => {
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (error.response?.status === 401) {
+    const originalRequest = error.config
+    
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true // Prevent infinite retry loops
+      
       try {
         const store = await getAuthStore()
+        
+        // Skip auth endpoints to avoid infinite loops
+        if (originalRequest.url?.includes('/auth/')) {
+          console.log('Auth endpoint failed, clearing auth data')
+          store.clearAuthData()
+          return Promise.reject(error)
+        }
         
         // If we have a refresh token, try to refresh
         if (store.refreshToken) {
           try {
+            console.log('401 error - attempting token refresh')
             await store.refreshTokens()
+            
             // Retry the original request with new token
             const newToken = await store.getValidAccessToken()
-            if (newToken && error.config) {
-              error.config.headers.Authorization = `Bearer ${newToken}`
-              return api.request(error.config)
+            if (newToken && originalRequest) {
+              originalRequest.headers.Authorization = `Bearer ${newToken}`
+              return api.request(originalRequest)
             }
           } catch (refreshError) {
-            console.error('Token refresh failed during request retry:', refreshError)
+            console.error('Token refresh failed, logging out:', refreshError)
             // Fall through to logout
           }
         }
         
-        // If refresh fails or no refresh token, logout
-        await store.logout()
-        window.location.href = '/#/login'
+        // If no refresh token or refresh failed, clear auth and redirect
+        console.log('No valid refresh token, logging out')
+        store.clearAuthData()
+        
+        // Only redirect if we're not already on login page
+        if (window.location.hash !== '#/login') {
+          window.location.href = '/#/login'
+        }
       } catch (storeError) {
-        // Fallback to legacy logout
-        localStorage.removeItem('accessToken')
-        localStorage.removeItem('refreshToken')
-        localStorage.removeItem('token')
-        localStorage.removeItem('user')
-        window.location.href = '/#/login'
+        console.error('Error handling 401:', storeError)
+        // Fallback cleanup
+        localStorage.clear()
+        if (window.location.hash !== '#/login') {
+          window.location.href = '/#/login'
+        }
       }
     }
+    
     return Promise.reject(error)
   }
 )
@@ -137,7 +156,6 @@ export const authApi = {
     if (refreshToken) {
       await api.post('/auth/logout', { refreshToken })
     } else {
-      // Fallback for legacy logout
       await api.post('/auth/logout')
     }
   },
@@ -204,8 +222,11 @@ export const inventoryApi = {
     const response = await api.get('/inventory', { params: newParams })
     
     // Transform response to match old InventoryResponse format
+    // The backend returns 'inventory' array, but old system expected 'items'
+    const inventoryItems = response.data.inventory || []
+    
     return {
-      items: response.data.inventory || [],
+      items: inventoryItems,
       totalItems: response.data.pagination?.total_items || 0,
       totalPages: response.data.pagination?.total_pages || 0,
       currentPage: response.data.pagination?.current_page || 1

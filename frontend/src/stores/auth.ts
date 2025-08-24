@@ -115,8 +115,8 @@ export const useAuthStore = defineStore('auth', () => {
         }
       } catch (error) {
         console.error('Token refresh failed:', error)
-        // Clear all auth data on refresh failure
-        await logout()
+        // Clear all auth data on refresh failure - don't call API logout to avoid infinite loop
+        clearAuthData()
         throw error
       } finally {
         refreshPromise.value = null
@@ -148,43 +148,48 @@ export const useAuthStore = defineStore('auth', () => {
   const initializeAuth = async () => {
     if (initialized.value) return
     
-    const storedAccessToken = localStorage.getItem('accessToken') || localStorage.getItem('token') // Support legacy token
-    const storedRefreshToken = localStorage.getItem('refreshToken')
-    const storedUser = localStorage.getItem('user')
-    
-    if (storedAccessToken && storedUser) {
-      try {
-        accessToken.value = storedAccessToken
-        refreshToken.value = storedRefreshToken
-        user.value = JSON.parse(storedUser)
-        
-        // If we only have legacy token, try to verify it's still valid
-        if (!storedRefreshToken) {
+    try {
+      const storedAccessToken = localStorage.getItem('accessToken') || localStorage.getItem('token')
+      const storedRefreshToken = localStorage.getItem('refreshToken')
+      const storedUser = localStorage.getItem('user')
+      
+      if (storedAccessToken && storedUser) {
+        try {
+          // Parse user data first to validate it
+          const userData = JSON.parse(storedUser)
+          
+          // Set initial values
+          accessToken.value = storedAccessToken
+          refreshToken.value = storedRefreshToken
+          user.value = userData
+          
+          // Always verify the token is still valid on initialization
           try {
             await authApi.getCurrentUser()
-            console.log('Legacy token still valid')
-          } catch (error) {
-            // Legacy token is invalid, clear auth
-            await logout()
+            console.log('Auth initialized - token valid:', { 
+              user: user.value?.username,
+              hasAccessToken: !!accessToken.value,
+              hasRefreshToken: !!refreshToken.value
+            })
+          } catch (tokenError) {
+            console.warn('Stored token invalid, clearing auth:', tokenError)
+            // Token is invalid, clear everything
+            clearAuthData()
           }
+        } catch (parseError) {
+          console.error('Error parsing stored user data:', parseError)
+          clearAuthData()
         }
-        
-        console.log('Auth store initialized from localStorage:', { 
-          user: user.value, 
-          hasAccessToken: !!accessToken.value,
-          hasRefreshToken: !!refreshToken.value,
-          isLegacy: !storedRefreshToken
-        })
-      } catch (error) {
-        console.error('Error parsing stored auth data:', error)
-        localStorage.removeItem('accessToken')
-        localStorage.removeItem('refreshToken')
-        localStorage.removeItem('token') // Clear legacy token
-        localStorage.removeItem('user')
+      } else {
+        console.log('No stored auth data found')
+        clearAuthData()
       }
+    } catch (error) {
+      console.error('Auth initialization error:', error)
+      clearAuthData()
+    } finally {
+      initialized.value = true
     }
-    
-    initialized.value = true
   }
 
   const login = async (credentials: LoginCredentials) => {
@@ -229,33 +234,60 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  // Helper function to clear all auth data
+  const clearAuthData = () => {
+    // Clear reactive state
+    user.value = null
+    accessToken.value = null
+    refreshToken.value = null
+    refreshPromise.value = null
+    error.value = null
+    
+    // Clear localStorage completely
+    localStorage.removeItem('accessToken')
+    localStorage.removeItem('refreshToken')
+    localStorage.removeItem('token') // Clear legacy token
+    localStorage.removeItem('user')
+    
+    console.log('All auth data cleared')
+  }
+
   const logout = async () => {
+    console.log('=== LOGOUT PROCESS STARTED ===')
+    console.log('Current tokens:', { 
+      hasRefreshToken: !!refreshToken.value, 
+      hasAccessToken: !!accessToken.value 
+    })
+    
     try {
       // Attempt to logout on server if we have tokens
       if (refreshToken.value) {
+        console.log('Attempting server logout with refresh token...')
         await authApi.logout(refreshToken.value)
+        console.log('Server logout with refresh token succeeded')
       } else if (accessToken.value) {
+        console.log('Attempting server logout with access token...')
         await authApi.logout()
+        console.log('Server logout with access token succeeded')
+      } else {
+        console.log('No tokens found, skipping server logout')
       }
     } catch (error) {
-      console.warn('Server logout failed:', error)
+      console.warn('Server logout failed (continuing with local logout):', error)
+      console.error('Full error details:', error)
       // Continue with local logout even if server logout fails
-    } finally {
-      // Clear all auth data
-      user.value = null
-      accessToken.value = null
-      refreshToken.value = null
-      refreshPromise.value = null
-      error.value = null
-      
-      // Clear localStorage
-      localStorage.removeItem('accessToken')
-      localStorage.removeItem('refreshToken') 
-      localStorage.removeItem('token') // Clear legacy token
-      localStorage.removeItem('user')
-      
-      console.log('User logged out, all auth data cleared')
     }
+    
+    console.log('Clearing local auth data...')
+    // Always clear local auth data regardless of server response
+    clearAuthData()
+    
+    console.log('Auth data cleared, redirecting to login...')
+    // Force redirect to login
+    if (typeof window !== 'undefined') {
+      window.location.href = '/#/login'
+    }
+    console.log('=== LOGOUT PROCESS COMPLETED ===')
   }
 
   const updateProfile = async (profileData: UpdateProfileRequest) => {
@@ -324,6 +356,7 @@ export const useAuthStore = defineStore('auth', () => {
     getValidAccessToken,
     updateProfile,
     changePassword,
-    clearError
+    clearError,
+    clearAuthData
   }
 })

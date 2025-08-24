@@ -440,7 +440,7 @@ export interface Tag {
   is_fully_fulfilled?: boolean
 }
 
-// Create tag request for new architecture
+// Create tag request for new architecture (multi-item)
 export interface CreateTagRequest {
   customer_name: string
   tag_type?: 'reserved' | 'broken' | 'imperfect' | 'loaned' | 'stock'

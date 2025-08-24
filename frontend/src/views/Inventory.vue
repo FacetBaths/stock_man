@@ -87,14 +87,12 @@ const handleInStockToggle = () => {
   loadItems()
 }
 
-// Updated methods for new store architecture
+// Use backward compatibility method
 const loadItems = async () => {
-  // Use the new fetchItems method for individual items
-  await inventoryStore.fetchItems({
-    filters: {
-      ...inventoryStore.itemFilters,
-      in_stock_only: showInStockOnly.value
-    }
+  // Use the backward compatible loadItems method
+  await inventoryStore.loadItems({
+    in_stock_only: showInStockOnly.value,
+    search: searchQuery.value.trim()
   })
 }
 

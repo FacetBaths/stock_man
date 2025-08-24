@@ -29,7 +29,7 @@ export const useTagStore = defineStore('tag', () => {
     status: 'active' as 'active' | 'fulfilled' | 'cancelled' | '',
     project_name: '',
     search: '',
-    include_items: false,
+    include_items: true, // Always include item details for proper display
     overdue_only: false,
     sort_by: 'created_at' as 'created_at' | 'due_date' | 'customer_name' | 'project_name',
     sort_order: 'desc' as 'asc' | 'desc'
@@ -298,9 +298,10 @@ export const useTagStore = defineStore('tag', () => {
   }
 
   // Get tag statistics
-  const fetchTagStats = async () => {
+  const fetchStats = async () => {
     try {
-      return await tagApi.getStats()
+      const response = await tagApi.getStats()
+      return response
     } catch (err: any) {
       error.value = err.response?.data?.message || 'Failed to fetch tag stats'
       throw err
@@ -317,51 +318,6 @@ export const useTagStore = defineStore('tag', () => {
     }
   }
 
-  const assignSKUsToTag = async (tagId: string, skuIds: string[]) => {
-    try {
-      isLoading.value = true
-      error.value = null
-
-      await tagApi.assignSKUsToTag(tagId, skuIds)
-      
-      // Refresh the specific tag to get updated SKU assignments
-      const updatedTag = await tagApi.getTag(tagId)
-      const index = tags.value.findIndex(t => t._id === tagId)
-      if (index !== -1) {
-        tags.value[index] = updatedTag
-      }
-
-      return updatedTag
-    } catch (err: any) {
-      error.value = err.response?.data?.message || 'Failed to assign SKUs to tag'
-      throw err
-    } finally {
-      isLoading.value = false
-    }
-  }
-
-  const removeSKUsFromTag = async (tagId: string, skuIds: string[]) => {
-    try {
-      isLoading.value = true
-      error.value = null
-
-      await tagApi.removeSKUsFromTag(tagId, skuIds)
-      
-      // Refresh the specific tag to get updated SKU assignments
-      const updatedTag = await tagApi.getTag(tagId)
-      const index = tags.value.findIndex(t => t._id === tagId)
-      if (index !== -1) {
-        tags.value[index] = updatedTag
-      }
-
-      return updatedTag
-    } catch (err: any) {
-      error.value = err.response?.data?.message || 'Failed to remove SKUs from tag'
-      throw err
-    } finally {
-      isLoading.value = false
-    }
-  }
 
   // Helper methods for new architecture
   const getTagsByCustomer = (customerName: string) => {
@@ -410,7 +366,7 @@ export const useTagStore = defineStore('tag', () => {
       status: 'active',
       project_name: '',
       search: '',
-      include_items: false,
+      include_items: true, // Always include item details for proper display
       overdue_only: false,
       sort_by: 'created_at',
       sort_order: 'desc'
@@ -456,12 +412,8 @@ export const useTagStore = defineStore('tag', () => {
     updateTag,
     deleteTag,
     fulfillTag,
-    fetchTagStats,
+    fetchStats,
     fetchCustomers,
-
-    // Legacy methods (if needed for backward compatibility)
-    assignSKUsToTag,
-    removeSKUsFromTag,
     
     // Helper methods
     getTagsByCustomer,
