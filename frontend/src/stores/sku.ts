@@ -30,7 +30,7 @@ export const useSKUStore = defineStore('sku', () => {
   // Filters for new architecture
   const filters = ref({
     category_id: '',
-    is_active: true,
+    status: 'active' as 'active' | 'discontinued' | 'pending' | '',
     is_lendable: undefined as boolean | undefined,
     search: '',
     sort_by: 'sku_code' as 'sku_code' | 'name' | 'unit_cost' | 'created_at',
@@ -141,10 +141,23 @@ export const useSKUStore = defineStore('sku', () => {
       error.value = null
 
       // Merge with current filters
-      const requestParams = {
+      const mergedParams = {
         ...filters.value,
         ...params
       }
+
+      // Filter out empty strings and undefined values, convert booleans to strings
+      const requestParams: any = {}
+      Object.entries(mergedParams).forEach(([key, value]) => {
+        if (value !== '' && value !== undefined && value !== null) {
+          // Convert boolean values to strings for backend compatibility
+          if (typeof value === 'boolean') {
+            requestParams[key] = value.toString()
+          } else {
+            requestParams[key] = value
+          }
+        }
+      })
 
       const response = await skuApi.getSKUs(requestParams)
 
@@ -383,7 +396,7 @@ export const useSKUStore = defineStore('sku', () => {
   const clearFilters = () => {
     filters.value = {
       category_id: '',
-      is_active: true,
+      status: 'active',
       is_lendable: undefined,
       search: '',
       sort_by: 'sku_code',

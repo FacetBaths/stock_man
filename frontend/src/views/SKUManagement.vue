@@ -71,8 +71,8 @@
         <q-card class="stat-card">
           <q-card-section class="row items-center no-wrap">
             <div class="col">
-              <div class="text-h6">{{ skuStore.skuStats.understocked }}</div>
-              <div class="text-subtitle2 text-grey-7">Understocked</div>
+              <div class="text-h6">{{ skuStore.skuStats.lowStock }}</div>
+              <div class="text-subtitle2 text-grey-7">Low Stock</div>
             </div>
             <div class="col-auto">
               <q-icon name="warning" size="md" color="red" />
@@ -118,12 +118,12 @@
 
           <div class="col-xs-12 col-sm-6 col-md-3">
             <q-select
-              v-model="skuStore.filters.product_type"
-              label="Product Type"
+              v-model="skuStore.filters.category_id"
+              label="Category"
               outlined
               dense
               clearable
-              :options="productTypeOptions"
+              :options="categoryOptions"
               emit-value
               map-options
               @update:model-value="applyFilters"
@@ -136,6 +136,7 @@
               label="Status"
               outlined
               dense
+              clearable
               :options="statusOptions"
               emit-value
               map-options
@@ -306,11 +307,11 @@
           </q-td>
         </template>
 
-        <template v-slot:body-cell-product_type="props">
+        <template v-slot:body-cell-category="props">
           <q-td :props="props">
             <q-chip
-              :label="formatProductType(props.value)"
-              :color="getProductTypeColor(props.value)"
+              :label="getCategoryName(props.value)"
+              :color="getCategoryColor(props.value)"
               text-color="white"
               dense
             />
@@ -483,9 +484,9 @@ const columns = [
     sortable: true
   },
   {
-    name: 'product_type',
-    label: 'Product Type',
-    field: 'product_type',
+    name: 'category',
+    label: 'Category',
+    field: 'category_id',
     align: 'center',
     sortable: true
   },
@@ -547,9 +548,16 @@ const productTypeOptions = PRODUCT_TYPES.map(type => ({
   value: type.value
 }))
 
+const categoryOptions = computed(() => {
+  return categoryStore.categories.map(category => ({
+    label: category.name,
+    value: category._id
+  }))
+})
+
 const statusOptions = [
   { label: 'Active', value: 'active' },
-  { label: 'Inactive', value: 'inactive' },
+  { label: 'Pending', value: 'pending' },
   { label: 'Discontinued', value: 'discontinued' }
 ]
 
@@ -592,6 +600,20 @@ const getStatusColor = (status: string) => {
     discontinued: 'red'
   }
   return colors[status] || 'grey'
+}
+
+const getCategoryName = (categoryId: string) => {
+  if (!categoryId) return 'Uncategorized'
+  const category = categoryStore.categories.find(c => c._id === categoryId)
+  return category ? category.name : 'Unknown Category'
+}
+
+const getCategoryColor = (categoryId: string) => {
+  if (!categoryId) return 'grey'
+  const colors: string[] = ['blue', 'green', 'orange', 'cyan', 'purple', 'teal', 'brown', 'pink', 'indigo', 'deep-purple']
+  // Use category ID to generate consistent color
+  const index = categoryId ? categoryId.charCodeAt(categoryId.length - 1) % colors.length : 0
+  return colors[index]
 }
 
 const refreshData = async () => {
@@ -903,6 +925,7 @@ const openBulkCreateDialog = () => {
 // Lifecycle
 onMounted(async () => {
   await Promise.all([
+    categoryStore.fetchCategories(),
     refreshData(),
     loadProductsWithoutSKUs()
   ])

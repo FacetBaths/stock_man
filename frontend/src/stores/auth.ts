@@ -163,19 +163,17 @@ export const useAuthStore = defineStore('auth', () => {
           refreshToken.value = storedRefreshToken
           user.value = userData
           
-          // Always verify the token is still valid on initialization
-          try {
-            await authApi.getCurrentUser()
-            console.log('Auth initialized - token valid:', { 
-              user: user.value?.username,
-              hasAccessToken: !!accessToken.value,
-              hasRefreshToken: !!refreshToken.value
-            })
-          } catch (tokenError) {
-            console.warn('Stored token invalid, clearing auth:', tokenError)
-            // Token is invalid, clear everything
-            clearAuthData()
+          // Check if token is expired rather than making an API call
+          if (isTokenExpired(storedAccessToken)) {
+            console.log('Stored token expired, will refresh on first API call')
+            // Don't clear auth - let the API interceptor handle refresh
           }
+          
+          console.log('Auth initialized:', { 
+            user: user.value?.username,
+            hasAccessToken: !!accessToken.value,
+            hasRefreshToken: !!refreshToken.value
+          })
         } catch (parseError) {
           console.error('Error parsing stored user data:', parseError)
           clearAuthData()

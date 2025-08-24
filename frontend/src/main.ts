@@ -2,10 +2,13 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import { Quasar, Loading, Notify, Dialog } from 'quasar'
 import materialIcons from 'quasar/icon-set/material-icons'
+
+// Import Quasar CSS before everything else
+import 'quasar/dist/quasar.css'
 import '@quasar/extras/material-icons/material-icons.css'
 import '@quasar/extras/fontawesome-v6/fontawesome-v6.css'
 import '@quasar/extras/material-symbols-outlined/material-symbols-outlined.css'
-import 'quasar/dist/quasar.css'
+
 import AOS from 'aos'
 import 'aos/dist/aos.css'
 import App from './App.vue'
@@ -13,6 +16,7 @@ import router from './router'
 
 const app = createApp(App)
 
+// Set up Quasar first
 app.use(Quasar, {
   plugins: [
     Loading,
@@ -35,6 +39,7 @@ app.use(Quasar, {
   iconSet: materialIcons
 })
 
+// Then setup other plugins
 app.use(createPinia())
 app.use(router)
 

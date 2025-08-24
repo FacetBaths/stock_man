@@ -136,7 +136,7 @@ router.get('/',
     query('page').optional().isInt({ min: 1 }).withMessage('Page must be a positive integer'),
     query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100'),
     query('category_id').optional().isMongoId().withMessage('Category ID must be a valid MongoDB ID'),
-    query('is_active').optional().isBoolean().withMessage('is_active must be a boolean'),
+    query('status').optional().isIn(['active', 'discontinued', 'pending']).withMessage('status must be active, discontinued, or pending'),
     query('is_lendable').optional().isBoolean().withMessage('is_lendable must be a boolean'),
     query('search').optional().trim(),
     query('sort_by').optional().isIn(['sku_code', 'name', 'unit_cost', 'created_at']).withMessage('Invalid sort field'),
@@ -164,8 +164,8 @@ router.get('/',
         filter.category_id = req.query.category_id;
       }
       
-      if (req.query.is_active !== undefined) {
-        filter.is_active = req.query.is_active === 'true';
+      if (req.query.status) {
+        filter.status = req.query.status;
       }
       
       if (req.query.is_lendable !== undefined) {
