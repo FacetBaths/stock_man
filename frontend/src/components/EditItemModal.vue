@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { useInventoryStore } from '@/stores/inventory'
 import { skuApi } from '@/utils/api'
-import type { Item, UpdateItemRequest, WallDetails, ProductDetails, SKU } from '@/types'
+import type { UpdateSKURequest } from '@/types'
 
 interface Props {
-  item: Item
+  item: any // Flexible to handle different data structures from Dashboard
 }
 
 const props = defineProps<Props>()
@@ -17,92 +16,152 @@ const emit = defineEmits<{
 }>()
 
 const authStore = useAuthStore()
-const inventoryStore = useInventoryStore()
+const isUpdating = ref(false)
+const error = ref<string | null>(null)
 
-// SKU-related state
-const availableSKUs = ref<SKU[]>([])
-const isLoadingSKUs = ref(false)
-const selectedSKU = ref<string>('')
-
-const formData = ref<UpdateItemRequest>({
-  quantity: 0,
-  location: '',
+// Form data for SKU editing
+const formData = ref<UpdateSKURequest>({
+  name: '',
+  description: '',
+  brand: '',
+  model: '',
+  color: '',
+  dimensions: '',
+  finish: '',
+  unit_cost: 0,
+  barcode: '',
   notes: '',
-  cost: undefined,
-  product_details: {},
-  sku_id: undefined
+  category_id: ''
 })
 
-const isWallProduct = computed(() => props.item.product_type === 'wall')
 const canEditCost = computed(() => authStore.user?.role === 'admin' || authStore.user?.role === 'warehouse_manager')
-
-// Load SKUs for the selected product type
-const loadSKUs = async () => {
-  try {
-    isLoadingSKUs.value = true
-    const response = await skuApi.getSKUs({ 
-      product_type: props.item.product_type,
-      status: 'active',
-      limit: 100
-    })
-    availableSKUs.value = response.skus
-  } catch (error) {
-    console.error('Failed to load SKUs:', error)
-    availableSKUs.value = []
-  } finally {
-    isLoadingSKUs.value = false
-  }
-}
-
-// Helper function to format SKU description
-const formatSKUDescription = (sku: SKU): string => {
-  if (!sku) return 'No description'
-  
-  // If SKU has a description, use it
-  if (sku.description && sku.description.trim()) {
-    return sku.description
-  }
-  
-  // Otherwise, try to build from populated product_details
-  if (sku.product_details && typeof sku.product_details === 'object') {
-    const details = sku.product_details as any
-    
-    if (sku.product_type === 'wall') {
-      return `${details.product_line || ''} ${details.color_name || ''} ${details.dimensions || ''}`.trim()
-    } else {
-      return `${details.name || ''} ${details.brand || ''} ${details.model || ''}`.trim()
-    }
-  }
-  
-  // Fallback to product type
-  return sku.product_type || 'No description'
-}
-
-// Watch for SKU selection changes
-watch(() => selectedSKU.value, (newSKU) => {
-  formData.value.sku_id = newSKU || null
-})
+const currentSkuId = ref('')
 
 const initializeForm = () => {
-  formData.value = {
-    quantity: props.item.quantity,
-    location: props.item.location || '',
-    notes: props.item.notes || '',
-    cost: props.item.cost,
-    product_details: { ...props.item.product_details },
-    sku_id: typeof props.item.sku_id === 'string' ? props.item.sku_id : (props.item.sku_id?._id || null)
+  console.log('Initializing form with item:', props.item)
+  console.log('SKU data available at item.sku:', props.item.sku)
+  console.log('SKU data available at item.sku_id:', props.item.sku_id)
+  
+  let skuData = {}
+  let skuId = ''
+  
+  // Check for populated sku field first (as used by InventoryTable)
+  if (props.item.sku && typeof props.item.sku === 'object') {
+    // SKU is populated in the sku field
+    skuData = props.item.sku
+    skuId = props.item.sku._id
+    console.log('Using populated SKU data from item.sku:', skuData)
+  } else if (typeof props.item.sku_id === 'object' && props.item.sku_id !== null) {
+    // SKU is populated in the sku_id field
+    skuData = props.item.sku_id
+    skuId = props.item.sku_id._id
+    console.log('Using populated SKU data from item.sku_id:', skuData)
+  } else {
+    // No populated SKU data found
+    console.error('No populated SKU data found in item')
+    error.value = 'No SKU data available for editing'
+    return
   }
   
-  // Set selected SKU
-  selectedSKU.value = formData.value.sku_id || ''
+  // Store the SKU ID for submission
+  currentSkuId.value = skuId
+  
+  // Determine category_id value, handling populated category objects
+  let categoryId = ''
+  if (skuData.category_id) {
+    // If category_id is a string, use it directly; if it's an object, use its _id
+    categoryId = typeof skuData.category_id === 'string' ? skuData.category_id : skuData.category_id._id || ''
+  } else if (skuData.category) {
+    // Fallback to category field for backward compatibility
+    categoryId = typeof skuData.category === 'string' ? skuData.category : skuData.category._id || ''
+  }
+  
+  console.log('Category ID resolution:', {
+    original_category_id: skuData.category_id,
+    original_category: skuData.category,
+    resolved_category_id: categoryId
+  })
+  
+  // Initialize form with SKU data
+  formData.value = {
+    name: skuData.name || '',
+    description: skuData.description || '',
+    brand: skuData.brand || '',
+    model: skuData.model || '',
+    color: skuData.color || '',
+    dimensions: skuData.dimensions || '',
+    finish: skuData.finish || '',
+    unit_cost: skuData.unit_cost || props.item.average_cost || 0,
+    barcode: skuData.barcode || '',
+    notes: skuData.notes || '',
+    category_id: categoryId
+  }
+  
+  console.log('Initialized form data:', formData.value)
+  console.log('Current SKU ID:', skuId)
 }
 
 const handleSubmit = async () => {
   try {
-    await inventoryStore.updateItem(props.item._id, formData.value)
+    isUpdating.value = true
+    error.value = null
+    
+    if (!currentSkuId.value) {
+      error.value = 'SKU ID not found'
+      return
+    }
+    
+    console.log('Submitting SKU update:', {
+      skuId: currentSkuId.value,
+      formData: formData.value
+    })
+    
+    // Clean up form data - remove empty strings to avoid validation issues
+    const cleanedData = Object.fromEntries(
+      Object.entries(formData.value).filter(([_, value]) => {
+        // Keep the value if it's not an empty string, or if it's a number (including 0)
+        return value !== '' && value !== null && value !== undefined
+      })
+    )
+    
+    console.log('Cleaned form data:', cleanedData)
+    console.log('Cleaned form data keys:', Object.keys(cleanedData))
+    console.log('Cleaned form data values:', Object.values(cleanedData))
+    
+    // Update the SKU data using the SKU API
+    await skuApi.updateSKU(currentSkuId.value, cleanedData)
+    
+    console.log('SKU updated successfully')
     emit('success')
-  } catch (error) {
-    console.error('Update item error:', error)
+  } catch (err: any) {
+    console.error('Update SKU error:', err)
+    console.error('Error response:', err.response)
+    console.error('Error response data:', err.response?.data)
+    console.error('Full error object:', JSON.stringify(err.response?.data, null, 2))
+    
+    // Extract detailed error message
+    let errorMessage = 'Failed to update SKU'
+    
+    if (err.response?.data) {
+      console.log('Processing error data:', err.response.data)
+      
+      if (err.response.data.message) {
+        errorMessage = err.response.data.message
+      } else if (err.response.data.error) {
+        errorMessage = err.response.data.error
+      } else if (err.response.data.details) {
+        errorMessage = `Validation failed: ${JSON.stringify(err.response.data.details)}`
+      } else if (err.response.data.errors) {
+        errorMessage = `Validation errors: ${JSON.stringify(err.response.data.errors)}`
+      } else {
+        // Show the full response for debugging
+        errorMessage = `Server error: ${JSON.stringify(err.response.data)}`
+      }
+    }
+    
+    error.value = errorMessage
+  } finally {
+    isUpdating.value = false
   }
 }
 
@@ -110,9 +169,10 @@ const handleClose = () => {
   emit('close')
 }
 
-onMounted(async () => {
+onMounted(() => {
+  console.log('EditItemModal mounted with item:', props.item)
+  console.log('Item SKU structure:', props.item.sku_id)
   initializeForm()
-  await loadSKUs()
 })
 </script>
 
@@ -121,213 +181,155 @@ onMounted(async () => {
     <div class="modal-dialog">
       <div class="modal-content">
         <div class="modal-header">
-          <h3>Edit Item</h3>
+          <h3>Edit SKU</h3>
           <button class="close-button" @click="handleClose">&times;</button>
         </div>
 
         <div class="modal-body">
           <form @submit.prevent="handleSubmit">
-            <div v-if="inventoryStore.error" class="alert alert-danger">
-              {{ inventoryStore.error }}
+            <div v-if="error" class="alert alert-danger">
+              {{ error }}
             </div>
 
-            <!-- Product Type (Read-only) -->
+            <!-- SKU Code (Read-only) -->
             <div class="form-group">
-              <label class="form-label">Product Type</label>
+              <label class="form-label">SKU Code</label>
+              <div class="sku-code-display">
+                <span class="sku-code-badge">
+                  {{ (item.sku && item.sku.sku_code) || (item.sku_id && item.sku_id.sku_code) || 'No SKU' }}
+                </span>
+              </div>
+            </div>
+
+            <!-- Inventory Summary (Read-only) -->
+            <div class="form-group">
+              <label class="form-label">Inventory Information</label>
+              <div class="inventory-info">
+                <div class="info-item">
+                  <span class="info-label">Total Quantity:</span>
+                  <span class="info-value">{{ item.total_quantity }}</span>
+                </div>
+                <div v-if="item.primary_location" class="info-item">
+                  <span class="info-label">Primary Location:</span>
+                  <span class="info-value">{{ item.primary_location }}</span>
+                </div>
+                <div v-if="item.category" class="info-item">
+                  <span class="info-label">Category:</span>
+                  <span class="info-value">{{ item.category.name }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- SKU Details -->
+            <div class="form-group">
+              <label for="name" class="form-label">Product Name *</label>
               <input
+                id="name"
+                v-model="formData.name"
                 type="text"
                 class="form-control"
-                :value="item.product_type.replace('_', ' ')"
-                readonly
-                disabled
+                required
               />
             </div>
 
-            <!-- SKU Assignment -->
             <div class="form-group">
-              <label for="sku" class="form-label">Associated SKU</label>
-              <select
-                id="sku"
-                v-model="selectedSKU"
-                class="form-select"
-                :disabled="isLoadingSKUs"
-              >
-                <option value="">No SKU (Manual Entry)</option>
-                <option v-if="isLoadingSKUs" disabled>Loading SKUs...</option>
-                <option 
-                  v-for="sku in availableSKUs" 
-                  :key="sku._id" 
-                  :value="sku._id"
-                >
-                  {{ sku.sku_code }} - {{ formatSKUDescription(sku) }}
-                </option>
-              </select>
-              <small class="form-text text-muted">Link this item to a SKU for barcode scanning integration</small>
+              <label for="description" class="form-label">Description</label>
+              <textarea
+                id="description"
+                v-model="formData.description"
+                class="form-control"
+                rows="3"
+                placeholder="Detailed product description..."
+              ></textarea>
             </div>
 
-            <!-- Wall Product Fields -->
-            <template v-if="isWallProduct">
+            <div class="form-row">
               <div class="form-group">
-                <label for="product-line" class="form-label">Product Line *</label>
+                <label for="brand" class="form-label">Brand</label>
                 <input
-                  id="product-line"
-                  v-model="(formData.product_details as WallDetails).product_line"
+                  id="brand"
+                  v-model="formData.brand"
                   type="text"
                   class="form-control"
-                  required
+                  placeholder="Brand name"
                 />
               </div>
 
               <div class="form-group">
-                <label for="color-name" class="form-label">Color Name *</label>
+                <label for="model" class="form-label">Model</label>
                 <input
-                  id="color-name"
-                  v-model="(formData.product_details as WallDetails).color_name"
+                  id="model"
+                  v-model="formData.model"
                   type="text"
                   class="form-control"
-                  required
+                  placeholder="Model number/name"
+                />
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="color" class="form-label">Color</label>
+                <input
+                  id="color"
+                  v-model="formData.color"
+                  type="text"
+                  class="form-control"
+                  placeholder="Color name"
                 />
               </div>
 
               <div class="form-group">
-                <label for="dimensions" class="form-label">Dimensions *</label>
+                <label for="dimensions" class="form-label">Dimensions</label>
                 <input
                   id="dimensions"
-                  v-model="(formData.product_details as WallDetails).dimensions"
+                  v-model="formData.dimensions"
                   type="text"
                   class="form-control"
                   placeholder="e.g., 24x48 inches"
-                  required
                 />
               </div>
+            </div>
 
-              <div class="form-group">
-                <label for="finish" class="form-label">Finish *</label>
-                <input
-                  id="finish"
-                  v-model="(formData.product_details as WallDetails).finish"
-                  type="text"
-                  class="form-control"
-                  required
-                />
-              </div>
-            </template>
+            <div class="form-group">
+              <label for="finish" class="form-label">Finish</label>
+              <input
+                id="finish"
+                v-model="formData.finish"
+                type="text"
+                class="form-control"
+                placeholder="Surface finish or treatment"
+              />
+            </div>
 
-            <!-- Generic Product Fields -->
-            <template v-else>
-              <div class="form-group">
-                <label for="name" class="form-label">Product Name *</label>
-                <input
-                  id="name"
-                  v-model="(formData.product_details as ProductDetails).name"
-                  type="text"
-                  class="form-control"
-                  required
-                />
-              </div>
+            <div class="form-group">
+              <label for="barcode" class="form-label">Barcode</label>
+              <input
+                id="barcode"
+                v-model="formData.barcode"
+                type="text"
+                class="form-control"
+                placeholder="Product barcode/UPC/EAN"
+              />
+              <small class="form-text text-muted">
+                Used for barcode scanning and product identification
+              </small>
+            </div>
 
-              <div class="form-row">
-                <div class="form-group">
-                  <label for="brand" class="form-label">Brand</label>
-                  <input
-                    id="brand"
-                    v-model="(formData.product_details as ProductDetails).brand"
-                    type="text"
-                    class="form-control"
-                  />
-                </div>
-
-                <div class="form-group">
-                  <label for="model" class="form-label">Model</label>
-                  <input
-                    id="model"
-                    v-model="(formData.product_details as ProductDetails).model"
-                    type="text"
-                    class="form-control"
-                  />
-                </div>
-              </div>
-
-              <div class="form-row">
-                <div class="form-group">
-                  <label for="color" class="form-label">Color</label>
-                  <input
-                    id="color"
-                    v-model="(formData.product_details as ProductDetails).color"
-                    type="text"
-                    class="form-control"
-                  />
-                </div>
-
-                <div class="form-group">
-                  <label for="product-dimensions" class="form-label">Dimensions</label>
-                  <input
-                    id="product-dimensions"
-                    v-model="(formData.product_details as ProductDetails).dimensions"
-                    type="text"
-                    class="form-control"
-                  />
-                </div>
-              </div>
-
-              <div class="form-group">
-                <label for="product-finish" class="form-label">Finish</label>
-                <input
-                  id="product-finish"
-                  v-model="(formData.product_details as ProductDetails).finish"
-                  type="text"
-                  class="form-control"
-                />
-              </div>
-
-              <div class="form-group">
-                <label for="description" class="form-label">Description</label>
-                <textarea
-                  id="description"
-                  v-model="(formData.product_details as ProductDetails).description"
-                  class="form-control"
-                  rows="3"
-                ></textarea>
-              </div>
-            </template>
-
-            <!-- Common Fields -->
-            <div class="form-row">
-              <div class="form-group">
-                <label for="quantity" class="form-label">Quantity *</label>
-                <input
-                  id="quantity"
-                  v-model.number="formData.quantity"
-                  type="number"
-                  class="form-control"
-                  min="0"
-                  required
-                />
-              </div>
-
-              <div v-if="canEditCost" class="form-group">
-                <label for="cost" class="form-label">Cost (USD)</label>
-                <input
-                  id="cost"
-                  v-model.number="formData.cost"
-                  type="number"
-                  class="form-control"
-                  min="0"
-                  step="0.01"
-                  placeholder="0.00"
-                />
-              </div>
-
-              <div class="form-group">
-                <label for="location" class="form-label">Location</label>
-                <input
-                  id="location"
-                  v-model="formData.location"
-                  type="text"
-                  class="form-control"
-                  placeholder="e.g., Warehouse A, Shelf 3"
-                />
-              </div>
+            <div v-if="canEditCost" class="form-group">
+              <label for="unit-cost" class="form-label">Unit Cost (USD)</label>
+              <input
+                id="unit-cost"
+                v-model.number="formData.unit_cost"
+                type="number"
+                class="form-control"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+              />
+              <small class="form-text text-muted">
+                Cost per unit for this SKU
+              </small>
             </div>
 
             <div class="form-group">
@@ -337,7 +339,7 @@ onMounted(async () => {
                 v-model="formData.notes"
                 class="form-control"
                 rows="2"
-                placeholder="Any additional notes..."
+                placeholder="Additional notes about this SKU..."
               ></textarea>
             </div>
 
@@ -348,10 +350,10 @@ onMounted(async () => {
               <button
                 type="submit"
                 class="btn btn-primary"
-                :disabled="inventoryStore.isUpdating"
+                :disabled="isUpdating"
               >
-                <span v-if="inventoryStore.isUpdating" class="spinner mr-2"></span>
-                {{ inventoryStore.isUpdating ? 'Updating...' : 'Update Item' }}
+                <span v-if="isUpdating" class="spinner mr-2"></span>
+                {{ isUpdating ? 'Updating...' : 'Update SKU' }}
               </button>
             </div>
           </form>
@@ -553,36 +555,9 @@ onMounted(async () => {
   border-top: 1px solid #dee2e6;
 }
 
-/* SKU Information Display */
-.sku-info-display {
-  border: 1px solid #e9ecef;
-  border-radius: 0.375rem;
-  padding: 1rem;
-  background-color: #f8f9fa;
-}
-
-.sku-info-item {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.sku-info-group {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.sku-info-label {
-  font-weight: 600;
-  font-size: 0.875rem;
-  color: #495057;
-  min-width: 80px;
-  margin: 0;
-}
-
-.sku-info-value {
-  flex: 1;
+/* SKU Code Display */
+.sku-code-display {
+  margin-top: 0.25rem;
 }
 
 .sku-code-badge {
@@ -596,34 +571,37 @@ onMounted(async () => {
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
 }
 
-.barcode-value {
-  display: inline-block;
-  background-color: #343a40;
-  color: white;
-  padding: 0.25rem 0.75rem;
-  border-radius: 0.25rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-}
-
-.no-sku-info {
-  text-align: center;
+/* Inventory Information Display */
+.inventory-info {
+  border: 1px solid #e9ecef;
+  border-radius: 0.375rem;
   padding: 1rem;
+  background-color: #f8f9fa;
+  margin-top: 0.25rem;
 }
 
-.no-sku-info .text-muted {
-  color: #6c757d;
+.info-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.info-item:last-child {
+  margin-bottom: 0;
+}
+
+.info-label {
+  font-weight: 600;
   font-size: 0.875rem;
-  display: block;
-  margin-bottom: 0.25rem;
+  color: #495057;
 }
 
-.no-sku-info .help-text {
-  color: #868e96;
-  font-size: 0.75rem;
-  font-style: italic;
+.info-value {
+  font-size: 0.875rem;
+  color: #6c757d;
 }
+
 
 @media (max-width: 768px) {
   .modal-overlay {

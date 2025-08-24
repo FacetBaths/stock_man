@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { tagApi, inventoryApi } from '@/utils/api'
+import { tagApi, inventoryApi, itemsApi } from '@/utils/api'
 import { TAG_TYPES } from '@/types'
 import type { Item, SKU } from '@/types'
 
@@ -227,67 +227,53 @@ const handleSkuInput = async () => {
   }
 }
 
-// Item Selection
+// Item Selection - Updated to use new architecture
 const loadAvailableItems = async () => {
-  console.log('=== Starting loadAvailableItems ===')
-  
   try {
-    console.log('Calling inventoryApi.getInventory...')
+    error.value = null
     
-    const response = await inventoryApi.getInventory({
-      status: 'all',
-      limit: 1000
+    // Use the new items API to get actual Item records
+    const response = await itemsApi.getAvailableItems({
+      exclude_tagged: false, // Include already tagged items for flexibility
+      min_quantity: 1 // Only items with available quantity
     })
     
-    console.log('API call completed successfully!')
-    console.log('Full response:', JSON.stringify(response, null, 2))
-    console.log('Response keys:', Object.keys(response))
-    
-    if (response.inventory) {
-      console.log('Found inventory array with', response.inventory.length, 'items')
-      
-      if (response.inventory.length > 0) {
-        console.log('First raw inventory item:', JSON.stringify(response.inventory[0], null, 2))
-      }
-      
-      // Filter for available items
-      const availableInventory = response.inventory.filter(inv => {
-        console.log(`Checking item ${inv.sku?.sku_code}: available_quantity = ${inv.available_quantity}`)
-        return inv.available_quantity > 0
-      })
-      
-      console.log('Items with available quantity:', availableInventory.length)
-      
-      // Convert inventory records to item-like objects that can be tagged
-      availableItems.value = availableInventory.map(inv => {
-        const converted = {
-          _id: inv.sku._id, // Use SKU ID as the item ID for tagging
-          sku_id: inv.sku,
-          product_type: inv.sku.product_type || 'miscellaneous',
-          product_details: inv.sku.details || { name: inv.sku.description || inv.sku.sku_code },
-          location: inv.primary_location || 'Not specified',
-          quantity: inv.available_quantity, // Available quantity for this SKU
-          serial_number: inv.sku.sku_code
-        }
-        console.log('Converted item:', converted)
-        return converted
-      })
+    // The response should have items that are actual Item instances
+    if (response.items && Array.isArray(response.items)) {
+      availableItems.value = response.items.map(item => ({
+        ...item,
+        // Ensure we have the quantity field for UI display
+        quantity: item.quantity || 0
+      }))
     } else {
-      console.log('No inventory array found in response')
-      availableItems.value = []
+      // Fallback: use inventory API if items API not available
+      console.log('Falling back to inventory API')
+      const inventoryResponse = await inventoryApi.getInventory({
+        status: 'all',
+        limit: 1000
+      })
+      
+      if (inventoryResponse.inventory) {
+        // Convert inventory records to item-like objects for tagging
+        availableItems.value = inventoryResponse.inventory
+          .filter(inv => inv.available_quantity > 0)
+          .map(inv => ({
+            _id: inv.sku._id, // Use SKU ID as item ID for backward compatibility
+            sku_id: inv.sku,
+            product_type: inv.sku.product_type || 'miscellaneous',
+            product_details: inv.sku.details || { name: inv.sku.description || inv.sku.sku_code },
+            location: inv.primary_location || 'Not specified',
+            quantity: inv.available_quantity,
+            serial_number: inv.sku.sku_code
+          }))
+      } else {
+        availableItems.value = []
+      }
     }
     
-    console.log('Final available items count:', availableItems.value.length)
-    
   } catch (err: any) {
-    console.error('=== API ERROR ====')
-    console.error('Error details:', err)
-    console.error('Error message:', err.message)
-    console.error('Error response:', err.response?.data)
-    console.error('Error status:', err.response?.status)
-    console.error('===================')
-    
-    error.value = `Failed to load items: ${err.message}. Check console for details.`
+    console.error('Load available items error:', err)
+    error.value = `Failed to load items: ${err.message}`
   }
 }
 

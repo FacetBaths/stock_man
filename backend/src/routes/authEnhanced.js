@@ -248,16 +248,14 @@ router.post('/login', [
       severity: 'low'
     });
 
-    // Return user info and tokens
+    // Return user info and tokens (format expected by frontend)
     const userResponse = user.toSafeObject();
     res.json({
       message: 'Login successful',
       user: userResponse,
-      tokens: {
-        accessToken,
-        refreshToken,
-        expiresIn: 15 * 60 // 15 minutes
-      }
+      accessToken,
+      refreshToken,
+      expiresIn: 15 * 60 // 15 minutes
     });
 
   } catch (error) {
@@ -307,9 +305,12 @@ router.post('/refresh', [
     // Log token refresh
     await logAuthSuccess(user._id, 'AUTH_TOKEN_REFRESHED', req);
 
+    // Return user info with new access token
+    const userResponse = user.toSafeObject();
     res.json({
       message: 'Token refreshed successfully',
       accessToken,
+      user: userResponse,
       expiresIn: 15 * 60 // 15 minutes
     });
 
@@ -319,7 +320,7 @@ router.post('/refresh', [
   }
 });
 
-// POST /api/auth/logout - User logout
+// POST /api/auth/logout - User logout (with authentication)
 router.post('/logout', [
   auth,
   body('refreshToken').optional()
@@ -359,6 +360,57 @@ router.post('/logout', [
   } catch (error) {
     console.error('Logout error:', error);
     res.status(500).json({ message: 'Logout failed' });
+  }
+});
+
+// POST /api/auth/logout-token - Logout using refresh token only (no auth required)
+router.post('/logout-token', [
+  body('refreshToken').notEmpty().withMessage('Refresh token is required')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      // Even if validation fails, return success to avoid giving information to attackers
+      return res.json({ message: 'Logout successful' });
+    }
+
+    const { refreshToken } = req.body;
+
+    // Find and remove refresh token
+    const user = await User.findByRefreshToken(refreshToken);
+    if (user) {
+      await user.removeRefreshToken(refreshToken);
+      
+      // Log logout
+      await logAuthSuccess(user._id, 'AUTH_LOGOUT_TOKEN', req, {
+        method: 'refresh_token_only'
+      });
+      
+      await AuditLog.logEvent({
+        event_type: 'logout',
+        entity_type: 'user',
+        entity_id: user._id,
+        user_id: user._id.toString(),
+        user_name: user.username,
+        action: 'Token Logout',
+        description: `User ${user.username} logged out using refresh token`,
+        metadata: {
+          ip_address: req.ip || req.connection?.remoteAddress,
+          user_agent: req.get('User-Agent'),
+          method: 'refresh_token_only'
+        },
+        category: 'security',
+        severity: 'low'
+      });
+    }
+
+    // Always return success even if token wasn't found to avoid information leakage
+    res.json({ message: 'Logout successful' });
+
+  } catch (error) {
+    console.error('Token logout error:', error);
+    // Always return success to avoid information leakage
+    res.json({ message: 'Logout successful' });
   }
 });
 

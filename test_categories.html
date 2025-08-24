@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Category API Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .response { background: #f5f5f5; padding: 15px; border-radius: 5px; margin: 10px 0; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        input { padding: 8px; margin: 5px; width: 200px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Category API Test</h1>
+        
+        <div>
+            <h2>Authentication</h2>
+            <input type="text" id="username" placeholder="Username" value="admin">
+            <input type="password" id="password" placeholder="Password" value="admin123">
+            <button onclick="login()">Login</button>
+            <div id="auth-response" class="response" style="display: none;"></div>
+        </div>
+
+        <div>
+            <h2>Categories</h2>
+            <button onclick="getCategories()" disabled id="categories-btn">Get Categories</button>
+            <div id="categories-response" class="response" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        let accessToken = '';
+
+        async function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    accessToken = data.accessToken;
+                    document.getElementById('categories-btn').disabled = false;
+                    document.getElementById('auth-response').style.display = 'block';
+                    document.getElementById('auth-response').innerHTML = `
+                        <strong>Login Success!</strong><br>
+                        User: ${data.user.username} (${data.user.role})<br>
+                        Token: ${data.accessToken.substring(0, 50)}...
+                    `;
+                } else {
+                    document.getElementById('auth-response').style.display = 'block';
+                    document.getElementById('auth-response').innerHTML = `<strong>Login Failed:</strong> ${data.message}`;
+                }
+            } catch (error) {
+                document.getElementById('auth-response').style.display = 'block';
+                document.getElementById('auth-response').innerHTML = `<strong>Error:</strong> ${error.message}`;
+            }
+        }
+
+        async function getCategories() {
+            try {
+                const response = await fetch('/api/categories', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                document.getElementById('categories-response').style.display = 'block';
+                
+                if (response.ok) {
+                    const categoriesHtml = data.categories.map(cat => `
+                        <div style="border: 1px solid #ddd; padding: 10px; margin: 5px 0; border-radius: 3px;">
+                            <strong>${cat.displayName || cat.name}</strong> (${cat.name})<br>
+                            <small>Type: ${cat.type} | Status: ${cat.status} | ID: ${cat._id}</small><br>
+                            Description: ${cat.description}
+                        </div>
+                    `).join('');
+                    
+                    document.getElementById('categories-response').innerHTML = `
+                        <strong>Categories (${data.categories.length}):</strong><br>
+                        ${categoriesHtml}
+                    `;
+                } else {
+                    document.getElementById('categories-response').innerHTML = `<strong>Failed:</strong> ${data.message || 'Unknown error'}`;
+                }
+            } catch (error) {
+                document.getElementById('categories-response').style.display = 'block';
+                document.getElementById('categories-response').innerHTML = `<strong>Error:</strong> ${error.message}`;
+            }
+        }
+
+        // Auto-login on page load
+        window.onload = () => {
+            login();
+        }
+    </script>
+</body>
+</html>

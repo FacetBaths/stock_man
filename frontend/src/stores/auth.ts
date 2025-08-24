@@ -263,18 +263,33 @@ export const useAuthStore = defineStore('auth', () => {
       // Attempt to logout on server if we have tokens
       if (refreshToken.value) {
         console.log('Attempting server logout with refresh token...')
-        await authApi.logout(refreshToken.value)
-        console.log('Server logout with refresh token succeeded')
+        try {
+          // Try token-based logout first (doesn't require auth)
+          await authApi.logoutWithToken(refreshToken.value)
+          console.log('Server logout with refresh token succeeded')
+        } catch (tokenError) {
+          console.warn('Token-based logout failed, trying authenticated logout:', tokenError)
+          try {
+            // Fallback to authenticated logout if token logout fails
+            await authApi.logout(refreshToken.value)
+            console.log('Authenticated logout succeeded')
+          } catch (authError) {
+            console.warn('Both logout methods failed, proceeding with local logout:', authError)
+          }
+        }
       } else if (accessToken.value) {
-        console.log('Attempting server logout with access token...')
-        await authApi.logout()
-        console.log('Server logout with access token succeeded')
+        console.log('Attempting server logout with access token only...')
+        try {
+          await authApi.logout()
+          console.log('Server logout with access token succeeded')
+        } catch (error) {
+          console.warn('Access token logout failed, proceeding with local logout:', error)
+        }
       } else {
         console.log('No tokens found, skipping server logout')
       }
     } catch (error) {
       console.warn('Server logout failed (continuing with local logout):', error)
-      console.error('Full error details:', error)
       // Continue with local logout even if server logout fails
     }
     

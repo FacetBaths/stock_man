@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { barcodeApi, inventoryApi } from '@/utils/api'
-import type { SKU } from '@/types'
+import { barcodeApi, inventoryApi, itemsApi, skuApi } from '@/utils/api'
+import type { SKU, Item } from '@/types'
 
 const emit = defineEmits<{
   close: []
@@ -109,31 +109,40 @@ const processAllItems = async () => {
     isProcessing.value = true
     error.value = null
     
-    // Prepare items for inventory update
-    const itemsToProcess = foundItems.value.map(item => ({
-      barcode: item.barcode,
-      quantity: item.quantity,
-      sku_id: item.sku?._id
-    }))
+    let totalCreated = 0
+    let totalFailed = 0
+    const results: string[] = []
     
-    // Call the inventory update API
-    const response = await inventoryApi.batchUpdateInventory({
-      scanned_items: itemsToProcess,
-      location: '',
-      notes: 'Updated from quick scan batch mode'
-    })
+    // Process each found item by creating Item instances
+    for (const scannedItem of foundItems.value) {
+      if (!scannedItem.sku) continue
+      
+      try {
+        // Create multiple Item instances for the scanned quantity
+        const response = await itemsApi.createFromSKU({
+          sku_code: scannedItem.sku.sku_code,
+          quantity: scannedItem.quantity,
+          location: 'Scanned Location', // Could be made configurable
+          condition: 'new',
+          notes: `Created from scan of ${scannedItem.barcode} on ${scannedItem.timestamp.toLocaleDateString()}`
+        })
+        
+        totalCreated += response.created_count || scannedItem.quantity
+        results.push(`${scannedItem.sku.sku_code}: Created ${scannedItem.quantity} items`)
+      } catch (itemError: any) {
+        console.error(`Failed to create items for ${scannedItem.sku?.sku_code}:`, itemError)
+        totalFailed += scannedItem.quantity
+        results.push(`${scannedItem.sku?.sku_code}: Failed - ${itemError.message}`)
+      }
+    }
     
-    // Show success message
-    const { summary } = response
+    // Show summary message
     let message = 'Batch processing completed! '
-    if (summary.updated > 0) {
-      message += `Updated ${summary.updated} existing items. `
+    if (totalCreated > 0) {
+      message += `Created ${totalCreated} new item instances. `
     }
-    if (summary.created > 0) {
-      message += `Created ${summary.created} new items. `
-    }
-    if (summary.failed > 0) {
-      message += `Failed to process ${summary.failed} items.`
+    if (totalFailed > 0) {
+      message += `Failed to create ${totalFailed} items.`
     }
     
     // Clear the scanned items on success
@@ -142,8 +151,13 @@ const processAllItems = async () => {
     // Emit success to trigger inventory refresh
     emit('success')
     
-    // Show success notification (you might want to emit this data instead)
-    console.log('Batch processing results:', { message, summary })
+    // Log detailed results
+    console.log('Batch processing results:', {
+      message,
+      totalCreated,
+      totalFailed,
+      details: results
+    })
     
   } catch (err: any) {
     error.value = err.response?.data?.message || 'Failed to process batch items'

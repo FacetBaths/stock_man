@@ -87,22 +87,26 @@ const handleInStockToggle = () => {
   loadItems()
 }
 
-// Use backward compatibility method
-const loadItems = async () => {
-  // Use the backward compatible loadItems method
-  await inventoryStore.loadItems({
-    in_stock_only: showInStockOnly.value,
-    search: searchQuery.value.trim()
-  })
+// Load data using appropriate method based on what's available
+const loadInventory = async () => {
+  try {
+    // Try to load aggregated inventory data first (new architecture)
+    await inventoryStore.fetchInventory({
+      search: searchQuery.value.trim(),
+      status: showInStockOnly.value ? 'available' : 'all'
+    })
+  } catch (error) {
+    console.log('Falling back to legacy Item loading method:', error)
+    // Fallback to legacy item loading method
+    await inventoryStore.loadItems({
+      in_stock_only: showInStockOnly.value,
+      search: searchQuery.value.trim()
+    })
+  }
 }
 
-const loadInventory = async () => {
-  // Load aggregated inventory data
-  await inventoryStore.fetchInventory({
-    search: searchQuery.value.trim(),
-    status: showInStockOnly.value ? 'adequate' : 'all'
-  })
-}
+// Alias for backward compatibility
+const loadItems = loadInventory
 
 const handleAddItem = () => {
   showAddModal.value = true

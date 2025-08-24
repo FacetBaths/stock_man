@@ -88,7 +88,8 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config
     
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // Handle 401 errors with automatic token refresh
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
       originalRequest._retry = true // Prevent infinite retry loops
       
       try {
@@ -97,12 +98,14 @@ api.interceptors.response.use(
         // Skip auth endpoints to avoid infinite loops
         if (originalRequest.url?.includes('/auth/')) {
           console.log('Auth endpoint failed, clearing auth data')
-          store.clearAuthData()
+          if (store && typeof store.clearAuthData === 'function') {
+            store.clearAuthData()
+          }
           return Promise.reject(error)
         }
         
         // If we have a refresh token, try to refresh
-        if (store.refreshToken) {
+        if (store?.refreshToken) {
           try {
             console.log('401 error - attempting token refresh')
             await store.refreshTokens()
@@ -110,28 +113,38 @@ api.interceptors.response.use(
             // Retry the original request with new token
             const newToken = await store.getValidAccessToken()
             if (newToken && originalRequest) {
+              originalRequest.headers = originalRequest.headers || {}
               originalRequest.headers.Authorization = `Bearer ${newToken}`
               return api.request(originalRequest)
             }
           } catch (refreshError) {
-            console.error('Token refresh failed, logging out:', refreshError)
-            // Fall through to logout
+            console.error('Token refresh failed, clearing auth:', refreshError)
+            // Clear auth data and fall through to redirect
+            if (store && typeof store.clearAuthData === 'function') {
+              store.clearAuthData()
+            }
           }
         }
         
         // If no refresh token or refresh failed, clear auth and redirect
-        console.log('No valid refresh token, logging out')
-        store.clearAuthData()
+        console.log('No valid refresh token or refresh failed, redirecting to login')
+        if (store && typeof store.clearAuthData === 'function') {
+          store.clearAuthData()
+        }
         
         // Only redirect if we're not already on login page
-        if (window.location.hash !== '#/login') {
+        if (typeof window !== 'undefined' && window.location.hash !== '#/login') {
           window.location.href = '/#/login'
         }
       } catch (storeError) {
         console.error('Error handling 401:', storeError)
         // Fallback cleanup
-        localStorage.clear()
-        if (window.location.hash !== '#/login') {
+        try {
+          localStorage.clear()
+        } catch (storageError) {
+          console.error('Failed to clear localStorage:', storageError)
+        }
+        if (typeof window !== 'undefined' && window.location.hash !== '#/login') {
           window.location.href = '/#/login'
         }
       }
@@ -158,6 +171,10 @@ export const authApi = {
     } else {
       await api.post('/auth/logout')
     }
+  },
+
+  logoutWithToken: async (refreshToken: string): Promise<void> => {
+    await api.post('/auth/logout-token', { refreshToken })
   },
 
   getCurrentUser: async (): Promise<{ user: User }> => {
@@ -379,6 +396,48 @@ export const itemsApi = {
   useItems: async (id: string, data: UseItemsRequest) => {
     const response = await api.post(`/items/${id}/use`, data)
     return response.data
+  },
+
+  // Find items by SKU code (for scanning workflow)
+  findBySKU: async (skuCode: string, params?: {
+    condition?: string
+    location?: string
+    available_only?: boolean
+  }) => {
+    const response = await api.get(`/items/sku/${encodeURIComponent(skuCode)}`, { params })
+    return response.data
+  },
+
+  // Create multiple items from SKU scan (receiving workflow)
+  createFromSKU: async (data: {
+    sku_code: string
+    quantity: number
+    location?: string
+    condition?: string
+    purchase_price?: number
+    batch_number?: string
+    notes?: string
+  }) => {
+    const response = await api.post('/items/receive', data)
+    return response.data
+  },
+
+  // Scan item for tagging/fulfillment
+  scanItem: async (identifier: string) => {
+    // identifier could be item ID, SKU code, or barcode
+    const response = await api.get(`/items/scan/${encodeURIComponent(identifier)}`)
+    return response.data
+  },
+
+  // Get items available for tagging
+  getAvailableItems: async (params?: {
+    sku_id?: string
+    location?: string
+    min_quantity?: number
+    exclude_tagged?: boolean
+  }) => {
+    const response = await api.get('/items/available', { params })
+    return response.data
   }
 }
 
@@ -573,6 +632,41 @@ export const skuApi = {
 
   searchByBarcode: async (barcode: string): Promise<{ sku: SKU }> => {
     const response = await api.get(`/skus/search/barcode/${encodeURIComponent(barcode)}`)
+    return response.data
+  },
+
+  // Bundle SKU expansion
+  expandBundle: async (skuCode: string): Promise<{
+    sku: SKU
+    is_bundle: boolean
+    components?: Array<{
+      sku: SKU
+      quantity: number
+      available_sets: number
+    }>
+    available_sets: number
+  }> => {
+    const response = await api.get(`/skus/${encodeURIComponent(skuCode)}/expand`)
+    return response.data
+  },
+
+  // Create bundle configuration
+  createBundle: async (skuId: string, components: Array<{
+    sku_id: string
+    quantity: number
+    notes?: string
+  }>): Promise<{ message: string; sku: SKU }> => {
+    const response = await api.post(`/skus/${skuId}/bundle`, { components })
+    return response.data
+  },
+
+  // Update bundle configuration
+  updateBundle: async (skuId: string, components: Array<{
+    sku_id: string
+    quantity: number
+    notes?: string
+  }>): Promise<{ message: string; sku: SKU }> => {
+    const response = await api.put(`/skus/${skuId}/bundle`, { components })
     return response.data
   }
 }

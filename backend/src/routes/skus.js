@@ -449,10 +449,15 @@ router.put('/:id',
         });
       }
 
+      console.log('Update SKU request body:', req.body);
+      console.log('Update SKU request body keys:', Object.keys(req.body));
+      
       const sku = await SKUNew.findById(req.params.id);
       if (!sku) {
         return res.status(404).json({ message: 'SKU not found' });
       }
+      
+      console.log('Current SKU details object:', sku.details);
 
       // Prepare update data
       const updateData = {
@@ -476,6 +481,8 @@ router.put('/:id',
 
       if (req.body.name !== undefined) updateData.name = req.body.name;
       if (req.body.description !== undefined) updateData.description = req.body.description;
+      if (req.body.brand !== undefined) updateData.brand = req.body.brand;
+      if (req.body.model !== undefined) updateData.model = req.body.model;
       
       if (req.body.category_id !== undefined) {
         // Verify new category exists
@@ -487,24 +494,25 @@ router.put('/:id',
       }
 
       if (req.body.unit_cost !== undefined) updateData.unit_cost = req.body.unit_cost;
-      if (req.body.unit_price !== undefined) updateData.unit_price = req.body.unit_price;
-      if (req.body.manufacturer_model !== undefined) updateData.manufacturer_model = req.body.manufacturer_model;
       if (req.body.barcode !== undefined) updateData.barcode = req.body.barcode;
-      if (req.body.weight !== undefined) updateData.weight = req.body.weight;
-      if (req.body.is_active !== undefined) updateData.is_active = req.body.is_active;
-      if (req.body.is_lendable !== undefined) updateData.is_lendable = req.body.is_lendable;
-      if (req.body.is_bundle !== undefined) updateData.is_bundle = req.body.is_bundle;
-      if (req.body.bundle_items !== undefined) updateData.bundle_items = req.body.bundle_items;
-      if (req.body.tags !== undefined) updateData.tags = req.body.tags;
       if (req.body.notes !== undefined) updateData.notes = req.body.notes;
+      if (req.body.status !== undefined) updateData.status = req.body.status;
 
-      // Handle dimensions update
-      if (req.body.dimensions) {
-        updateData.dimensions = {
-          ...sku.dimensions.toObject(),
-          ...req.body.dimensions
-        };
+      // Handle details object updates (category-specific fields)
+      if (req.body.dimensions !== undefined || 
+          req.body.finish !== undefined || 
+          req.body.color !== undefined) {
+        // Initialize details object if it doesn't exist
+        if (!updateData.details) {
+          updateData.details = sku.details ? { ...sku.details.toObject() } : {};
+        }
+        
+        if (req.body.dimensions !== undefined) updateData.details.dimensions = req.body.dimensions;
+        if (req.body.finish !== undefined) updateData.details.finish = req.body.finish;
+        if (req.body.color !== undefined) updateData.details.color_name = req.body.color;
       }
+      
+      console.log('Final updateData before database call:', JSON.stringify(updateData, null, 2));
 
       const updatedSKU = await SKUNew.findByIdAndUpdate(
         req.params.id,

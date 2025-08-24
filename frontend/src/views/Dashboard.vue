@@ -21,7 +21,7 @@ const showLowStockOnly = ref(false)
 const showAddModal = ref(false)
 const showEditModal = ref(false)
 const showQuickScanModal = ref(false)
-const itemToEdit = ref<Item | null>(null)
+const itemToEdit = ref<any | null>(null)
 
 // Available filters for the new inventory system
 const availableFilters = computed(() => [
@@ -35,8 +35,12 @@ const availableFilters = computed(() => [
 // Available categories for filtering
 const availableCategories = computed(() => {
   const categories = [{ _id: '', name: 'All Categories' }]
-  if (categoryStore.categories) {
-    categories.push(...categoryStore.categories)
+  if (categoryStore.categories && categoryStore.categories.length > 0) {
+    // Handle both old and new category structures
+    categories.push(...categoryStore.categories.map(cat => ({
+      _id: cat._id || cat.id,
+      name: cat.name || cat.displayName || 'Unnamed Category'
+    })))
   }
   return categories
 })
@@ -95,7 +99,17 @@ const loadInventory = async () => {
     params.status = 'low_stock'
   }
   
-  await inventoryStore.fetchInventory(params)
+  try {
+    // Try to load aggregated inventory data first (new architecture)
+    await inventoryStore.fetchInventory(params)
+  } catch (error) {
+    console.log('Falling back to legacy item loading for dashboard:', error)
+    // Fallback to legacy item loading method if inventory API fails
+    await inventoryStore.loadItems({
+      in_stock_only: showLowStockOnly.value,
+      search: searchQuery.value.trim()
+    })
+  }
 }
 
 const handleAddItem = () => {
@@ -108,30 +122,11 @@ const handleQuickScan = () => {
 
 // Updated for new inventory structure
 const handleEditItem = (inventoryItem: any) => {
-  // For new inventory structure, we'll edit the SKU details
-  // Convert inventory item to a format the existing modal can handle
-  if (inventoryItem.sku) {
-    // Create a compatible item object from the inventory data
-    const compatibleItem = {
-      _id: inventoryItem.sku._id,
-      sku_code: inventoryItem.sku.sku_code,
-      product_type: inventoryItem.category?.name?.toLowerCase() || 'miscellaneous',
-      quantity: inventoryItem.total_quantity,
-      cost: inventoryItem.sku.unit_cost || inventoryItem.average_cost,
-      location: inventoryItem.primary_location || 'Warehouse',
-      notes: inventoryItem.sku.notes || '',
-      barcode: inventoryItem.sku.barcode,
-      product_details: {
-        name: inventoryItem.sku.name,
-        description: inventoryItem.sku.description,
-        brand: inventoryItem.sku.brand,
-        model: inventoryItem.sku.model
-      },
-      updatedAt: inventoryItem.updatedAt,
-      createdAt: inventoryItem.createdAt
-    }
-    
-    itemToEdit.value = compatibleItem as any
+  // Pass the inventory item directly to the EditItemModal
+  // The modal will handle the new structure properly
+  if (inventoryItem.sku_id) {
+    console.log('Opening edit modal for inventory item:', inventoryItem)
+    itemToEdit.value = inventoryItem
     showEditModal.value = true
   } else {
     console.log('Cannot edit inventory item without SKU data:', inventoryItem)
@@ -211,8 +206,16 @@ const formatTotalValue = (value?: number) => {
 const canViewCost = computed(() => authStore.hasPermission('view_cost') || authStore.hasRole(['admin', 'warehouse_manager']))
 
 onMounted(async () => {
+  try {
+    await categoryStore.fetchCategories()
+    if (!categoryStore.categories || categoryStore.categories.length === 0) {
+      console.warn('No categories found in database. Categories may need to be seeded.')
+    }
+  } catch (error) {
+    console.error('Failed to load categories:', error)
+  }
+  
   await Promise.all([
-    categoryStore.fetchCategories(),
     loadInventory(),
     inventoryStore.fetchStats()
   ])

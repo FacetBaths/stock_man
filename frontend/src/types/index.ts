@@ -612,6 +612,40 @@ export const STOCK_STATUS_CONFIG = {
   overstocked: { label: 'Overstocked', color: 'orange-6', icon: 'inventory_2' }
 } as const
 
+// Legacy product detail interfaces for compatibility (commented out for future reference)
+// export interface WallDetails {
+//   product_line: string
+//   color_name: string
+//   dimensions: string
+//   finish: string
+// }
+
+// export interface ProductDetails {
+//   name: string
+//   description?: string
+//   brand?: string
+//   model?: string
+//   color?: string
+//   dimensions?: string
+//   finish?: string
+// }
+
+// Legacy Item interface for EditItemModal compatibility (commented out for future reference)
+// export interface LegacyItem {
+//   _id: string
+//   sku_id?: string
+//   sku_code?: string
+//   product_type: string
+//   product_details: WallDetails | ProductDetails
+//   quantity: number
+//   cost?: number
+//   location: string
+//   notes?: string
+//   barcode?: string
+//   createdAt: string
+//   updatedAt: string
+// }
+
 // Export types
 export interface ExportOptions {
   format?: 'csv'
