@@ -160,15 +160,36 @@ export const useSKUStore = defineStore('sku', () => {
       })
 
       const response = await skuApi.getSKUs(requestParams)
+      
+      console.log('SKU API Response:', response)
+      console.log('Response type:', typeof response)
+      console.log('Response keys:', Object.keys(response || {}))
 
-      skus.value = response.skus
-      pagination.value = {
-        currentPage: response.pagination.currentPage,
-        totalPages: response.pagination.totalPages,
-        totalSkus: response.pagination.totalSkus,
-        limit: response.pagination.limit,
-        hasNextPage: response.pagination.hasNextPage,
-        hasPrevPage: response.pagination.hasPrevPage
+      // Handle both direct response and nested data response structures
+      if (response && response.skus) {
+        skus.value = response.skus
+        pagination.value = {
+          currentPage: response.pagination?.currentPage || 1,
+          totalPages: response.pagination?.totalPages || 0,
+          totalSkus: response.pagination?.totalSkus || 0,
+          limit: response.pagination?.limit || 50,
+          hasNextPage: response.pagination?.hasNextPage || false,
+          hasPrevPage: response.pagination?.hasPrevPage || false
+        }
+      } else if (Array.isArray(response)) {
+        // Handle case where response is directly an array of SKUs
+        skus.value = response
+        pagination.value = {
+          currentPage: 1,
+          totalPages: 1,
+          totalSkus: response.length,
+          limit: 50,
+          hasNextPage: false,
+          hasPrevPage: false
+        }
+      } else {
+        console.error('Unexpected response structure:', response)
+        throw new Error('Invalid response structure from SKU API')
       }
 
       return response

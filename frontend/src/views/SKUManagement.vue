@@ -629,11 +629,22 @@ const getCategoryName = (categoryId: string) => {
   return category ? category.name : 'Unknown Category'
 }
 
-const getCategoryColor = (categoryId: string) => {
+const getCategoryColor = (categoryId: string | any) => {
   if (!categoryId) return 'grey'
+  
+  // Handle case where categoryId is an object (populated category)
+  let idString: string
+  if (typeof categoryId === 'object' && categoryId._id) {
+    idString = categoryId._id
+  } else if (typeof categoryId === 'string') {
+    idString = categoryId
+  } else {
+    return 'grey'
+  }
+  
   const colors: string[] = ['blue', 'green', 'orange', 'cyan', 'purple', 'teal', 'brown', 'pink', 'indigo', 'deep-purple']
   // Use category ID to generate consistent color
-  const index = categoryId ? categoryId.charCodeAt(categoryId.length - 1) % colors.length : 0
+  const index = idString ? idString.charCodeAt(idString.length - 1) % colors.length : 0
   return colors[index]
 }
 
