@@ -15,9 +15,9 @@ export default defineConfig({
         propsDestructure: true
       }
     }),
-    quasar({
+quasar({
       sassVariables: 'src/quasar-variables.sass',
-      runMode: 'web-client'
+      autoImportComponentCase: 'pascal'
     })
   ],
   resolve: {
