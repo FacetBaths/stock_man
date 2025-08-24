@@ -219,5 +219,21 @@ data/
 uploads/
 static/uploads/
 
+# Scripts and utilities (contain sensitive data)
+scripts/
+*/scripts/
+backend/scripts/
+frontend/scripts/
+utilities/
+migrations/
+seeds/
+
+# Backup files
+backups/
+*.backup
+*.bak
+*.dump
+*.sql
+
 # Build outputs
 frontend/dist/
