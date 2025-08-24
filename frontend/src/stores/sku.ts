@@ -30,7 +30,7 @@ export const useSKUStore = defineStore('sku', () => {
   // Filters for new architecture
   const filters = ref({
     category_id: '',
-    status: 'active' as 'active' | 'discontinued' | 'pending' | '',
+    status: '' as 'active' | 'discontinued' | 'pending' | '',
     is_lendable: undefined as boolean | undefined,
     search: '',
     sort_by: 'sku_code' as 'sku_code' | 'name' | 'unit_cost' | 'created_at',
@@ -396,7 +396,7 @@ export const useSKUStore = defineStore('sku', () => {
   const clearFilters = () => {
     filters.value = {
       category_id: '',
-      status: 'active',
+      status: '',
       is_lendable: undefined,
       search: '',
       sort_by: 'sku_code',

@@ -52,7 +52,7 @@
           </q-card-section>
         </q-card>
       </div>
-      
+
       <div class="col-xs-12 col-sm-6 col-md-3">
         <q-card class="stat-card">
           <q-card-section class="row items-center no-wrap">
@@ -85,7 +85,9 @@
         <q-card class="stat-card">
           <q-card-section class="row items-center no-wrap">
             <div class="col">
-              <div class="text-h6">${{ formatCurrency(skuStore.skuStats.totalValue) }}</div>
+              <div class="text-h6">
+                ${{ formatCurrency(skuStore.skuStats.totalValue) }}
+              </div>
               <div class="text-subtitle2 text-grey-7">Total Value</div>
             </div>
             <div class="col-auto">
@@ -173,7 +175,8 @@
               Products Without SKUs ({{ productsWithoutSKUs.length }})
             </div>
             <div class="text-caption text-grey-6">
-              These products existed before SKU implementation and need SKUs assigned
+              These products existed before SKU implementation and need SKUs
+              assigned
             </div>
           </div>
           <div class="col-auto">
@@ -182,7 +185,9 @@
               label="Bulk Create SKUs"
               icon="batch_prediction"
               @click="openBulkCreateDialog"
-              :disable="!authStore.canWrite || selectedProductsWithoutSKUs.length === 0"
+              :disable="
+                !authStore.canWrite || selectedProductsWithoutSKUs.length === 0
+              "
             />
           </div>
         </div>
@@ -200,7 +205,9 @@
           class="products-without-skus-table"
         >
           <template v-slot:no-data>
-            <div class="full-width row flex-center text-positive q-gutter-sm q-pa-lg">
+            <div
+              class="full-width row flex-center text-positive q-gutter-sm q-pa-lg"
+            >
               <q-icon size="2em" name="check_circle" />
               <span>All products have SKUs assigned!</span>
             </div>
@@ -208,8 +215,12 @@
 
           <template v-slot:body-cell-product_info="props">
             <q-td :props="props">
-              <div class="text-weight-medium">{{ getProductDisplayName(props.row) }}</div>
-              <div class="text-caption text-grey-6">{{ formatProductType(props.row.product_type) }}</div>
+              <div class="text-weight-medium">
+                {{ getProductDisplayName(props.row) }}
+              </div>
+              <div class="text-caption text-grey-6">
+                {{ formatProductType(props.row.product_type) }}
+              </div>
             </q-td>
           </template>
 
@@ -245,10 +256,13 @@
         <div class="text-h6">SKU Inventory</div>
         <q-space />
         <div class="text-caption text-grey-6">
-          {{ skuStore.skus.length }} SKU{{ skuStore.skus.length !== 1 ? 's' : '' }} loaded
+          {{ skuStore.skus.length }} SKU{{
+            skuStore.skus.length !== 1 ? "s" : ""
+          }}
+          loaded
         </div>
       </q-card-section>
-      
+
       <q-table
         :rows="skuStore.skus"
         :columns="columns"
@@ -270,7 +284,7 @@
         <template v-slot:no-data="{ icon, message, filter }">
           <div class="full-width row flex-center text-grey-7 q-gutter-sm">
             <q-icon size="2em" :name="filter ? 'filter_list' : icon" />
-            <span>{{ filter ? 'No matching SKUs found' : message }}</span>
+            <span>{{ filter ? "No matching SKUs found" : message }}</span>
           </div>
         </template>
 
@@ -301,7 +315,10 @@
         <template v-slot:body-cell-sku_code="props">
           <q-td :props="props">
             <div class="text-weight-medium">{{ props.value }}</div>
-            <div v-if="props.row.is_auto_generated" class="text-caption text-grey-6">
+            <div
+              v-if="props.row.is_auto_generated"
+              class="text-caption text-grey-6"
+            >
               <q-icon name="auto_mode" size="xs" /> Auto-generated
             </div>
           </q-td>
@@ -343,8 +360,13 @@
 
         <template v-slot:body-cell-current_cost="props">
           <q-td :props="props">
-            <div class="text-weight-medium">${{ formatCurrency(props.value) }}</div>
-            <div v-if="props.row.cost_history?.length > 1" class="text-caption text-grey-6">
+            <div class="text-weight-medium">
+              ${{ formatCurrency(props.value) }}
+            </div>
+            <div
+              v-if="props.row.cost_history?.length > 1"
+              class="text-caption text-grey-6"
+            >
               {{ props.row.cost_history.length }} price changes
             </div>
           </q-td>
@@ -354,7 +376,9 @@
           <q-td :props="props">
             <div class="text-weight-medium">{{ props.value || 0 }}</div>
             <div v-if="props.row.itemCount" class="text-caption text-grey-6">
-              {{ props.row.itemCount }} item{{ props.row.itemCount !== 1 ? 's' : '' }}
+              {{ props.row.itemCount }} item{{
+                props.row.itemCount !== 1 ? "s" : ""
+              }}
             </div>
           </q-td>
         </template>
@@ -383,7 +407,7 @@
               >
                 <q-tooltip>Edit SKU</q-tooltip>
               </q-btn>
-              
+
               <q-btn
                 size="sm"
                 color="green"
@@ -394,7 +418,7 @@
               >
                 <q-tooltip>Add Cost</q-tooltip>
               </q-btn>
-              
+
               <q-btn
                 size="sm"
                 color="negative"
@@ -432,10 +456,7 @@
     />
 
     <!-- Export Dialog -->
-    <ExportDialog
-      v-model="showExportDialog"
-      export-type="skus"
-    />
+    <ExportDialog v-model="showExportDialog" export-type="skus" />
   </div>
 </template>
 
@@ -639,7 +660,7 @@ const clearFilters = async () => {
 
 const onTableRequest = (props: any) => {
   const { page, rowsPerPage, sortBy, descending } = props.pagination
-  
+
   skuStore.fetchSKUs({
     page,
     limit: rowsPerPage,
@@ -688,12 +709,12 @@ const onSKUSaved = async () => {
   showFormDialog.value = false
   selectedSKU.value = null
   productForSKUCreation.value = null
-  
+
   await Promise.all([
     refreshData(),
     loadProductsWithoutSKUs()
   ])
-  
+
   $q.notify({
     type: 'positive',
     message: 'SKU saved successfully'
@@ -922,6 +943,9 @@ const openBulkCreateDialog = () => {
   })
 }
 
+console.log({skuStore})
+console.log({categoryStore})
+console.log({inventoryStore})
 // Lifecycle
 onMounted(async () => {
   await Promise.all([
