@@ -9,10 +9,15 @@ export default defineConfig({
   base: process.env.GITHUB_PAGES_CUSTOM_DOMAIN ? '/' : (process.env.NODE_ENV === 'production' ? '/stock_man/' : '/'),
   plugins: [
     vue({
-      template: { transformAssetUrls }
+      template: { transformAssetUrls },
+      script: {
+        defineModel: true,
+        propsDestructure: true
+      }
     }),
     quasar({
-      sassVariables: 'src/quasar-variables.sass'
+      sassVariables: 'src/quasar-variables.sass',
+      runMode: 'web-client'
     })
   ],
   resolve: {

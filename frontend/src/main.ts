@@ -14,9 +14,16 @@ import 'aos/dist/aos.css'
 import App from './App.vue'
 import router from './router'
 
+// Debug: Log that main.ts is loading
+console.log('Main.ts loading...')
+
 const app = createApp(App)
 
+// Debug: Log app creation
+console.log('Vue app created:', app)
+
 // Set up Quasar first
+console.log('Setting up Quasar...')
 app.use(Quasar, {
   plugins: [
     Loading,
@@ -38,6 +45,7 @@ app.use(Quasar, {
   },
   iconSet: materialIcons
 })
+console.log('Quasar setup complete')
 
 // Then setup other plugins
 app.use(createPinia())

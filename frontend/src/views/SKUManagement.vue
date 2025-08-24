@@ -327,8 +327,8 @@
         <template v-slot:body-cell-category="props">
           <q-td :props="props">
             <q-chip
-              :label="getCategoryName(props.value)"
-              :color="getCategoryColor(props.value)"
+              :label="getCategoryName(props.row.category_id)"
+              :color="getCategoryColor(props.row.category_id)"
               text-color="white"
               dense
             />
