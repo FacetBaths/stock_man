@@ -1,15 +1,17 @@
 # Stock Manager
 
-A real-time inventory management system for Facet Renovations, built with Vue 3, TypeScript, Express, and MongoDB.
+A modern inventory management system for Facet Renovations, built with Vue 3, TypeScript, Express, and MongoDB. Features a clean SKU-centric architecture with individual product instance tracking.
 
-## Features
+## Key Features
 
-- **Real-time inventory tracking** with different product types (walls, toilets, bases, tubs, vanities, shower doors)
+- **SKU-centric inventory management** - Single source of truth for products
+- **Individual instance tracking** - Track acquisition costs and locations per unit
+- **Smart tagging system** - Reserve, loan, and track product usage
 - **Role-based access control** (Admin, Warehouse Manager, Sales Rep)
-- **Tabbed interface** for easy product type filtering
-- **Global search** functionality across all product attributes
-- **CRUD operations** for inventory items (Admin/Warehouse only)
-- **Stock status tracking** (In Stock, Low Stock, Out of Stock)
+- **Real-time inventory tracking** with automatic quantity calculations
+- **Category-based organization** with hierarchical product categories
+- **Cost tracking** - Compare acquisition costs vs current pricing
+- **Location management** - Track physical location of each instance
 - **JWT authentication** with persistent sessions
 
 ## Tech Stack
@@ -104,36 +106,79 @@ npm run dev
 - `GET /api/auth/me` - Get current user info
 - `POST /api/auth/logout` - User logout
 
-### Inventory
-- `GET /api/inventory` - Get all inventory items (with filters)
+### SKUs (Products)
+- `GET /api/skus` - Get all SKUs with inventory data
+- `GET /api/skus/:id` - Get single SKU by ID
+- `POST /api/skus` - Create new SKU (Admin/Warehouse only)
+- `PUT /api/skus/:id` - Update SKU (Admin/Warehouse only)
+- `DELETE /api/skus/:id` - Delete SKU (Admin/Warehouse only)
+
+### Instances (Individual Units)
+- `GET /api/instances/:sku_id` - Get instances for a SKU
+- `POST /api/instances/add-stock` - Add new stock instances
+- `PUT /api/instances/:id` - Update instance details
+- `GET /api/instances/cost-breakdown/:sku_id` - Get cost analysis
+
+### Inventory (Aggregate Data)
+- `GET /api/inventory` - Get inventory summary with filters
 - `GET /api/inventory/stats` - Get inventory statistics
-- `POST /api/inventory` - Create new item (Admin/Warehouse only)
-- `PUT /api/inventory/:id` - Update item (Admin/Warehouse only)
-- `DELETE /api/inventory/:id` - Delete item (Admin/Warehouse only)
+- `POST /api/inventory/sync` - Sync inventory quantities
 
-## Database Models
+### Tags (Reservations/Loans)
+- `GET /api/tags` - Get all tags with filters
+- `POST /api/tags` - Create new tag
+- `PUT /api/tags/:id` - Update tag
+- `DELETE /api/tags/:id` - Delete tag
 
-### Item (Main inventory model)
-- `product_type`: String (wall, toilet, base, tub, vanity, shower_door)
-- `product_details`: ObjectId (references specific product type model)
-- `quantity`: Number
-- `location`: String (optional)
-- `notes`: String (optional)
+### Categories
+- `GET /api/categories` - Get product categories
+- `POST /api/categories` - Create category (Admin only)
 
-### Wall (Product details for walls)
-- `product_line`: String
-- `color_name`: String
-- `dimensions`: String
-- `finish`: String
+## Database Architecture
 
-### Generic Products (Toilet, Base, Tub, Vanity, ShowerDoor)
+### SKU (Product Master Data)
+- `sku_code`: String (unique identifier)
+- `name`: String (product name)
+- `category_id`: ObjectId (references Category)
+- `brand`: String
+- `model`: String
+- `details`: Object (category-specific fields like color, finish)
+- `unit_cost`: Number (current cost)
+- `cost_history`: Array (historical pricing)
+- `status`: String (active/discontinued/pending)
+
+### Instance (Individual Product Units)
+- `sku_id`: ObjectId (references SKU)
+- `acquisition_date`: Date (when acquired)
+- `acquisition_cost`: Number (cost when purchased - frozen)
+- `tag_id`: ObjectId (references Tag, null = available)
+- `location`: String (physical location)
+- `supplier`: String
+- `reference_number`: String
+
+### Inventory (Aggregate Quantities)
+- `sku_id`: ObjectId (references SKU)
+- `total_quantity`: Number (calculated)
+- `available_quantity`: Number
+- `reserved_quantity`: Number
+- `broken_quantity`: Number
+- `loaned_quantity`: Number
+- `average_cost`: Number
+- `total_value`: Number
+
+### Tag (Reservations/Loans/Status)
+- `tag_type`: String (reserved/broken/loaned/stock)
+- `customer_name`: String
+- `sku_items`: Array (SKU references with quantities)
+- `status`: String (active/fulfilled/cancelled)
+- `project_name`: String
+- `due_date`: Date
+
+### Category (Product Organization)
 - `name`: String
-- `brand`: String (optional)
-- `model`: String (optional)
-- `color`: String (optional)
-- `dimensions`: String (optional)
-- `finish`: String (optional)
-- `description`: String (optional)
+- `slug`: String
+- `parent_id`: ObjectId (for hierarchy)
+- `is_active`: Boolean
 
 ## User Roles
 
