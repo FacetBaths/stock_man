@@ -28,15 +28,40 @@ const validateTag = [
     .trim()
     .isLength({ max: 200 })
     .withMessage('Project name cannot exceed 200 characters'),
-  body('sku_items')
+  // Accept either 'items' (legacy) or 'sku_items' (new format)
+  body('items')
+    .optional()
     .isArray({ min: 1 })
-    .withMessage('SKU items array is required and must contain at least one item'),
+    .withMessage('Items array must contain at least one item'),
+  body('sku_items')
+    .optional()
+    .isArray({ min: 1 })
+    .withMessage('SKU items array must contain at least one item'),
+  // Validate items format (legacy)
+  body('items.*.item_id')
+    .optional()
+    .notEmpty()
+    .withMessage('Item ID is required')
+    .isMongoId()
+    .withMessage('Item ID must be a valid MongoDB ID'),
+  body('items.*.quantity')
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage('Item quantity must be a positive integer'),
+  body('items.*.notes')
+    .optional()
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage('Item notes cannot exceed 500 characters'),
+  // Validate sku_items format (new)
   body('sku_items.*.sku_id')
+    .optional()
     .notEmpty()
     .withMessage('SKU ID is required')
     .isMongoId()
     .withMessage('SKU ID must be a valid MongoDB ID'),
   body('sku_items.*.quantity')
+    .optional()
     .isInt({ min: 1 })
     .withMessage('SKU quantity must be a positive integer'),
   body('sku_items.*.notes')
@@ -464,24 +489,96 @@ router.get('/',
 
       const page = parseInt(req.query.page) || 1;
       const limit = parseInt(req.query.limit) || 50;
+      const skip = (page - 1) * limit;
 
-      // For now, just return empty results to get the frontend working
-      // TODO: Implement proper tag fetching with new model structure
-      const tags = [];
-      const totalTags = 0;
-      const totalPages = 0;
+      // Build query filter
+      const filter = {};
+      
+      if (req.query.customer_name && req.query.customer_name.trim()) {
+        filter.customer_name = new RegExp(req.query.customer_name.trim(), 'i');
+      }
+      
+      if (req.query.tag_type && req.query.tag_type.trim()) {
+        filter.tag_type = req.query.tag_type;
+      }
+      
+      if (req.query.status && req.query.status.trim()) {
+        filter.status = req.query.status;
+      }
+      
+      if (req.query.project_name && req.query.project_name.trim()) {
+        filter.project_name = new RegExp(req.query.project_name.trim(), 'i');
+      }
+      
+      if (req.query.search && req.query.search.trim()) {
+        const searchRegex = new RegExp(req.query.search.trim(), 'i');
+        filter.$or = [
+          { customer_name: searchRegex },
+          { project_name: searchRegex },
+          { notes: searchRegex }
+        ];
+      }
+      
+      if (req.query.overdue_only === 'true') {
+        filter.status = 'active';
+        filter.due_date = { $lt: new Date() };
+      }
 
-      console.log('Returning empty tags result for now')
+      console.log('Tag query filter:', JSON.stringify(filter, null, 2));
+
+      // Build sort criteria
+      const sortField = req.query.sort_by || 'createdAt';
+      const sortOrder = req.query.sort_order === 'asc' ? 1 : -1;
+      const sort = { [sortField]: sortOrder };
+
+      // Get total count for pagination
+      const totalTags = await TagNew.countDocuments(filter);
+      const totalPages = Math.ceil(totalTags / limit);
+
+      // Build query
+      let query = TagNew.find(filter)
+        .sort(sort)
+        .skip(skip)
+        .limit(limit);
+
+      // Include item details if requested
+      if (req.query.include_items === 'true') {
+        query = query.populate({
+          path: 'sku_items.sku_id',
+          populate: { path: 'category_id' }
+        });
+      }
+
+      const tags = await query;
+      
+      console.log(`Found ${tags.length} tags out of ${totalTags} total`);
+
+      // Enrich tags with calculated fields
+      const enrichedTags = tags.map(tag => {
+        const tagObj = tag.toObject();
+        tagObj.total_quantity = tag.getTotalQuantity();
+        tagObj.remaining_quantity = tag.getTotalRemainingQuantity();
+        tagObj.is_partially_fulfilled = tag.isPartiallyFulfilled();
+        tagObj.is_fully_fulfilled = tag.isFullyFulfilled();
+        tagObj.is_overdue = tag.due_date && new Date() > tag.due_date && tag.status === 'active';
+        
+        // Calculate fulfillment progress percentage
+        const totalQty = tag.getTotalQuantity();
+        const remainingQty = tag.getTotalRemainingQuantity();
+        tagObj.fulfillment_progress = totalQty > 0 ? ((totalQty - remainingQty) / totalQty * 100) : 0;
+        
+        return tagObj;
+      });
       
       res.json({
-        tags: tags,
+        tags: enrichedTags,
         pagination: {
           currentPage: page,
           totalPages,
           totalTags,
           limit,
-          hasNextPage: false,
-          hasPrevPage: false
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1
         }
       });
 
@@ -514,16 +611,11 @@ router.get('/:id',
 
       let query = TagNew.findById(req.params.id);
 
-      // Include item details if requested
-      if (req.query.include_items === 'true') {
-        query = query.populate({
-          path: 'items.item_id',
-          populate: {
-            path: 'sku_id',
-            populate: { path: 'category_id' }
-          }
-        });
-      }
+      // Always populate SKU details for meaningful display
+      query = query.populate({
+        path: 'sku_items.sku_id',
+        populate: { path: 'category_id' }
+      });
 
       const tag = await query;
 
@@ -544,6 +636,30 @@ router.get('/:id',
       const totalQty = tag.getTotalQuantity();
       const remainingQty = tag.getTotalRemainingQuantity();
       tagObj.fulfillment_progress = totalQty > 0 ? ((totalQty - remainingQty) / totalQty * 100) : 0;
+
+      // Enhance sku_items with additional inventory information for better display
+      if (tagObj.sku_items && tagObj.sku_items.length > 0) {
+        for (let i = 0; i < tagObj.sku_items.length; i++) {
+          const skuItem = tagObj.sku_items[i];
+          if (skuItem.sku_id) {
+            // Get current inventory status for this SKU
+            const inventory = await Inventory.findOne({ sku_id: skuItem.sku_id._id });
+            if (inventory) {
+              tagObj.sku_items[i].inventory_info = {
+                available_quantity: inventory.available_quantity,
+                reserved_quantity: inventory.reserved_quantity,
+                total_quantity: inventory.total_quantity,
+                location: inventory.primary_location
+              };
+            }
+            
+            // Add display-friendly fields
+            tagObj.sku_items[i].display_name = `${skuItem.sku_id.name} (${skuItem.sku_id.sku_code})`;
+            tagObj.sku_items[i].brand = skuItem.sku_id.brand;
+            tagObj.sku_items[i].category_name = skuItem.sku_id.category_id?.name || 'Unknown';
+          }
+        }
+      }
 
       res.json({ tag: tagObj });
 
@@ -582,11 +698,23 @@ router.post('/',
         });
       }
 
+      // Custom validation: ensure at least items or sku_items is provided
+      if (!req.body.items && !req.body.sku_items) {
+        return res.status(400).json({ 
+          message: 'Validation failed', 
+          errors: [{ msg: 'Either items or sku_items must be provided', path: 'items' }] 
+        });
+      }
+      
+      // Use items if provided, otherwise sku_items
+      const itemsToProcess = req.body.items || req.body.sku_items;
+      console.log('Items to process:', itemsToProcess)
+
       console.log('=== VALIDATION PASSED, CHECKING AVAILABILITY ===')
       
       // Check item availability before creating tag
-      console.log('Checking availability for items:', req.body.items)
-      const availability = await checkItemAvailability(req.body.items);
+      console.log('Checking availability for items:', itemsToProcess)
+      const availability = await checkItemAvailability(itemsToProcess);
       console.log('Availability results:', JSON.stringify(availability, null, 2))
       const unavailableItems = availability.filter(item => !item.can_fulfill);
       console.log('Unavailable items count:', unavailableItems.length)
@@ -599,21 +727,30 @@ router.post('/',
         });
       }
 
-      // Create tag data - handle both ItemNew and Inventory IDs
+      // Create tag data - convert inventory IDs to SKU IDs
       const processedItems = [];
-      for (const item of req.body.items) {
-        let finalItemId = item.item_id;
+      for (const item of itemsToProcess) {
+        let skuId = item.sku_id; // For direct sku_items requests
         
-        // Check if this is an inventory ID that needs conversion
-        const availabilityInfo = availability.find(a => a.item_id === item.item_id);
-        if (availabilityInfo && availabilityInfo.inventory_details && !availabilityInfo.item_details?.sku_id?._id) {
-          // This is an inventory ID - for now, store it as is
-          // TODO: In future iterations, create actual ItemNew records for inventory items
-          finalItemId = item.item_id; // Keep the inventory ID for now
+        // If using items with item_id (inventory IDs), we need to get the SKU ID
+        if (item.item_id && !skuId) {
+          const availabilityInfo = availability.find(a => a.item_id === item.item_id);
+          if (availabilityInfo && availabilityInfo.inventory_details?.sku_id) {
+            // Extract SKU ID from inventory details
+            if (typeof availabilityInfo.inventory_details.sku_id === 'object') {
+              skuId = availabilityInfo.inventory_details.sku_id._id;
+            } else {
+              skuId = availabilityInfo.inventory_details.sku_id;
+            }
+          }
+        }
+        
+        if (!skuId) {
+          throw new Error(`Could not determine SKU ID for item: ${JSON.stringify(item)}`);
         }
         
         processedItems.push({
-          item_id: finalItemId,
+          sku_id: skuId,
           quantity: item.quantity,
           notes: item.notes || ''
         });
@@ -623,7 +760,7 @@ router.post('/',
         customer_name: req.body.customer_name,
         tag_type: req.body.tag_type,
         project_name: req.body.project_name || '',
-        items: processedItems,
+        sku_items: processedItems,
         notes: req.body.notes || '',
         due_date: req.body.due_date || null,
         status: 'active',
@@ -637,7 +774,7 @@ router.post('/',
 
       // Update inventory to reflect the reservation/allocation
       const inventoryUpdates = await updateInventoryForTag(
-        req.body.items, 
+        itemsToProcess, 
         req.body.tag_type, 
         'reserve'
       );
@@ -654,10 +791,20 @@ router.post('/',
       tagObj.remaining_quantity = tag.getTotalRemainingQuantity();
       tagObj.inventory_updates = inventoryUpdates;
       
-      // Enrich items with details from availability check results
+      // Enrich sku_items with details from availability check results
       if (availability && availability.length > 0) {
-        tagObj.items = tagObj.items.map(tagItem => {
-          const availabilityInfo = availability.find(a => a.item_id === tagItem.item_id.toString());
+        tagObj.sku_items = tagObj.sku_items.map(tagItem => {
+          // Find availability info by matching the inventory item that has this SKU
+          const availabilityInfo = availability.find(a => {
+            if (a.inventory_details?.sku_id) {
+              const inventorySkuId = typeof a.inventory_details.sku_id === 'object' 
+                ? a.inventory_details.sku_id._id 
+                : a.inventory_details.sku_id;
+              return inventorySkuId.toString() === tagItem.sku_id.toString();
+            }
+            return false;
+          });
+          
           if (availabilityInfo) {
             return {
               ...tagItem,
@@ -677,7 +824,7 @@ router.post('/',
         user_id: req.user.id,
         user_name: req.user.username,
         tag_type: tag.tag_type,
-        items_count: tag.items.length,
+        items_count: tag.sku_items.length,
         total_quantity: tagObj.total_quantity,
         reason: null
       });
@@ -741,12 +888,12 @@ router.put('/:id',
         
         if (req.body.status === 'cancelled' && tag.status === 'active') {
           // Release inventory when cancelling active tag
-          await updateInventoryForTag(tag.items, tag.tag_type, 'release');
+          await updateInventoryForTag(tag.sku_items, tag.tag_type, 'release');
         } else if (req.body.status === 'fulfilled' && tag.status === 'active') {
           // Mark as fulfilled
           updateData.fulfilled_date = new Date();
           updateData.fulfilled_by = req.user.username;
-          await updateInventoryForTag(tag.items, tag.tag_type, 'fulfill');
+          await updateInventoryForTag(tag.sku_items, tag.tag_type, 'fulfill');
         }
       }
 
@@ -755,11 +902,8 @@ router.put('/:id',
         updateData,
         { new: true, runValidators: true }
       ).populate({
-        path: 'items.item_id',
-        populate: {
-          path: 'sku_id',
-          populate: { path: 'category_id' }
-        }
+        path: 'sku_items.sku_id',
+        populate: { path: 'category_id' }
       });
 
       const tagObj = updatedTag.toObject();
@@ -846,11 +990,8 @@ router.post('/:id/fulfill',
       }
 
       await tag.populate({
-        path: 'items.item_id',
-        populate: {
-          path: 'sku_id',
-          populate: { path: 'category_id' }
-        }
+        path: 'sku_items.sku_id',
+        populate: { path: 'category_id' }
       });
 
       const tagObj = tag.toObject();
@@ -905,14 +1046,11 @@ router.post('/:id/cancel',
       await tag.save();
 
       // Release inventory reservations
-      await updateInventoryForTag(tag.items, tag.tag_type, 'release');
+      await updateInventoryForTag(tag.sku_items, tag.tag_type, 'release');
 
       await tag.populate({
-        path: 'items.item_id',
-        populate: {
-          path: 'sku_id',
-          populate: { path: 'category_id' }
-        }
+        path: 'sku_items.sku_id',
+        populate: { path: 'category_id' }
       });
 
       const tagObj = tag.toObject();
@@ -927,7 +1065,7 @@ router.post('/:id/cancel',
         user_id: req.user.id,
         user_name: req.user.username,
         tag_type: tag.tag_type,
-        items_count: tag.items.length,
+        items_count: tag.sku_items.length,
         total_quantity: tagObj.total_quantity,
         reason: req.body.reason
       });
@@ -978,7 +1116,7 @@ router.delete('/:id',
 
       // Release any inventory reservations
       if (tag.status === 'active') {
-        await updateInventoryForTag(tag.items, tag.tag_type, 'release');
+        await updateInventoryForTag(tag.sku_items, tag.tag_type, 'release');
       }
 
       await TagNew.findByIdAndDelete(req.params.id);

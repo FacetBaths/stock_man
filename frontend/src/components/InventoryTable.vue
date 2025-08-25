@@ -126,9 +126,14 @@ const getTagStatusBadges = (item: Item) => {
 }
 
 // Calculate available quantity (total - tagged)
-const getAvailableQuantity = (item: Item) => {
-  if (!item.tagSummary) return item.quantity
-  return item.quantity - item.tagSummary.totalTagged
+const getAvailableQuantity = (item: any) => {
+  // For new inventory structure, use available_quantity directly
+  if (item.available_quantity !== undefined) {
+    return item.available_quantity
+  }
+  // Fallback for legacy structure
+  if (!item.tagSummary) return item.quantity || 0
+  return (item.quantity || 0) - (item.tagSummary.totalTagged || 0)
 }
 
 // Check if item has any quality issues
@@ -138,18 +143,22 @@ const hasQualityIssues = (item: Item) => {
 }
 
 // Get primary tag status for an item (focuses on availability for tagging/reservation)
-const getPrimaryTagStatus = (item: Item) => {
+const getPrimaryTagStatus = (item: any) => {
+  // Get the total quantity - handle both new and legacy structures
+  const totalQty = getQuantity(item)
+  
   // First check if item is actually out of stock
-  if (item.quantity === 0) {
+  if (totalQty === 0) {
     return { text: 'None Available', color: 'negative', clickable: false }
   }
   
-  // If no tags or all quantities are 0, items are available for tagging
+  // Check if we have tag data
   if (!item.tagSummary || item.tagSummary.totalTagged === 0) {
     return { text: 'Available', color: 'positive', clickable: false }
   }
   
-  const availableQty = item.quantity - item.tagSummary.totalTagged
+  // Calculate available quantity
+  const availableQty = getAvailableQuantity(item)
   
   if (availableQty === 0) {
     // All items are tagged - no "Partially" prefix
@@ -162,6 +171,9 @@ const getPrimaryTagStatus = (item: Item) => {
     if (item.tagSummary.reserved > 0) {
       return { text: 'Reserved', color: 'info', clickable: true }
     }
+    if (item.tagSummary.loaned > 0) {
+      return { text: 'Loaned', color: 'purple', clickable: true }
+    }
   } else {
     // Some items available, some tagged - show "Partially"
     if (item.tagSummary.broken > 0) {
@@ -172,6 +184,9 @@ const getPrimaryTagStatus = (item: Item) => {
     }
     if (item.tagSummary.reserved > 0) {
       return { text: 'Partially Reserved', color: 'info', clickable: true }
+    }
+    if (item.tagSummary.loaned > 0) {
+      return { text: 'Partially Loaned', color: 'purple', clickable: true }
     }
   }
   

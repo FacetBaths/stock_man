@@ -133,6 +133,21 @@ router.get('/', auth, async (req, res) => {
             },
             else: 0
           }
+        },
+        has_tags: {
+          $or: [
+            { $gt: ['$reserved_quantity', 0] },
+            { $gt: ['$broken_quantity', 0] },
+            { $gt: ['$loaned_quantity', 0] }
+          ]
+        },
+        tag_summary: {
+          reserved: '$reserved_quantity',
+          broken: '$broken_quantity',
+          loaned: '$loaned_quantity',
+          totalTagged: {
+            $add: ['$reserved_quantity', '$broken_quantity', '$loaned_quantity']
+          }
         }
       }
     });
@@ -911,14 +926,16 @@ router.post('/sync', [auth, requireWriteAccess], async (req, res) => {
           
           // Get active tags for this SKU
           const activeTags = await TagNew.find({
-            'items.sku_id': sku._id,
+            'sku_items.sku_id': sku._id,
             status: { $in: ['active', 'partially_fulfilled'] }
           }).lean();
           
           // Recalculate quantities based on active tags
           activeTags.forEach(tag => {
-            tag.items.forEach(item => {
-              if (item.sku_id.toString() === sku._id.toString()) {
+            const itemsArray = tag.sku_items || tag.items || []; // Support both old and new structure
+            itemsArray.forEach(item => {
+              const itemSkuId = item.sku_id || item.item_id; // Support both field names
+              if (itemSkuId && itemSkuId.toString() === sku._id.toString()) {
                 const quantity = item.remaining_quantity || item.quantity || 0;
                 if (tag.tag_type === 'reserved') {
                   inventory.reserved_quantity += quantity;
@@ -979,12 +996,16 @@ router.get('/:sku_id', auth, async (req, res) => {
       return res.status(404).json({ message: 'Inventory record not found' });
     }
 
-    // Get related tags for this SKU
-    const activeTags = await TagNew.find({
-      'items.sku_id': sku_id,
+    // Get related tags for this SKU - check both old and new structures
+    let activeTags = await TagNew.find({
+      $or: [
+        { 'sku_items.sku_id': sku_id },
+        { 'items.sku_id': sku_id },
+        { 'items.item_id': sku_id } // Legacy support
+      ],
       status: { $in: ['active', 'partially_fulfilled'] }
     })
-    .select('_id customer_name tag_type project_name due_date status items.$')
+    .select('_id customer_name tag_type project_name due_date status items sku_items')
     .lean();
 
     // Calculate tag summary
@@ -996,8 +1017,10 @@ router.get('/:sku_id', auth, async (req, res) => {
     };
 
     activeTags.forEach(tag => {
-      tag.items.forEach(item => {
-        if (item.sku_id.toString() === sku_id) {
+      const itemsArray = tag.sku_items || tag.items || [];
+      itemsArray.forEach(item => {
+        const itemSkuId = item.sku_id || item.item_id;
+        if (itemSkuId && itemSkuId.toString() === sku_id) {
           const quantity = item.remaining_quantity || item.quantity || 0;
           tagSummary[tag.tag_type] = (tagSummary[tag.tag_type] || 0) + quantity;
           tagSummary.total_tagged += quantity;

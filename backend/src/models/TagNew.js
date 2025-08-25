@@ -95,7 +95,7 @@ const tagNewSchema = new mongoose.Schema({
 // Pre-save middleware to initialize remaining_quantity and update last_updated_by
 tagNewSchema.pre('save', function(next) {
   // Initialize remaining_quantity to match quantity for new items
-  this.items.forEach(item => {
+  this.sku_items.forEach(item => {
     if (item.remaining_quantity === undefined || item.remaining_quantity === null) {
       item.remaining_quantity = item.quantity;
     }
@@ -111,36 +111,36 @@ tagNewSchema.pre('save', function(next) {
 
 // Method to check if tag is partially fulfilled
 tagNewSchema.methods.isPartiallyFulfilled = function() {
-  return this.items.some(item => item.remaining_quantity < item.quantity && item.remaining_quantity > 0);
+  return this.sku_items.some(item => item.remaining_quantity < item.quantity && item.remaining_quantity > 0);
 };
 
 // Method to check if tag is fully fulfilled
 tagNewSchema.methods.isFullyFulfilled = function() {
-  return this.items.every(item => item.remaining_quantity === 0);
+  return this.sku_items.every(item => item.remaining_quantity === 0);
 };
 
 // Method to get remaining items for fulfillment
 tagNewSchema.methods.getRemainingItems = function() {
-  return this.items.filter(item => item.remaining_quantity > 0);
+  return this.sku_items.filter(item => item.remaining_quantity > 0);
 };
 
 // Method to get total quantity across all items
 tagNewSchema.methods.getTotalQuantity = function() {
-  return this.items.reduce((total, item) => total + item.quantity, 0);
+  return this.sku_items.reduce((total, item) => total + item.quantity, 0);
 };
 
 // Method to get total remaining quantity across all items
 tagNewSchema.methods.getTotalRemainingQuantity = function() {
-  return this.items.reduce((total, item) => total + (item.remaining_quantity || 0), 0);
+  return this.sku_items.reduce((total, item) => total + (item.remaining_quantity || 0), 0);
 };
 
 // Method to fulfill items (reduce remaining quantity)
 tagNewSchema.methods.fulfillItems = function(fulfillmentData, fulfilledBy) {
-  const { item_id, quantity_fulfilled } = fulfillmentData;
+  const { sku_id, quantity_fulfilled } = fulfillmentData;
   
-  const item = this.items.find(item => item.item_id.toString() === item_id.toString());
+  const item = this.sku_items.find(item => item.sku_id.toString() === sku_id.toString());
   if (!item) {
-    throw new Error(`Item ${item_id} not found in this tag`);
+    throw new Error(`SKU ${sku_id} not found in this tag`);
   }
   
   if (quantity_fulfilled > item.remaining_quantity) {
@@ -172,14 +172,14 @@ tagNewSchema.methods.cancel = function(cancelledBy, reason = '') {
 
 // Method to calculate total value (requires populated SKU data)
 tagNewSchema.methods.getTotalValue = function() {
-  if (!this.populated('items.item_id')) {
-    throw new Error('Items must be populated to calculate total value');
+  if (!this.populated('sku_items.sku_id')) {
+    throw new Error('SKU items must be populated to calculate total value');
   }
   
-  return this.items.reduce((total, tagItem) => {
-    const item = tagItem.item_id;
-    if (item && item.sku_id && item.sku_id.unit_cost) {
-      return total + (tagItem.quantity * item.sku_id.unit_cost);
+  return this.sku_items.reduce((total, tagItem) => {
+    const sku = tagItem.sku_id;
+    if (sku && sku.unit_cost) {
+      return total + (tagItem.quantity * sku.unit_cost);
     }
     return total;
   }, 0);
@@ -192,10 +192,7 @@ tagNewSchema.statics.getOverdueTags = function() {
     status: 'active',
     due_date: { $lt: now }
   }).populate({
-    path: 'items.item_id',
-    populate: {
-      path: 'sku_id'
-    }
+    path: 'sku_items.sku_id'
   });
 };
 
@@ -203,10 +200,7 @@ tagNewSchema.statics.getOverdueTags = function() {
 tagNewSchema.statics.getTagsByCustomer = function(customerName) {
   return this.find({ customer_name: new RegExp(customerName, 'i') })
     .populate({
-      path: 'items.item_id',
-      populate: {
-        path: 'sku_id'
-      }
+      path: 'sku_items.sku_id'
     })
     .sort({ createdAt: -1 });
 };
@@ -217,7 +211,7 @@ tagNewSchema.index({ tag_type: 1, status: 1 });
 tagNewSchema.index({ status: 1, due_date: 1 });
 tagNewSchema.index({ created_by: 1 });
 tagNewSchema.index({ project_name: 1 });
-tagNewSchema.index({ 'items.item_id': 1 });
+tagNewSchema.index({ 'sku_items.sku_id': 1 });
 tagNewSchema.index({ createdAt: -1 });
 
 // Text index for customer name searching

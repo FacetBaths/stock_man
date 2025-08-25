@@ -122,7 +122,45 @@ export const useInventoryStore = defineStore('inventory', () => {
         page: params?.page || inventoryFilters.value.current_page
       })
       
-      inventory.value = response.inventory
+      // Transform backend inventory data to match frontend expectations
+      inventory.value = response.inventory.map((item: any) => ({
+        // Keep all original inventory properties
+        ...item,
+        // Map common fields for component compatibility
+        _id: item._id,
+        quantity: item.total_quantity || 0,
+        product_type: item.category?.name?.toLowerCase() || 'unknown',
+        location: item.primary_location || 'Unknown',
+        notes: '', // inventory records don't have notes
+        updatedAt: item.updatedAt,
+        createdAt: item.createdAt,
+        // Transform tag_summary to tagSummary with camelCase properties
+        tagSummary: item.tag_summary ? {
+          reserved: item.tag_summary.reserved || 0,
+          broken: item.tag_summary.broken || 0,
+          loaned: item.tag_summary.loaned || 0,
+          imperfect: item.tag_summary.imperfect || 0, // Add support for imperfect tags if backend adds them
+          totalTagged: item.tag_summary.totalTagged || 0
+        } : {
+          reserved: 0,
+          broken: 0,
+          loaned: 0,
+          imperfect: 0,
+          totalTagged: 0
+        },
+        // Add product details for display
+        product_details: {
+          name: item.sku?.name || 'Unknown Product',
+          description: item.sku?.description || '',
+          brand: item.sku?.brand || '',
+          model: item.sku?.model || ''
+        },
+        // Map cost fields
+        cost: item.average_cost || 0,
+        // Map SKU fields
+        sku_code: item.sku?.sku_code || '',
+        barcode: item.sku?.barcode || ''
+      }))
       pagination.value = {
         total_items: response.pagination.total_items,
         total_pages: response.pagination.total_pages,
