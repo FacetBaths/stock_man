@@ -228,6 +228,10 @@ utilities/
 migrations/
 seeds/
 
+# Development scripts (may contain sensitive data or be user-specific)
+dev/scripts/*
+!dev/scripts/.gitkeep
+
 # Backup files
 backups/
 *.backup
