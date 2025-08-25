@@ -86,30 +86,42 @@ router.get('/inventory',
 
         // Add tag information if requested
         if (includeTags) {
-          const tags = await Tag.find({ item_id: item._id, status: 'active' });
+          // Get tags that contain this item's SKU
+          const tags = await Tag.find({ 
+            'sku_items.sku_id': item.sku_id, 
+            status: 'active' 
+          });
           const tagSummary = {
             total_tags: tags.length,
             reserved_qty: 0,
             broken_qty: 0,
             imperfect_qty: 0,
-            expected_qty: 0
+            expected_qty: 0,
+            loaned_qty: 0
           };
           
           tags.forEach(tag => {
+            // Sum quantities for this specific SKU
+            const skuItems = tag.sku_items.filter(skuItem => 
+              skuItem.sku_id.toString() === item.sku_id.toString()
+            );
+            const totalQuantity = skuItems.reduce((sum, skuItem) => sum + skuItem.quantity, 0);
+            
             switch (tag.tag_type) {
               case 'reserved':
-                tagSummary.reserved_qty += tag.quantity;
+                tagSummary.reserved_qty += totalQuantity;
                 break;
               case 'broken':
-                tagSummary.broken_qty += tag.quantity;
+                tagSummary.broken_qty += totalQuantity;
                 break;
               case 'imperfect':
-                tagSummary.imperfect_qty += tag.quantity;
+                tagSummary.imperfect_qty += totalQuantity;
                 break;
-              case 'expected':
-              case 'partial_shipment':
-              case 'backorder':
-                tagSummary.expected_qty += tag.quantity;
+              case 'loaned':
+                tagSummary.loaned_qty += totalQuantity;
+                break;
+              case 'stock':
+                tagSummary.expected_qty += totalQuantity;
                 break;
             }
           });

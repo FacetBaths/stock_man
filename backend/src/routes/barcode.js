@@ -422,12 +422,17 @@ router.post('/assign-to-tag',
         
         try {
           const tag = new Tag({
-            item_id: group.item._id,
             customer_name: tagData.customer_name,
-            quantity: group.quantity,
             tag_type: tagData.tag_type || 'reserved',
+            sku_items: [{
+              sku_id: group.item.sku_id,
+              quantity: group.quantity,
+              notes: `Tagged from barcode scan (${group.quantity} items)`
+            }],
             notes: tagData.notes || `Tagged from barcode scan (${group.quantity} items)`,
+            status: 'active',
             created_by: req.user.username,
+            last_updated_by: req.user.username,
             due_date: tagData.due_date ? new Date(tagData.due_date) : undefined
           });
 

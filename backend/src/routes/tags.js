@@ -3,7 +3,7 @@ const { body, query, param, validationResult } = require('express-validator');
 const router = express.Router();
 
 // Import new models
-const TagNew = require('../models/TagNew');
+const Tag = require('../models/Tag');
 const ItemNew = require('../models/ItemNew');
 const SKUNew = require('../models/SKUNew');
 const Inventory = require('../models/Inventory');
@@ -295,7 +295,7 @@ router.get('/stats',
   async (req, res) => {
     try {
       // Get overall tag statistics
-      const tagStats = await TagNew.aggregate([
+      const tagStats = await Tag.aggregate([
         {
           $group: {
             _id: null,
@@ -308,7 +308,7 @@ router.get('/stats',
       ]);
 
       // Get tag statistics by type
-      const tagsByType = await TagNew.aggregate([
+      const tagsByType = await Tag.aggregate([
         {
           $group: {
             _id: '$tag_type',
@@ -322,7 +322,7 @@ router.get('/stats',
       ]);
 
       // Get overdue tags count
-      const overdueCount = await TagNew.countDocuments({
+      const overdueCount = await Tag.countDocuments({
         status: 'active',
         due_date: { $lt: new Date() }
       });
@@ -331,7 +331,7 @@ router.get('/stats',
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       
-      const recentActivity = await TagNew.aggregate([
+      const recentActivity = await Tag.aggregate([
         {
           $match: {
             created_at: { $gte: thirtyDaysAgo }
@@ -383,7 +383,7 @@ router.get('/overdue/list',
   auth,
   async (req, res) => {
     try {
-      const overdueTags = await TagNew.getOverdueTags();
+      const overdueTags = await Tag.getOverdueTags();
       
       const enrichedTags = overdueTags.map(tag => {
         const tagObj = tag.toObject();
@@ -424,7 +424,7 @@ router.get('/customer/:customerName',
         });
       }
 
-      const tags = await TagNew.getTagsByCustomer(req.params.customerName);
+      const tags = await Tag.getTagsByCustomer(req.params.customerName);
       
       const enrichedTags = tags.map(tag => {
         const tagObj = tag.toObject();
@@ -532,11 +532,11 @@ router.get('/',
       const sort = { [sortField]: sortOrder };
 
       // Get total count for pagination
-      const totalTags = await TagNew.countDocuments(filter);
+      const totalTags = await Tag.countDocuments(filter);
       const totalPages = Math.ceil(totalTags / limit);
 
       // Build query
-      let query = TagNew.find(filter)
+      let query = Tag.find(filter)
         .sort(sort)
         .skip(skip)
         .limit(limit);
@@ -609,7 +609,7 @@ router.get('/:id',
         });
       }
 
-      let query = TagNew.findById(req.params.id);
+      let query = Tag.findById(req.params.id);
 
       // Always populate SKU details for meaningful display
       query = query.populate({
@@ -769,7 +769,7 @@ router.post('/',
       };
 
       // Create the tag
-      const tag = new TagNew(tagData);
+      const tag = new Tag(tagData);
       await tag.save();
 
       // Update inventory to reflect the reservation/allocation
@@ -866,7 +866,7 @@ router.put('/:id',
         });
       }
 
-      const tag = await TagNew.findById(req.params.id);
+      const tag = await Tag.findById(req.params.id);
       if (!tag) {
         return res.status(404).json({ message: 'Tag not found' });
       }
@@ -897,7 +897,7 @@ router.put('/:id',
         }
       }
 
-      const updatedTag = await TagNew.findByIdAndUpdate(
+      const updatedTag = await Tag.findByIdAndUpdate(
         req.params.id,
         updateData,
         { new: true, runValidators: true }
@@ -945,7 +945,7 @@ router.post('/:id/fulfill',
         });
       }
 
-      const tag = await TagNew.findById(req.params.id);
+      const tag = await Tag.findById(req.params.id);
       if (!tag) {
         return res.status(404).json({ message: 'Tag not found' });
       }
@@ -1032,7 +1032,7 @@ router.post('/:id/cancel',
         });
       }
 
-      const tag = await TagNew.findById(req.params.id);
+      const tag = await Tag.findById(req.params.id);
       if (!tag) {
         return res.status(404).json({ message: 'Tag not found' });
       }
@@ -1102,7 +1102,7 @@ router.delete('/:id',
         });
       }
 
-      const tag = await TagNew.findById(req.params.id);
+      const tag = await Tag.findById(req.params.id);
       if (!tag) {
         return res.status(404).json({ message: 'Tag not found' });
       }
@@ -1119,7 +1119,7 @@ router.delete('/:id',
         await updateInventoryForTag(tag.sku_items, tag.tag_type, 'release');
       }
 
-      await TagNew.findByIdAndDelete(req.params.id);
+      await Tag.findByIdAndDelete(req.params.id);
 
       res.json({ 
         message: 'Tag deleted successfully',

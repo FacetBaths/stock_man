@@ -2,7 +2,7 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const Inventory = require('../models/Inventory');
 const SKUNew = require('../models/SKUNew');
-const TagNew = require('../models/TagNew');
+const Tag = require('../models/Tag');
 const { auth, requireRole, requireWriteAccess } = require('../middleware/authEnhanced');
 const AuditLog = require('../models/AuditLog');
 
@@ -925,27 +925,27 @@ router.post('/sync', [auth, requireWriteAccess], async (req, res) => {
           inventory.last_updated_by = updatedBy;
           
           // Get active tags for this SKU
-          const activeTags = await TagNew.find({
+          const activeTags = await Tag.find({
             'sku_items.sku_id': sku._id,
-            status: { $in: ['active', 'partially_fulfilled'] }
+            status: 'active'
           }).lean();
           
           // Recalculate quantities based on active tags
           activeTags.forEach(tag => {
-            const itemsArray = tag.sku_items || tag.items || []; // Support both old and new structure
-            itemsArray.forEach(item => {
-              const itemSkuId = item.sku_id || item.item_id; // Support both field names
-              if (itemSkuId && itemSkuId.toString() === sku._id.toString()) {
-                const quantity = item.remaining_quantity || item.quantity || 0;
-                if (tag.tag_type === 'reserved') {
-                  inventory.reserved_quantity += quantity;
-                } else if (tag.tag_type === 'broken') {
-                  inventory.broken_quantity += quantity;
-                } else if (tag.tag_type === 'loaned') {
-                  inventory.loaned_quantity += quantity;
+            if (tag.sku_items && tag.sku_items.length > 0) {
+              tag.sku_items.forEach(item => {
+                if (item.sku_id && item.sku_id.toString() === sku._id.toString()) {
+                  const quantity = item.quantity || 0;
+                  if (tag.tag_type === 'reserved') {
+                    inventory.reserved_quantity += quantity;
+                  } else if (tag.tag_type === 'broken') {
+                    inventory.broken_quantity += quantity;
+                  } else if (tag.tag_type === 'loaned') {
+                    inventory.loaned_quantity += quantity;
+                  }
                 }
-              }
-            });
+              });
+            }
           });
           
           await inventory.save();
@@ -996,16 +996,12 @@ router.get('/:sku_id', auth, async (req, res) => {
       return res.status(404).json({ message: 'Inventory record not found' });
     }
 
-    // Get related tags for this SKU - check both old and new structures
-    let activeTags = await TagNew.find({
-      $or: [
-        { 'sku_items.sku_id': sku_id },
-        { 'items.sku_id': sku_id },
-        { 'items.item_id': sku_id } // Legacy support
-      ],
-      status: { $in: ['active', 'partially_fulfilled'] }
+    // Get related tags for this SKU using Tag model
+    let activeTags = await Tag.find({
+      'sku_items.sku_id': sku_id,
+      status: 'active'
     })
-    .select('_id customer_name tag_type project_name due_date status items sku_items')
+    .select('_id customer_name tag_type project_name due_date status sku_items')
     .lean();
 
     // Calculate tag summary
@@ -1017,15 +1013,15 @@ router.get('/:sku_id', auth, async (req, res) => {
     };
 
     activeTags.forEach(tag => {
-      const itemsArray = tag.sku_items || tag.items || [];
-      itemsArray.forEach(item => {
-        const itemSkuId = item.sku_id || item.item_id;
-        if (itemSkuId && itemSkuId.toString() === sku_id) {
-          const quantity = item.remaining_quantity || item.quantity || 0;
-          tagSummary[tag.tag_type] = (tagSummary[tag.tag_type] || 0) + quantity;
-          tagSummary.total_tagged += quantity;
-        }
-      });
+      if (tag.sku_items && tag.sku_items.length > 0) {
+        tag.sku_items.forEach(item => {
+          if (item.sku_id && item.sku_id.toString() === sku_id) {
+            const quantity = item.quantity || 0;
+            tagSummary[tag.tag_type] = (tagSummary[tag.tag_type] || 0) + quantity;
+            tagSummary.total_tagged += quantity;
+          }
+        });
+      }
     });
 
     res.json({
