@@ -1,7 +1,7 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const Inventory = require('../models/Inventory');
-const SKUNew = require('../models/SKUNew');
+const SKU = require('../models/SKU');
 const Tag = require('../models/Tag');
 const { auth, requireRole, requireWriteAccess } = require('../middleware/authEnhanced');
 const AuditLog = require('../models/AuditLog');
@@ -78,7 +78,7 @@ router.get('/', auth, async (req, res) => {
       { $match: query },
       {
         $lookup: {
-          from: 'skunews',
+          from: 'skus',
           localField: 'sku_id',
           foreignField: '_id',
           as: 'sku'
@@ -235,7 +235,7 @@ router.get('/stats', auth, async (req, res) => {
       { $match: { is_active: true } },
       {
         $lookup: {
-          from: 'skunews',
+          from: 'skus',
           localField: 'sku_id',
           foreignField: '_id',
           as: 'sku'
@@ -660,7 +660,7 @@ router.get('/reports/valuation', auth, async (req, res) => {
       { $match: matchStage },
       {
         $lookup: {
-          from: 'skunews',
+          from: 'skus',
           localField: 'sku_id',
           foreignField: '_id',
           as: 'sku'
@@ -885,7 +885,7 @@ router.post('/sync', [auth, requireWriteAccess], async (req, res) => {
     console.log('Starting inventory synchronization...');
 
     // Get all SKUs that need inventory records
-    const allSKUs = await SKUNew.find({ is_active: true }).select('_id sku_code').lean();
+    const allSKUs = await SKU.find({ is_active: true }).select('_id sku_code').lean();
     
     let syncResults = {
       skus_processed: 0,

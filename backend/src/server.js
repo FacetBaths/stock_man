@@ -9,14 +9,12 @@ const authRoutes = require('./routes/auth');
 const inventoryRoutes = require('./routes/inventory');
 const tagRoutes = require('./routes/tags');
 const skuRoutes = require('./routes/skus');
-const barcodeRoutes = require('./routes/barcode');
 const exportRoutes = require('./routes/export');
 
 // Import new routes for updated database architecture
 const categoryRoutes = require('./routes/categories');
 const usersRoutes = require('./routes/users');
-const unassignedItemsRoutes = require('./routes/unassigned-items');
-const itemsRoutes = require('./routes/items');
+const instancesRoutes = require('./routes/instances');
 
 const app = express();
 
@@ -70,14 +68,12 @@ app.use('/api/auth', authRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/tags', tagRoutes);
 app.use('/api/skus', skuRoutes);
-app.use('/api/barcode', barcodeRoutes);
 app.use('/api/export', exportRoutes);
 
 // New API routes for updated database architecture
 app.use('/api/categories', categoryRoutes);
 app.use('/api/users', usersRoutes);
-app.use('/api/unassigned-items', unassignedItemsRoutes);
-app.use('/api/items', itemsRoutes);
+app.use('/api/instances', instancesRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

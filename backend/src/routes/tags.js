@@ -2,10 +2,9 @@ const express = require('express');
 const { body, query, param, validationResult } = require('express-validator');
 const router = express.Router();
 
-// Import new models
+// Import models
 const Tag = require('../models/Tag');
-const ItemNew = require('../models/ItemNew');
-const SKUNew = require('../models/SKUNew');
+const SKU = require('../models/SKU');
 const Inventory = require('../models/Inventory');
 const { auth, requireRole, requireWriteAccess } = require('../middleware/authEnhanced');
 const AuditLog = require('../models/AuditLog');
@@ -28,40 +27,16 @@ const validateTag = [
     .trim()
     .isLength({ max: 200 })
     .withMessage('Project name cannot exceed 200 characters'),
-  // Accept either 'items' (legacy) or 'sku_items' (new format)
-  body('items')
-    .optional()
-    .isArray({ min: 1 })
-    .withMessage('Items array must contain at least one item'),
+  // SKU items only - no legacy support
   body('sku_items')
-    .optional()
     .isArray({ min: 1 })
-    .withMessage('SKU items array must contain at least one item'),
-  // Validate items format (legacy)
-  body('items.*.item_id')
-    .optional()
-    .notEmpty()
-    .withMessage('Item ID is required')
-    .isMongoId()
-    .withMessage('Item ID must be a valid MongoDB ID'),
-  body('items.*.quantity')
-    .optional()
-    .isInt({ min: 1 })
-    .withMessage('Item quantity must be a positive integer'),
-  body('items.*.notes')
-    .optional()
-    .trim()
-    .isLength({ max: 500 })
-    .withMessage('Item notes cannot exceed 500 characters'),
-  // Validate sku_items format (new)
+    .withMessage('SKU items array is required and must contain at least one item'),
   body('sku_items.*.sku_id')
-    .optional()
     .notEmpty()
     .withMessage('SKU ID is required')
     .isMongoId()
     .withMessage('SKU ID must be a valid MongoDB ID'),
   body('sku_items.*.quantity')
-    .optional()
     .isInt({ min: 1 })
     .withMessage('SKU quantity must be a positive integer'),
   body('sku_items.*.notes')
@@ -83,50 +58,31 @@ const validateTag = [
     .isIn(['active', 'fulfilled', 'cancelled'])
     .withMessage('Status must be active, fulfilled, or cancelled')
 ];
-// Helper function to check item availability and validate quantities
-// Updated to work with inventory-based architecture (current frontend sends inventory IDs)
-async function checkItemAvailability(items) {
+// Helper function to check SKU availability and validate quantities
+async function checkSKUAvailability(skuItems) {
   const availability = [];
   
-  for (const tagItem of items) {
+  for (const tagItem of skuItems) {
     try {
-      // First try to find by ItemNew ID (proper architecture)
-      let item = await ItemNew.findById(tagItem.item_id)
-        .populate({
-          path: 'sku_id',
-          populate: { path: 'category_id' }
+      // Get SKU and inventory information
+      const sku = await SKU.findById(tagItem.sku_id)
+        .populate('category_id');
+      
+      if (!sku) {
+        availability.push({
+          sku_id: tagItem.sku_id,
+          error: 'SKU not found',
+          can_fulfill: false
         });
-      
-      let inventory = null;
-      
-      if (item) {
-        // Found as ItemNew - get corresponding inventory
-        inventory = await Inventory.findOne({ sku_id: item.sku_id });
-      } else {
-        // Not found as ItemNew - check if it's an Inventory ID (current frontend behavior)
-        inventory = await Inventory.findById(tagItem.item_id)
-          .populate({
-            path: 'sku_id',
-            populate: { path: 'category_id' }
-          });
-        
-        if (inventory) {
-          // Create a virtual item object from inventory data
-          item = {
-            _id: inventory._id,
-            sku_id: inventory.sku_id,
-            quantity: inventory.available_quantity,
-            location: inventory.primary_location,
-            condition: 'new',
-            serial_number: inventory.sku_id?.sku_code || 'N/A'
-          };
-        }
+        continue;
       }
       
-      if (!item || !inventory) {
+      const inventory = await Inventory.findOne({ sku_id: tagItem.sku_id });
+      
+      if (!inventory) {
         availability.push({
-          item_id: tagItem.item_id,
-          error: 'Item/Inventory not found',
+          sku_id: tagItem.sku_id,
+          error: 'Inventory record not found',
           can_fulfill: false
         });
         continue;
@@ -137,8 +93,8 @@ async function checkItemAvailability(items) {
       const canFulfill = tagItem.quantity <= availableQuantity;
       
       availability.push({
-        item_id: tagItem.item_id,
-        item_details: item,
+        sku_id: tagItem.sku_id,
+        sku_details: sku,
         inventory_details: inventory,
         requested_quantity: tagItem.quantity,
         available_quantity: availableQuantity,
@@ -148,7 +104,7 @@ async function checkItemAvailability(items) {
       
     } catch (error) {
       availability.push({
-        item_id: tagItem.item_id,
+        sku_id: tagItem.sku_id,
         error: error.message,
         can_fulfill: false
       });
@@ -159,31 +115,16 @@ async function checkItemAvailability(items) {
 }
 
 // Helper function to update inventory when tag is created/modified
-// Updated to work with inventory-based architecture
-async function updateInventoryForTag(items, tagType, operation = 'reserve') {
+async function updateInventoryForTag(skuItems, tagType, operation = 'reserve') {
   const updates = [];
   
-  for (const tagItem of items) {
+  for (const tagItem of skuItems) {
     try {
-      let inventory = null;
-      let skuId = null;
-      
-      // First try to find by ItemNew ID
-      const item = await ItemNew.findById(tagItem.item_id);
-      if (item) {
-        skuId = item.sku_id;
-        inventory = await Inventory.findOne({ sku_id: skuId });
-      } else {
-        // If not found as ItemNew, treat as inventory ID
-        inventory = await Inventory.findById(tagItem.item_id).populate('sku_id');
-        if (inventory) {
-          skuId = inventory.sku_id._id;
-        }
-      }
+      const inventory = await Inventory.findOne({ sku_id: tagItem.sku_id });
       
       if (!inventory) {
         updates.push({
-          item_id: tagItem.item_id,
+          sku_id: tagItem.sku_id,
           success: false,
           error: 'Inventory record not found'
         });
@@ -270,7 +211,7 @@ async function updateInventoryForTag(items, tagType, operation = 'reserve') {
         await Inventory.findByIdAndUpdate(inventory._id, updateData);
         updates.push({
           inventory_id: inventory._id,
-          item_id: tagItem.item_id,
+          sku_id: tagItem.sku_id,
           operation,
           quantity: tagItem.quantity,
           success: true
@@ -279,7 +220,7 @@ async function updateInventoryForTag(items, tagType, operation = 'reserve') {
       
     } catch (error) {
       updates.push({
-        item_id: tagItem.item_id,
+        sku_id: tagItem.sku_id,
         operation,
         error: error.message,
         success: false
@@ -698,23 +639,22 @@ router.post('/',
         });
       }
 
-      // Custom validation: ensure at least items or sku_items is provided
-      if (!req.body.items && !req.body.sku_items) {
+      // Validation: ensure sku_items is provided
+      if (!req.body.sku_items) {
         return res.status(400).json({ 
           message: 'Validation failed', 
-          errors: [{ msg: 'Either items or sku_items must be provided', path: 'items' }] 
+          errors: [{ msg: 'sku_items is required', path: 'sku_items' }] 
         });
       }
       
-      // Use items if provided, otherwise sku_items
-      const itemsToProcess = req.body.items || req.body.sku_items;
-      console.log('Items to process:', itemsToProcess)
+      const skuItemsToProcess = req.body.sku_items;
+      console.log('SKU items to process:', skuItemsToProcess)
 
       console.log('=== VALIDATION PASSED, CHECKING AVAILABILITY ===')
       
-      // Check item availability before creating tag
-      console.log('Checking availability for items:', itemsToProcess)
-      const availability = await checkItemAvailability(itemsToProcess);
+      // Check SKU availability before creating tag
+      console.log('Checking availability for SKU items:', skuItemsToProcess)
+      const availability = await checkSKUAvailability(skuItemsToProcess);
       console.log('Availability results:', JSON.stringify(availability, null, 2))
       const unavailableItems = availability.filter(item => !item.can_fulfill);
       console.log('Unavailable items count:', unavailableItems.length)
@@ -727,34 +667,12 @@ router.post('/',
         });
       }
 
-      // Create tag data - convert inventory IDs to SKU IDs
-      const processedItems = [];
-      for (const item of itemsToProcess) {
-        let skuId = item.sku_id; // For direct sku_items requests
-        
-        // If using items with item_id (inventory IDs), we need to get the SKU ID
-        if (item.item_id && !skuId) {
-          const availabilityInfo = availability.find(a => a.item_id === item.item_id);
-          if (availabilityInfo && availabilityInfo.inventory_details?.sku_id) {
-            // Extract SKU ID from inventory details
-            if (typeof availabilityInfo.inventory_details.sku_id === 'object') {
-              skuId = availabilityInfo.inventory_details.sku_id._id;
-            } else {
-              skuId = availabilityInfo.inventory_details.sku_id;
-            }
-          }
-        }
-        
-        if (!skuId) {
-          throw new Error(`Could not determine SKU ID for item: ${JSON.stringify(item)}`);
-        }
-        
-        processedItems.push({
-          sku_id: skuId,
-          quantity: item.quantity,
-          notes: item.notes || ''
-        });
-      }
+      // Create tag data directly from SKU items
+      const processedItems = skuItemsToProcess.map(item => ({
+        sku_id: item.sku_id,
+        quantity: item.quantity,
+        notes: item.notes || ''
+      }));
       
       const tagData = {
         customer_name: req.body.customer_name,
@@ -774,7 +692,7 @@ router.post('/',
 
       // Update inventory to reflect the reservation/allocation
       const inventoryUpdates = await updateInventoryForTag(
-        itemsToProcess, 
+        processedItems, 
         req.body.tag_type, 
         'reserve'
       );
@@ -794,21 +712,15 @@ router.post('/',
       // Enrich sku_items with details from availability check results
       if (availability && availability.length > 0) {
         tagObj.sku_items = tagObj.sku_items.map(tagItem => {
-          // Find availability info by matching the inventory item that has this SKU
-          const availabilityInfo = availability.find(a => {
-            if (a.inventory_details?.sku_id) {
-              const inventorySkuId = typeof a.inventory_details.sku_id === 'object' 
-                ? a.inventory_details.sku_id._id 
-                : a.inventory_details.sku_id;
-              return inventorySkuId.toString() === tagItem.sku_id.toString();
-            }
-            return false;
-          });
+          // Find availability info by matching the SKU ID
+          const availabilityInfo = availability.find(a => 
+            a.sku_id.toString() === tagItem.sku_id.toString()
+          );
           
           if (availabilityInfo) {
             return {
               ...tagItem,
-              item_details: availabilityInfo.item_details,
+              sku_details: availabilityInfo.sku_details,
               inventory_details: availabilityInfo.inventory_details
             };
           }

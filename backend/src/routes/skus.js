@@ -2,10 +2,9 @@ const express = require('express');
 const { body, query, param, validationResult } = require('express-validator');
 const router = express.Router();
 
-// Import new models
-const SKUNew = require('../models/SKUNew');
+// Import models
+const SKU = require('../models/SKU');
 const Category = require('../models/Category');
-const ItemNew = require('../models/ItemNew');
 const Inventory = require('../models/Inventory');
 const { auth, requireRole, requireWriteAccess } = require('../middleware/authEnhanced');
 const AuditLog = require('../models/AuditLog');
@@ -95,7 +94,7 @@ async function generateSKUCode(categoryId, manufacturerModel = null) {
       
       if (cleanedModel) {
         // Check if this model number already exists as SKU
-        const existingSku = await SKUNew.findOne({ sku_code: cleanedModel });
+        const existingSku = await SKU.findOne({ sku_code: cleanedModel });
         if (!existingSku) {
           return cleanedModel;
         }
@@ -113,7 +112,7 @@ async function generateSKUCode(categoryId, manufacturerModel = null) {
     const categoryPrefix = category.slug.substring(0, 3).toUpperCase();
     
     // Find the next sequence number for this category and year
-    const existingSkus = await SKUNew.find({
+    const existingSkus = await SKU.find({
       sku_code: new RegExp(`^${categoryPrefix}-${year}-\\d+$`)
     }).sort({ sku_code: -1 }).limit(1);
     
@@ -190,7 +189,7 @@ router.get('/',
       sort[sortField] = sortOrder;
 
       // Execute queries
-      let query = SKUNew.find(filter)
+      let query = SKU.find(filter)
         .populate('category_id', 'name slug')
         .sort(sort)
         .skip(skip)
@@ -198,7 +197,7 @@ router.get('/',
 
       const [skus, totalSkus] = await Promise.all([
         query,
-        SKUNew.countDocuments(filter)
+        SKU.countDocuments(filter)
       ]);
 
       const totalPages = Math.ceil(totalSkus / limit);
@@ -269,7 +268,7 @@ router.get('/:id',
         });
       }
 
-      let query = SKUNew.findById(req.params.id)
+      let query = SKU.findById(req.params.id)
         .populate('category_id');
 
       // Add bundle items population if it's a bundle
@@ -294,12 +293,10 @@ router.get('/:id',
         }
       }
 
-      // Include items if requested
+      // Items are no longer tracked - SKUs work directly with inventory
+      // This parameter is kept for API compatibility but returns empty array
       if (req.query.include_items === 'true') {
-        const items = await ItemNew.find({ sku_id: sku._id })
-          .select('serial_number condition status location notes created_at')
-          .sort({ created_at: -1 });
-        skuObj.items = items;
+        skuObj.items = [];
       }
 
       res.json({ sku: skuObj });
@@ -341,7 +338,7 @@ router.post('/',
         skuCode = await generateSKUCode(req.body.category_id, req.body.manufacturer_model);
       } else {
         // Check if SKU code already exists
-        const existingSKU = await SKUNew.findOne({ sku_code: skuCode });
+        const existingSKU = await SKU.findOne({ sku_code: skuCode });
         if (existingSKU) {
           return res.status(400).json({ 
             message: 'SKU code already exists' 
@@ -378,7 +375,7 @@ router.post('/',
       // Validate bundle items if this is a bundle
       if (skuData.is_bundle && skuData.bundle_items.length > 0) {
         for (const bundleItem of skuData.bundle_items) {
-          const bundleSku = await SKUNew.findById(bundleItem.sku_id);
+          const bundleSku = await SKU.findById(bundleItem.sku_id);
           if (!bundleSku) {
             return res.status(400).json({ 
               message: `Bundle item SKU ${bundleItem.sku_id} not found` 
@@ -392,7 +389,7 @@ router.post('/',
         }
       }
 
-      const sku = new SKUNew(skuData);
+      const sku = new SKU(skuData);
       await sku.save();
 
       // Create initial inventory record
@@ -452,7 +449,7 @@ router.put('/:id',
       console.log('Update SKU request body:', req.body);
       console.log('Update SKU request body keys:', Object.keys(req.body));
       
-      const sku = await SKUNew.findById(req.params.id);
+      const sku = await SKU.findById(req.params.id);
       if (!sku) {
         return res.status(404).json({ message: 'SKU not found' });
       }
@@ -467,7 +464,7 @@ router.put('/:id',
       // Only update provided fields
       if (req.body.sku_code !== undefined) {
         // Check if new SKU code conflicts
-        const existingSKU = await SKUNew.findOne({ 
+        const existingSKU = await SKU.findOne({
           sku_code: req.body.sku_code, 
           _id: { $ne: req.params.id } 
         });
@@ -514,7 +511,7 @@ router.put('/:id',
       
       console.log('Final updateData before database call:', JSON.stringify(updateData, null, 2));
 
-      const updatedSKU = await SKUNew.findByIdAndUpdate(
+      const updatedSKU = await SKU.findByIdAndUpdate(
         req.params.id,
         updateData,
         { new: true, runValidators: true }
@@ -560,7 +557,7 @@ router.delete('/:id',
         });
       }
 
-      const sku = await SKUNew.findById(req.params.id);
+      const sku = await SKU.findById(req.params.id);
       if (!sku) {
         return res.status(404).json({ message: 'SKU not found' });
       }
@@ -579,7 +576,7 @@ router.delete('/:id',
       await Inventory.findOneAndDelete({ sku_id: req.params.id });
 
       // Delete the SKU
-      await SKUNew.findByIdAndDelete(req.params.id);
+      await SKU.findByIdAndDelete(req.params.id);
 
       res.json({ 
         message: 'SKU deleted successfully',
@@ -616,7 +613,7 @@ router.get('/lookup/:skuCode',
         });
       }
 
-      const sku = await SKUNew.findOne({ 
+      const sku = await SKU.findOne({
         sku_code: req.params.skuCode.toUpperCase(),
         is_active: true
       }).populate('category_id');

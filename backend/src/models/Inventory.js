@@ -5,7 +5,7 @@ const inventorySchema = new mongoose.Schema({
   // Reference to the SKU this inventory tracks
   sku_id: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'SKUNew',
+    ref: 'SKU',
     required: true,
     unique: true, // One inventory record per SKU
     index: true
@@ -66,25 +66,6 @@ const inventorySchema = new mongoose.Schema({
     min: 0
   },
   
-  // Location tracking
-  primary_location: {
-    type: String,
-    trim: true,
-    default: 'Main Warehouse'
-  },
-  
-  locations: [{
-    location_name: {
-      type: String,
-      required: true,
-      trim: true
-    },
-    quantity: {
-      type: Number,
-      required: true,
-      min: 0
-    }
-  }],
   
   // Valuation
   total_value: {

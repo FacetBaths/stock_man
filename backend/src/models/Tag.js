@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 // Redesigned Tag schema with proper relationships
-const tagNewSchema = new mongoose.Schema({
+const tagSchema = new mongoose.Schema({
   // Customer/project/department name (simple string like original)
   customer_name: {
     type: String,
@@ -29,7 +29,7 @@ const tagNewSchema = new mongoose.Schema({
   sku_items: [{
     sku_id: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'SKUNew',
+      ref: 'SKU',
       required: true
     },
     quantity: {
@@ -93,7 +93,7 @@ const tagNewSchema = new mongoose.Schema({
 });
 
 // Pre-save middleware to initialize remaining_quantity and update last_updated_by
-tagNewSchema.pre('save', function(next) {
+tagSchema.pre('save', function(next) {
   // Initialize remaining_quantity to match quantity for new items
   this.sku_items.forEach(item => {
     if (item.remaining_quantity === undefined || item.remaining_quantity === null) {
@@ -110,32 +110,32 @@ tagNewSchema.pre('save', function(next) {
 });
 
 // Method to check if tag is partially fulfilled
-tagNewSchema.methods.isPartiallyFulfilled = function() {
+tagSchema.methods.isPartiallyFulfilled = function() {
   return this.sku_items.some(item => item.remaining_quantity < item.quantity && item.remaining_quantity > 0);
 };
 
 // Method to check if tag is fully fulfilled
-tagNewSchema.methods.isFullyFulfilled = function() {
+tagSchema.methods.isFullyFulfilled = function() {
   return this.sku_items.every(item => item.remaining_quantity === 0);
 };
 
 // Method to get remaining items for fulfillment
-tagNewSchema.methods.getRemainingItems = function() {
+tagSchema.methods.getRemainingItems = function() {
   return this.sku_items.filter(item => item.remaining_quantity > 0);
 };
 
 // Method to get total quantity across all items
-tagNewSchema.methods.getTotalQuantity = function() {
+tagSchema.methods.getTotalQuantity = function() {
   return this.sku_items.reduce((total, item) => total + item.quantity, 0);
 };
 
 // Method to get total remaining quantity across all items
-tagNewSchema.methods.getTotalRemainingQuantity = function() {
+tagSchema.methods.getTotalRemainingQuantity = function() {
   return this.sku_items.reduce((total, item) => total + (item.remaining_quantity || 0), 0);
 };
 
 // Method to fulfill items (reduce remaining quantity)
-tagNewSchema.methods.fulfillItems = function(fulfillmentData, fulfilledBy) {
+tagSchema.methods.fulfillItems = function(fulfillmentData, fulfilledBy) {
   const { sku_id, quantity_fulfilled } = fulfillmentData;
   
   const item = this.sku_items.find(item => item.sku_id.toString() === sku_id.toString());
@@ -161,7 +161,7 @@ tagNewSchema.methods.fulfillItems = function(fulfillmentData, fulfilledBy) {
 };
 
 // Method to cancel the tag
-tagNewSchema.methods.cancel = function(cancelledBy, reason = '') {
+tagSchema.methods.cancel = function(cancelledBy, reason = '') {
   this.status = 'cancelled';
   this.last_updated_by = cancelledBy;
   if (reason) {
@@ -171,7 +171,7 @@ tagNewSchema.methods.cancel = function(cancelledBy, reason = '') {
 };
 
 // Method to calculate total value (requires populated SKU data)
-tagNewSchema.methods.getTotalValue = function() {
+tagSchema.methods.getTotalValue = function() {
   if (!this.populated('sku_items.sku_id')) {
     throw new Error('SKU items must be populated to calculate total value');
   }
@@ -186,7 +186,7 @@ tagNewSchema.methods.getTotalValue = function() {
 };
 
 // Static method to get overdue tags
-tagNewSchema.statics.getOverdueTags = function() {
+tagSchema.statics.getOverdueTags = function() {
   const now = new Date();
   return this.find({
     status: 'active',
@@ -197,7 +197,7 @@ tagNewSchema.statics.getOverdueTags = function() {
 };
 
 // Static method to get tags by customer name
-tagNewSchema.statics.getTagsByCustomer = function(customerName) {
+tagSchema.statics.getTagsByCustomer = function(customerName) {
   return this.find({ customer_name: new RegExp(customerName, 'i') })
     .populate({
       path: 'sku_items.sku_id'
@@ -206,19 +206,19 @@ tagNewSchema.statics.getTagsByCustomer = function(customerName) {
 };
 
 // Indexes for efficient searching
-tagNewSchema.index({ customer_name: 1, status: 1 });
-tagNewSchema.index({ tag_type: 1, status: 1 });
-tagNewSchema.index({ status: 1, due_date: 1 });
-tagNewSchema.index({ created_by: 1 });
-tagNewSchema.index({ project_name: 1 });
-tagNewSchema.index({ 'sku_items.sku_id': 1 });
-tagNewSchema.index({ createdAt: -1 });
+tagSchema.index({ customer_name: 1, status: 1 });
+tagSchema.index({ tag_type: 1, status: 1 });
+tagSchema.index({ status: 1, due_date: 1 });
+tagSchema.index({ created_by: 1 });
+tagSchema.index({ project_name: 1 });
+tagSchema.index({ 'sku_items.sku_id': 1 });
+tagSchema.index({ createdAt: -1 });
 
 // Text index for customer name searching
-tagNewSchema.index({ customer_name: 'text', project_name: 'text', notes: 'text' });
+tagSchema.index({ customer_name: 'text', project_name: 'text', notes: 'text' });
 
 // Compound indexes for common queries
-tagNewSchema.index({ customer_name: 1, tag_type: 1, status: 1 });
-tagNewSchema.index({ tag_type: 1, status: 1, due_date: 1 });
+tagSchema.index({ customer_name: 1, tag_type: 1, status: 1 });
+tagSchema.index({ tag_type: 1, status: 1, due_date: 1 });
 
-module.exports = mongoose.model('Tag', tagNewSchema);
+module.exports = mongoose.model('Tag', tagSchema);

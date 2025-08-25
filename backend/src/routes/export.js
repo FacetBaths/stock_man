@@ -1,10 +1,29 @@
 const express = require('express');
-const { query, validationResult } = require('express-validator');
+const { query, body, validationResult } = require('express-validator');
 const router = express.Router();
 const SKU = require('../models/SKU');
-const Item = require('../models/Item');
 const Tag = require('../models/Tag');
-const { auth } = require('../middleware/auth');
+const Inventory = require('../models/Inventory');
+const Category = require('../models/Category');
+const { auth, requireWriteAccess } = require('../middleware/authEnhanced');
+const multer = require('multer');
+const csv = require('csv-parser');
+const fs = require('fs');
+
+// Configure multer for file uploads
+const upload = multer({ 
+  dest: '/tmp/',
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'text/csv' || file.mimetype === 'application/json') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only CSV and JSON files are allowed'));
+    }
+  },
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit
+  }
+});
 
 // Helper function to convert JSON to CSV
 function jsonToCsv(data, headers) {
@@ -25,12 +44,11 @@ function jsonToCsv(data, headers) {
   return csvHeaders + '\n' + csvRows.join('\n');
 }
 
-// GET /api/export/inventory - Export inventory data
+// GET /api/export/inventory - Export inventory data (SKU-based)
 router.get('/inventory',
   auth,
   [
-    query('format').optional().isIn(['csv']).withMessage('Only CSV format is supported'),
-    query('include_skus').optional().isBoolean().withMessage('Include SKUs must be boolean'),
+    query('format').optional().isIn(['csv', 'json']).withMessage('Format must be csv or json'),
     query('include_tags').optional().isBoolean().withMessage('Include tags must be boolean')
   ],
   async (req, res) => {
@@ -41,87 +59,85 @@ router.get('/inventory',
       }
 
       const format = req.query.format || 'csv';
-      const includeSkus = req.query.include_skus !== 'false';
-      const includeTags = req.query.include_tags !== 'false';
+      const includeTags = req.query.include_tags === 'true';
 
-      // Get all items with populated product details
-      const items = await Item.find({}).populate('product_details').populate('sku_id');
+      // Get all inventory with SKU and category data
+      const inventories = await Inventory.find({})
+        .populate({
+          path: 'sku_id',
+          populate: {
+            path: 'category_id',
+            select: 'name'
+          }
+        });
 
       const exportData = [];
       
-      for (const item of items) {
+      for (const inventory of inventories) {
+        if (!inventory.sku_id) continue; // Skip if SKU was deleted
+        
+        const sku = inventory.sku_id;
         const baseRow = {
-          item_id: item._id.toString(),
-          product_type: item.product_type,
-          quantity: item.quantity,
-          location: item.location || '',
-          cost: item.cost || 0,
-          stock_status: item.getStockStatus(),
-          understocked_threshold: item.stock_thresholds?.understocked || 0,
-          overstocked_threshold: item.stock_thresholds?.overstocked || 0,
-          created_at: item.createdAt.toISOString(),
-          updated_at: item.updatedAt.toISOString()
+          sku_id: sku._id.toString(),
+          sku_code: sku.sku_code,
+          name: sku.name,
+          category: sku.category_id?.name || 'Uncategorized',
+          brand: sku.brand || '',
+          model: sku.model || '',
+          description: sku.description || '',
+          unit_cost: sku.unit_cost || 0,
+          barcode: sku.barcode || '',
+          status: sku.status,
+          total_quantity: inventory.total_quantity,
+          available_quantity: inventory.available_quantity,
+          reserved_quantity: inventory.reserved_quantity,
+          broken_quantity: inventory.broken_quantity,
+          loaned_quantity: inventory.loaned_quantity,
+          primary_location: inventory.primary_location || '',
+          total_value: inventory.total_value || 0,
+          is_low_stock: inventory.is_low_stock,
+          is_out_of_stock: inventory.is_out_of_stock,
+          created_at: sku.createdAt.toISOString(),
+          updated_at: sku.updatedAt.toISOString()
         };
-
-        // Add product details
-        if (item.product_details) {
-          const details = item.product_details.toObject();
-          Object.keys(details).forEach(key => {
-            if (key !== '_id' && key !== '__v' && key !== 'createdAt' && key !== 'updatedAt') {
-              baseRow[`product_${key}`] = details[key] || '';
-            }
-          });
-        }
-
-        // Add SKU information if requested
-        if (includeSkus && item.sku_id) {
-          const sku = item.sku_id;
-          baseRow.sku_code = sku.sku_code || '';
-          baseRow.sku_barcode = sku.barcode || '';
-          baseRow.sku_current_cost = sku.current_cost || 0;
-          baseRow.sku_manufacturer_model = sku.manufacturer_model || '';
-          baseRow.sku_description = sku.description || '';
-          baseRow.sku_status = sku.status || '';
-        }
 
         // Add tag information if requested
         if (includeTags) {
-          // Get tags that contain this item's SKU
           const tags = await Tag.find({ 
-            'sku_items.sku_id': item.sku_id, 
+            'sku_items.sku_id': sku._id, 
             status: 'active' 
           });
+          
           const tagSummary = {
-            total_tags: tags.length,
-            reserved_qty: 0,
-            broken_qty: 0,
-            imperfect_qty: 0,
-            expected_qty: 0,
-            loaned_qty: 0
+            active_tags_count: tags.length,
+            reserved_in_tags: 0,
+            broken_in_tags: 0,
+            imperfect_in_tags: 0,
+            loaned_in_tags: 0,
+            stock_in_tags: 0
           };
           
           tags.forEach(tag => {
-            // Sum quantities for this specific SKU
             const skuItems = tag.sku_items.filter(skuItem => 
-              skuItem.sku_id.toString() === item.sku_id.toString()
+              skuItem.sku_id.toString() === sku._id.toString()
             );
             const totalQuantity = skuItems.reduce((sum, skuItem) => sum + skuItem.quantity, 0);
             
             switch (tag.tag_type) {
               case 'reserved':
-                tagSummary.reserved_qty += totalQuantity;
+                tagSummary.reserved_in_tags += totalQuantity;
                 break;
               case 'broken':
-                tagSummary.broken_qty += totalQuantity;
+                tagSummary.broken_in_tags += totalQuantity;
                 break;
               case 'imperfect':
-                tagSummary.imperfect_qty += totalQuantity;
+                tagSummary.imperfect_in_tags += totalQuantity;
                 break;
               case 'loaned':
-                tagSummary.loaned_qty += totalQuantity;
+                tagSummary.loaned_in_tags += totalQuantity;
                 break;
               case 'stock':
-                tagSummary.expected_qty += totalQuantity;
+                tagSummary.stock_in_tags += totalQuantity;
                 break;
             }
           });
@@ -140,11 +156,16 @@ router.get('/inventory',
         res.setHeader('Content-Disposition', `attachment; filename="inventory_export_${new Date().toISOString().split('T')[0]}.csv"`);
         res.send(csvContent);
       } else {
-        res.json(exportData);
+        res.json({
+          export_type: 'inventory',
+          export_date: new Date().toISOString(),
+          total_records: exportData.length,
+          data: exportData
+        });
       }
     } catch (error) {
       console.error('Export inventory error:', error);
-      res.status(500).json({ message: 'Server error' });
+      res.status(500).json({ message: 'Server error', error: error.message });
     }
   }
 );
@@ -153,7 +174,7 @@ router.get('/inventory',
 router.get('/skus',
   auth,
   [
-    query('format').optional().isIn(['csv']).withMessage('Only CSV format is supported'),
+    query('format').optional().isIn(['csv', 'json']).withMessage('Format must be csv or json'),
     query('include_cost_history').optional().isBoolean().withMessage('Include cost history must be boolean')
   ],
   async (req, res) => {
@@ -166,45 +187,34 @@ router.get('/skus',
       const format = req.query.format || 'csv';
       const includeCostHistory = req.query.include_cost_history === 'true';
 
-      const skus = await SKU.find({}).populate('product_details');
+      const skus = await SKU.find({}).populate('category_id', 'name');
       const exportData = [];
 
       for (const sku of skus) {
-        // Get associated items
-        const items = await Item.find({ sku_id: sku._id });
-        const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
-        const stockStatus = sku.getStockStatus(totalQuantity);
-
+        const inventory = await Inventory.findOne({ sku_id: sku._id });
+        
         const baseRow = {
           sku_id: sku._id.toString(),
           sku_code: sku.sku_code,
-          product_type: sku.product_type,
-          barcode: sku.barcode || '',
-          manufacturer_model: sku.manufacturer_model || '',
-          current_cost: sku.current_cost || 0,
-          total_quantity: totalQuantity,
-          item_count: items.length,
-          stock_status: stockStatus,
-          understocked_threshold: sku.stock_thresholds?.understocked || 0,
-          overstocked_threshold: sku.stock_thresholds?.overstocked || 0,
+          name: sku.name,
+          category: sku.category_id?.name || 'Uncategorized',
+          brand: sku.brand || '',
+          model: sku.model || '',
           description: sku.description || '',
-          notes: sku.notes || '',
+          unit_cost: sku.unit_cost || 0,
+          barcode: sku.barcode || '',
           status: sku.status,
-          is_auto_generated: sku.is_auto_generated || false,
+          is_bundle: sku.is_bundle || false,
+          is_lendable: sku.is_lendable || false,
+          total_quantity: inventory?.total_quantity || 0,
+          available_quantity: inventory?.available_quantity || 0,
+          reserved_quantity: inventory?.reserved_quantity || 0,
+          broken_quantity: inventory?.broken_quantity || 0,
+          loaned_quantity: inventory?.loaned_quantity || 0,
           created_by: sku.created_by || '',
           created_at: sku.createdAt.toISOString(),
           updated_at: sku.updatedAt.toISOString()
         };
-
-        // Add product details
-        if (sku.product_details) {
-          const details = sku.product_details.toObject();
-          Object.keys(details).forEach(key => {
-            if (key !== '_id' && key !== '__v' && key !== 'createdAt' && key !== 'updatedAt') {
-              baseRow[`product_${key}`] = details[key] || '';
-            }
-          });
-        }
 
         if (includeCostHistory && sku.cost_history && sku.cost_history.length > 0) {
           // For cost history, create separate rows
@@ -230,20 +240,25 @@ router.get('/skus',
         res.setHeader('Content-Disposition', `attachment; filename="skus_export_${new Date().toISOString().split('T')[0]}.csv"`);
         res.send(csvContent);
       } else {
-        res.json(exportData);
+        res.json({
+          export_type: 'skus',
+          export_date: new Date().toISOString(),
+          total_records: exportData.length,
+          data: exportData
+        });
       }
     } catch (error) {
       console.error('Export SKUs error:', error);
-      res.status(500).json({ message: 'Server error' });
+      res.status(500).json({ message: 'Server error', error: error.message });
     }
   }
 );
 
-// GET /api/export/reorder-report - Export reorder report
+// GET /api/export/reorder-report - Export reorder report (low stock SKUs)
 router.get('/reorder-report',
   auth,
   [
-    query('format').optional().isIn(['csv']).withMessage('Only CSV format is supported')
+    query('format').optional().isIn(['csv', 'json']).withMessage('Format must be csv or json')
   ],
   async (req, res) => {
     try {
@@ -254,48 +269,48 @@ router.get('/reorder-report',
 
       const format = req.query.format || 'csv';
 
-      // Get all items that are understocked
-      const items = await Item.find({}).populate('product_details').populate('sku_id');
-      const understockedItems = items.filter(item => item.getStockStatus() === 'understocked');
-
-      const exportData = understockedItems.map(item => {
-        const row = {
-          item_id: item._id.toString(),
-          product_type: item.product_type,
-          current_quantity: item.quantity,
-          understocked_threshold: item.stock_thresholds?.understocked || 0,
-          suggested_order_qty: Math.max(
-            (item.stock_thresholds?.understocked || 0) * 2 - item.quantity,
-            item.stock_thresholds?.understocked || 0
-          ),
-          location: item.location || '',
-          current_cost: item.cost || 0,
-          estimated_total_cost: (item.cost || 0) * Math.max(
-            (item.stock_thresholds?.understocked || 0) * 2 - item.quantity,
-            item.stock_thresholds?.understocked || 0
-          )
-        };
-
-        // Add product details
-        if (item.product_details) {
-          const details = item.product_details.toObject();
-          Object.keys(details).forEach(key => {
-            if (key !== '_id' && key !== '__v' && key !== 'createdAt' && key !== 'updatedAt') {
-              row[`product_${key}`] = details[key] || '';
-            }
-          });
+      // Get inventories that need reordering (low stock or out of stock)
+      const lowStockInventories = await Inventory.find({
+        $or: [
+          { is_low_stock: true },
+          { is_out_of_stock: true }
+        ]
+      }).populate({
+        path: 'sku_id',
+        populate: {
+          path: 'category_id',
+          select: 'name'
         }
-
-        // Add SKU information if available
-        if (item.sku_id) {
-          const sku = item.sku_id;
-          row.sku_code = sku.sku_code || '';
-          row.sku_barcode = sku.barcode || '';
-          row.sku_manufacturer_model = sku.manufacturer_model || '';
-        }
-
-        return row;
       });
+
+      const exportData = lowStockInventories.map(inventory => {
+        if (!inventory.sku_id) return null; // Skip deleted SKUs
+        
+        const sku = inventory.sku_id;
+        const suggestedOrderQty = Math.max(
+          (inventory.minimum_stock_level || 10) * 2 - inventory.available_quantity,
+          inventory.minimum_stock_level || 10
+        );
+        
+        return {
+          sku_id: sku._id.toString(),
+          sku_code: sku.sku_code,
+          name: sku.name,
+          category: sku.category_id?.name || 'Uncategorized',
+          brand: sku.brand || '',
+          current_available: inventory.available_quantity,
+          reserved_quantity: inventory.reserved_quantity,
+          minimum_stock_level: inventory.minimum_stock_level || 10,
+          suggested_order_qty: suggestedOrderQty,
+          unit_cost: sku.unit_cost || 0,
+          estimated_total_cost: (sku.unit_cost || 0) * suggestedOrderQty,
+          primary_location: inventory.primary_location || '',
+          last_movement_date: inventory.last_movement_date || inventory.updatedAt,
+          supplier_name: sku.supplier_info?.supplier_name || '',
+          supplier_sku: sku.supplier_info?.supplier_sku || '',
+          lead_time_days: sku.supplier_info?.lead_time_days || 0
+        };
+      }).filter(Boolean);
 
       if (format === 'csv') {
         const headers = Object.keys(exportData[0] || {});
@@ -305,22 +320,28 @@ router.get('/reorder-report',
         res.setHeader('Content-Disposition', `attachment; filename="reorder_report_${new Date().toISOString().split('T')[0]}.csv"`);
         res.send(csvContent);
       } else {
-        res.json(exportData);
+        res.json({
+          export_type: 'reorder_report',
+          export_date: new Date().toISOString(),
+          total_records: exportData.length,
+          data: exportData
+        });
       }
     } catch (error) {
       console.error('Export reorder report error:', error);
-      res.status(500).json({ message: 'Server error' });
+      res.status(500).json({ message: 'Server error', error: error.message });
     }
   }
 );
 
-// GET /api/export/cost-analysis - Export cost analysis
-router.get('/cost-analysis',
+// POST /api/export/import/skus - Import SKU data from CSV/JSON
+router.post('/import/skus',
   auth,
+  requireWriteAccess,
+  upload.single('file'),
   [
-    query('format').optional().isIn(['csv']).withMessage('Only CSV format is supported'),
-    query('start_date').optional().isISO8601().withMessage('Start date must be valid ISO date'),
-    query('end_date').optional().isISO8601().withMessage('End date must be valid ISO date')
+    body('format').optional().isIn(['csv', 'json']).withMessage('Format must be csv or json'),
+    body('update_existing').optional().isBoolean().withMessage('Update existing must be boolean')
   ],
   async (req, res) => {
     try {
@@ -329,97 +350,167 @@ router.get('/cost-analysis',
         return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
       }
 
-      const format = req.query.format || 'csv';
-      const startDate = req.query.start_date ? new Date(req.query.start_date) : null;
-      const endDate = req.query.end_date ? new Date(req.query.end_date) : null;
+      if (!req.file) {
+        return res.status(400).json({ message: 'No file uploaded' });
+      }
 
-      const items = await Item.find({}).populate('product_details').populate('sku_id');
-      const exportData = [];
+      const updateExisting = req.body.update_existing === 'true';
+      const results = {
+        created: [],
+        updated: [],
+        failed: [],
+        summary: {
+          total: 0,
+          created: 0,
+          updated: 0,
+          failed: 0
+        }
+      };
 
-      for (const item of items) {
-        let currentCost = item.cost || 0;
-        let historicalCost = 0;
-        let costAtStartDate = 0;
-        let costAtEndDate = 0;
+      let skuData = [];
 
-        // If item has SKU with cost history, use that
-        if (item.sku_id && item.sku_id.cost_history && item.sku_id.cost_history.length > 0) {
-          currentCost = item.sku_id.current_cost || 0;
-          
-          if (startDate) {
-            costAtStartDate = item.sku_id.getCostAtDate(startDate);
+      // Parse file based on type
+      if (req.file.mimetype === 'text/csv') {
+        const csvData = [];
+        await new Promise((resolve, reject) => {
+          fs.createReadStream(req.file.path)
+            .pipe(csv())
+            .on('data', (row) => csvData.push(row))
+            .on('end', resolve)
+            .on('error', reject);
+        });
+        skuData = csvData;
+      } else if (req.file.mimetype === 'application/json') {
+        const jsonContent = fs.readFileSync(req.file.path, 'utf8');
+        const jsonData = JSON.parse(jsonContent);
+        skuData = Array.isArray(jsonData) ? jsonData : jsonData.data || [];
+      }
+
+      results.summary.total = skuData.length;
+
+      // Process each SKU
+      for (const skuRow of skuData) {
+        try {
+          // Required fields validation
+          if (!skuRow.sku_code || !skuRow.name) {
+            results.failed.push({
+              sku_code: skuRow.sku_code || 'N/A',
+              error: 'Missing required fields: sku_code and name are required'
+            });
+            results.summary.failed++;
+            continue;
           }
-          if (endDate) {
-            costAtEndDate = item.sku_id.getCostAtDate(endDate);
-          }
+
+          // Check if SKU already exists
+          const existingSku = await SKU.findOne({ sku_code: skuRow.sku_code.toUpperCase() });
           
-          // Get oldest cost for historical comparison
-          const oldestCost = item.sku_id.cost_history
-            .sort((a, b) => new Date(a.effective_date) - new Date(b.effective_date))[0];
-          historicalCost = oldestCost ? oldestCost.cost : currentCost;
-        }
+          if (existingSku && !updateExisting) {
+            results.failed.push({
+              sku_code: skuRow.sku_code,
+              error: 'SKU already exists and update_existing is false'
+            });
+            results.summary.failed++;
+            continue;
+          }
 
-        const totalCurrentValue = currentCost * item.quantity;
-        const totalHistoricalValue = historicalCost * item.quantity;
-        const valueChange = totalCurrentValue - totalHistoricalValue;
-        const percentChange = totalHistoricalValue > 0 ? 
-          ((totalCurrentValue - totalHistoricalValue) / totalHistoricalValue * 100) : 0;
-
-        const row = {
-          item_id: item._id.toString(),
-          product_type: item.product_type,
-          quantity: item.quantity,
-          current_cost: currentCost,
-          historical_cost: historicalCost,
-          total_current_value: totalCurrentValue,
-          total_historical_value: totalHistoricalValue,
-          value_change: valueChange,
-          percent_change: percentChange.toFixed(2),
-          location: item.location || ''
-        };
-
-        if (startDate) {
-          row.cost_at_start_date = costAtStartDate;
-          row.value_at_start_date = costAtStartDate * item.quantity;
-        }
-        if (endDate) {
-          row.cost_at_end_date = costAtEndDate;
-          row.value_at_end_date = costAtEndDate * item.quantity;
-        }
-
-        // Add product details
-        if (item.product_details) {
-          const details = item.product_details.toObject();
-          Object.keys(details).forEach(key => {
-            if (key !== '_id' && key !== '__v' && key !== 'createdAt' && key !== 'updatedAt') {
-              row[`product_${key}`] = details[key] || '';
+          // Find or create category
+          let categoryId = null;
+          if (skuRow.category) {
+            let category = await Category.findOne({ name: skuRow.category });
+            if (!category) {
+              category = new Category({
+                name: skuRow.category,
+                slug: skuRow.category.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+                created_by: req.user.username,
+                last_updated_by: req.user.username
+              });
+              await category.save();
             }
+            categoryId = category._id;
+          }
+
+          const skuData = {
+            sku_code: skuRow.sku_code.toUpperCase(),
+            name: skuRow.name,
+            category_id: categoryId,
+            brand: skuRow.brand || '',
+            model: skuRow.model || '',
+            description: skuRow.description || '',
+            unit_cost: parseFloat(skuRow.unit_cost) || 0,
+            barcode: skuRow.barcode || '',
+            status: skuRow.status || 'active',
+            is_bundle: skuRow.is_bundle === 'true' || skuRow.is_bundle === true,
+            is_lendable: skuRow.is_lendable === 'true' || skuRow.is_lendable === true,
+            supplier_info: {
+              supplier_name: skuRow.supplier_name || '',
+              supplier_sku: skuRow.supplier_sku || '',
+              lead_time_days: parseInt(skuRow.lead_time_days) || 0
+            },
+            last_updated_by: req.user.username
+          };
+
+          if (!existingSku) {
+            skuData.created_by = req.user.username;
+          }
+
+          let sku;
+          if (existingSku) {
+            // Update existing SKU
+            Object.assign(existingSku, skuData);
+            sku = await existingSku.save();
+            results.updated.push({
+              sku_code: sku.sku_code,
+              name: sku.name,
+              action: 'updated'
+            });
+            results.summary.updated++;
+          } else {
+            // Create new SKU
+            sku = new SKU(skuData);
+            await sku.save();
+            
+            // Create corresponding inventory record
+            const inventory = new Inventory({
+              sku_id: sku._id,
+              available_quantity: parseInt(skuRow.initial_quantity) || 0,
+              minimum_stock_level: parseInt(skuRow.minimum_stock_level) || 10,
+              primary_location: skuRow.primary_location || 'HQ',
+              last_updated_by: req.user.username
+            });
+            await inventory.save();
+            
+            results.created.push({
+              sku_code: sku.sku_code,
+              name: sku.name,
+              action: 'created'
+            });
+            results.summary.created++;
+          }
+        } catch (error) {
+          results.failed.push({
+            sku_code: skuRow.sku_code || 'N/A',
+            error: error.message
           });
+          results.summary.failed++;
         }
-
-        // Add SKU information if available
-        if (item.sku_id) {
-          const sku = item.sku_id;
-          row.sku_code = sku.sku_code || '';
-          row.sku_barcode = sku.barcode || '';
-        }
-
-        exportData.push(row);
       }
 
-      if (format === 'csv') {
-        const headers = Object.keys(exportData[0] || {});
-        const csvContent = jsonToCsv(exportData, headers);
-        
-        res.setHeader('Content-Type', 'text/csv');
-        res.setHeader('Content-Disposition', `attachment; filename="cost_analysis_${new Date().toISOString().split('T')[0]}.csv"`);
-        res.send(csvContent);
-      } else {
-        res.json(exportData);
-      }
+      // Clean up uploaded file
+      fs.unlinkSync(req.file.path);
+
+      res.json({
+        message: 'SKU import completed',
+        results
+      });
+
     } catch (error) {
-      console.error('Export cost analysis error:', error);
-      res.status(500).json({ message: 'Server error' });
+      // Clean up uploaded file on error
+      if (req.file && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+      
+      console.error('Import SKUs error:', error);
+      res.status(500).json({ message: 'Server error', error: error.message });
     }
   }
 );
