@@ -16,6 +16,7 @@ const exportRoutes = require('./routes/export');
 const categoryRoutes = require('./routes/categories');
 const usersRoutes = require('./routes/users');
 const unassignedItemsRoutes = require('./routes/unassigned-items');
+const itemsRoutes = require('./routes/items');
 
 const app = express();
 
@@ -28,7 +29,14 @@ const allowedOrigins = process.env.NODE_ENV === 'production'
       'https://facetbaths.github.io',
       'https://stock.facetrenovations.us'
     ] 
-  : ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:3001', 'http://127.0.0.1:3001'];
+  : [
+      'http://localhost:3000', 
+      'http://127.0.0.1:3000', 
+      'http://localhost:3001', 
+      'http://127.0.0.1:3001',
+      'http://localhost:8080',
+      'http://127.0.0.1:8080'
+    ];
 
 app.use(cors({
   origin: function (origin, callback) {
@@ -69,6 +77,7 @@ app.use('/api/export', exportRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/unassigned-items', unassignedItemsRoutes);
+app.use('/api/items', itemsRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -108,18 +117,45 @@ const server = app.listen(PORT, () => {
 });
 
 // Graceful shutdown handling
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received. Shutting down gracefully...');
-  server.close(() => {
+const gracefulShutdown = (signal) => {
+  console.log(`${signal} received. Shutting down gracefully...`);
+  
+  // Close HTTP server first
+  server.close(async () => {
     console.log('HTTP server closed.');
+    
+    try {
+      // Close database connection
+      const mongoose = require('mongoose');
+      if (mongoose.connection.readyState === 1) {
+        await mongoose.connection.close();
+        console.log('Database connection closed.');
+      }
+    } catch (error) {
+      console.error('Error closing database connection:', error);
+    }
+    
+    console.log('Graceful shutdown completed.');
     process.exit(0);
   });
+  
+  // Force exit after timeout
+  setTimeout(() => {
+    console.error('Forcing exit after timeout');
+    process.exit(1);
+  }, 10000);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  gracefulShutdown('UNCAUGHT_EXCEPTION');
 });
 
-process.on('SIGINT', () => {
-  console.log('SIGINT received. Shutting down gracefully...');
-  server.close(() => {
-    console.log('HTTP server closed.');
-    process.exit(0);
-  });
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  gracefulShutdown('UNHANDLED_REJECTION');
 });

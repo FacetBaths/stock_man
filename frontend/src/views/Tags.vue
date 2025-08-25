@@ -80,16 +80,34 @@ const loadStats = async () => {
 
 const handleEditTag = async (tag: Tag) => {
   try {
+    console.log('Opening edit modal for tag:', tag)
+    
     // Fetch the tag with populated items to ensure we have all the details
     const fullTag = await tagStore.fetchTag(tag._id, true)
+    
+    console.log('Full tag data received:', fullTag)
+    
+    // Validate that we have the tag data
+    if (!fullTag) {
+      throw new Error('Tag data not found')
+    }
+    
     tagToEdit.value = fullTag
     showEditModal.value = true
   } catch (err: any) {
+    console.error('Edit tag error:', err)
     $q.notify({
       type: 'negative', 
       message: `Failed to load tag details: ${err.message}`,
       timeout: 3000
     })
+    
+    // Fallback: Use the existing tag data if fetch fails
+    if (tag && tag._id) {
+      console.log('Using fallback tag data:', tag)
+      tagToEdit.value = tag
+      showEditModal.value = true
+    }
   }
 }
 

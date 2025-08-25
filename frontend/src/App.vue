@@ -83,6 +83,30 @@ const testApiConnection = async () => {
   console.log('=== API CONNECTION TEST COMPLETED ===')
 };
 
+// Force logout to clear stuck auth state
+const forceLogout = () => {
+  console.log('=== FORCE LOGOUT INITIATED ===')
+  
+  // Clear all auth data forcefully
+  localStorage.removeItem('accessToken')
+  localStorage.removeItem('refreshToken')
+  localStorage.removeItem('token')
+  localStorage.removeItem('user')
+  
+  // Clear auth store state if available
+  if (authStore) {
+    authStore.clearAuthData()
+  }
+  
+  console.log('All auth data cleared, forcing page reload...')
+  
+  // Force page reload to reset the app state completely
+  window.location.href = '/#/login'
+  window.location.reload()
+  
+  console.log('=== FORCE LOGOUT COMPLETED ===')
+};
+
 const navTabs = [
   { path: "/dashboard", label: "Dashboard", icon: "dashboard" },
   { path: "/tags", label: "Tags", icon: "local_offer" },
@@ -170,6 +194,17 @@ const getVersionTooltip = () => {
             @click="testApiConnection"
             class="q-mr-md"
             size="sm"
+          />
+          
+          <!-- Emergency Force Logout Button (temporary) -->
+          <q-btn 
+            flat 
+            color="red"
+            label="Force Logout"
+            @click="forceLogout"
+            class="q-mr-md"
+            size="sm"
+            icon="logout"
           />
 
           <!-- Mobile Menu Button -->

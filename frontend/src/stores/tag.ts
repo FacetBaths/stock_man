@@ -147,7 +147,19 @@ export const useTagStore = defineStore('tag', () => {
         ...params
       }
       
+      console.log('=== FETCHING TAGS ===')
+      console.log('Request params:', requestParams)
+      
       const response = await tagApi.getTags(requestParams)
+      
+      console.log('Fetch tags response:', response)
+      console.log('Tags received:', response.tags?.length || 0)
+      if (response.tags?.length > 0) {
+        console.log('First tag sample:', response.tags[0])
+        console.log('First tag items:', response.tags[0]?.items)
+      }
+      console.log('====================')
+      
       tags.value = response.tags
       
       if (response.pagination) {
@@ -175,7 +187,17 @@ export const useTagStore = defineStore('tag', () => {
       isLoading.value = true
       error.value = null
       
+      console.log('=== FETCHING SINGLE TAG ===')
+      console.log('Tag ID:', id)
+      console.log('Include items:', includeItems)
+      
       const response = await tagApi.getTag(id, includeItems)
+      
+      console.log('Single tag response:', response)
+      console.log('Tag data:', response.tag)
+      console.log('Tag items:', response.tag?.items)
+      console.log('==========================')
+      
       currentTag.value = response.tag
       
       // Update in list if exists

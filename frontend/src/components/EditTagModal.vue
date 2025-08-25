@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { tagApi, inventoryApi } from '@/utils/api'
+import { tagApi } from '@/utils/api'
 import { TAG_TYPES } from '@/types'
-import type { UpdateTagRequest, Tag, Item } from '@/types'
+import type { UpdateTagRequest, Tag } from '@/types'
 
 interface Props {
   tag: Tag
@@ -33,17 +33,8 @@ const formData = ref<UpdateTagRequest>({
 const isLoading = ref(false)
 const isSubmitting = ref(false)
 const error = ref<string | null>(null)
-const availableItems = ref<Item[]>([])
-const selectedItem = ref<Item | null>(null)
 
 // Computed properties
-const maxQuantityForSelectedItem = computed(() => {
-  if (!selectedItem.value) return 1
-  // For editing, we need to account for the current tag's quantity
-  const currentTagQuantity = props.tag.quantity
-  return selectedItem.value.quantity + currentTagQuantity
-})
-
 const customerFieldLabel = computed(() => {
   switch (formData.value.tag_type) {
     case 'reserved':
@@ -87,18 +78,62 @@ const tagTypeDescription = computed(() => {
   }
 })
 
-const getItemDisplayName = (item: Item | string) => {
-  if (typeof item === 'string') return 'Loading...'
-  
-  const details = item.product_details as any
-  if (item.product_type === 'wall') {
-    return `${details.product_line} - ${details.color_name} (${details.dimensions})`
-  } else {
-    let name = details.name || 'Unnamed Item'
-    if (details.brand) name = `${details.brand} ${name}`
-    if (details.model) name = `${name} (${details.model})`
-    return name
+const totalTaggedItems = computed(() => props.tag.items?.length || 0)
+const totalTaggedQuantity = computed(() => 
+  props.tag.items?.reduce((sum, item) => sum + (item.remaining_quantity || item.quantity || 0), 0) || 0
+)
+
+const getItemDisplayName = (item: any) => {
+  // Handle null or undefined items
+  if (!item) {
+    return 'Unknown Item'
   }
+  
+  // Handle string item_id (not populated)
+  if (typeof item === 'string') {
+    return `Item ID: ${item}`
+  }
+  
+  // Handle populated item from tag
+  if (typeof item === 'object' && item.sku_id) {
+    const sku = typeof item.sku_id === 'object' ? item.sku_id : null
+    if (sku) {
+      let displayName = sku.sku_code || 'Unknown SKU'
+      if (sku.details) {
+        const details = sku.details
+        if (details.product_line && details.color_name) {
+          displayName += ` (${details.product_line} - ${details.color_name})`
+        } else if (details.name) {
+          displayName += ` (${details.name})`
+        } else if (details.brand) {
+          displayName += ` (${details.brand})`
+        }
+      }
+      return displayName
+    }
+  }
+  
+  // Handle direct item object with product_details (old structure)
+  if (typeof item === 'object' && item.product_details) {
+    const details = item.product_details
+    if (item.product_type === 'wall') {
+      return `${details.product_line || 'Unknown'} - ${details.color_name || 'Unknown'} (${details.dimensions || 'Unknown'})`
+    } else {
+      let name = details.name || 'Unnamed Item'
+      if (details.brand) name = `${details.brand} ${name}`
+      if (details.model) name = `${name} (${details.model})`
+      return name
+    }
+  }
+  
+  // Fallback: try to show any identifying information
+  if (typeof item === 'object') {
+    if (item.name) return item.name
+    if (item.title) return item.title
+    if (item._id) return `Item ID: ${item._id}`
+  }
+  
+  return 'Unknown Item'
 }
 
 const getTagTypeColor = (tagType: string) => {
@@ -124,9 +159,9 @@ const initializeForm = () => {
     due_date: props.tag.due_date ? new Date(props.tag.due_date).toISOString().split('T')[0] : '',
     project_name: props.tag.project_name || '',
     items: props.tag.items?.map(item => ({
-      item_id: typeof item.item_id === 'object' ? item.item_id._id : item.item_id,
-      quantity: item.quantity,
-      remaining_quantity: item.remaining_quantity,
+      item_id: item.item_id && typeof item.item_id === 'object' ? item.item_id._id : (item.item_id || 'unknown'),
+      quantity: item.quantity || 0,
+      remaining_quantity: item.remaining_quantity || 0,
       notes: item.notes || ''
     })) || []
   }
@@ -220,25 +255,48 @@ onMounted(() => {
               <button type="button" class="btn-close" @click="clearError">&times;</button>
             </div>
 
-            <!-- Item Display (Read-only) -->
+            <!-- Items Display (Read-only) -->
             <div class="form-group">
-              <label class="form-label">Item</label>
-              <div class="item-display">
+              <label class="form-label">Tagged Items</label>
+              <div class="items-display">
                 <div v-if="isLoading" class="loading-state">
                   <div class="spinner"></div>
                   Loading item details...
                 </div>
-                <div v-else-if="selectedItem" class="item-info">
-                  <div class="item-name">{{ getItemDisplayName(selectedItem) }}</div>
-                  <div class="item-details">
-                    Type: {{ selectedItem.product_type.replace('_', ' ') }} | 
-                    Location: {{ selectedItem.location || 'Not specified' }} |
-                    Available Stock: {{ selectedItem.quantity }}
+                <div v-else-if="props.tag.items && props.tag.items.length > 0" class="items-list">
+                  <div v-for="(tagItem, index) in props.tag.items" :key="`item-${index}`" class="item-card">
+                    <div class="item-info">
+                      <div class="item-name">
+                        {{ getItemDisplayName(tagItem?.item_id) }}
+                      </div>
+                      <div class="item-details">
+                        <span v-if="tagItem?.item_id && typeof tagItem.item_id === 'object' && tagItem.item_id.sku_id">
+                          SKU: {{ tagItem.item_id.sku_id.sku_code || 'Unknown' }}
+                        </span>
+                        <span v-if="tagItem?.item_id && typeof tagItem.item_id === 'object' && tagItem.item_id.location">
+                          | Location: {{ tagItem.item_id.location }}
+                        </span>
+                        <span v-if="!tagItem?.item_id || typeof tagItem.item_id === 'string'">
+                          Item ID: {{ tagItem?.item_id || 'Unknown' }}
+                        </span>
+                      </div>
+                    </div>
+                    <div class="item-quantity">
+                      <span class="quantity-badge">{{ tagItem?.remaining_quantity || tagItem?.quantity || 0 }}</span>
+                    </div>
                   </div>
                 </div>
                 <div v-else class="text-muted">
-                  Unable to load item details
+                  No items found for this tag
                 </div>
+              </div>
+            </div>
+
+            <!-- Tag Summary -->
+            <div v-if="totalTaggedItems > 0" class="tag-summary">
+              <div class="summary-stats">
+                <span><strong>{{ totalTaggedItems }}</strong> items</span>
+                <span><strong>{{ totalTaggedQuantity }}</strong> total quantity</span>
               </div>
             </div>
 
@@ -291,21 +349,16 @@ onMounted(() => {
               />
             </div>
 
-            <!-- Quantity -->
+            <!-- Project Name -->
             <div class="form-group">
-              <label for="quantity" class="form-label">Quantity *</label>
+              <label for="project-name" class="form-label">Project/Department (Optional)</label>
               <input
-                id="quantity"
-                v-model.number="formData.quantity"
-                type="number"
+                id="project-name"
+                v-model="formData.project_name"
+                type="text"
                 class="form-control"
-                :min="1"
-                :max="maxQuantityForSelectedItem"
-                required
+                placeholder="e.g., Project Alpha, Kitchen Renovation, Warehouse B"
               />
-              <small class="form-text">
-                Maximum: {{ maxQuantityForSelectedItem }} (includes current tag quantity)
-              </small>
             </div>
 
             <!-- Due Date (for reserved items) -->
@@ -337,20 +390,20 @@ onMounted(() => {
             </div>
 
             <!-- Tag Preview -->
-            <div v-if="selectedItem && formData.customer_name" class="tag-preview">
+            <div v-if="formData.customer_name" class="tag-preview">
               <div class="preview-header">Tag Preview:</div>
               <div class="preview-content">
-                <div class="preview-item">
-                  <strong>Item:</strong> {{ getItemDisplayName(selectedItem) }}
-                </div>
                 <div class="preview-customer">
                   <strong>{{ formData.tag_type === 'reserved' ? 'Reserved For:' : 
                              formData.tag_type === 'broken' ? 'Reported By:' : 
                              formData.tag_type === 'imperfect' ? 'Noted By:' : 
                              'Tagged By:' }}</strong> {{ formData.customer_name }}
                 </div>
+                <div v-if="formData.project_name" class="preview-project">
+                  <strong>Project:</strong> {{ formData.project_name }}
+                </div>
                 <div class="preview-details">
-                  <span class="preview-quantity">Qty: {{ formData.quantity }}</span>
+                  <span class="preview-quantity">{{ totalTaggedItems }} items ({{ totalTaggedQuantity }} total)</span>
                   <span 
                     class="preview-tag-type" 
                     :style="{ backgroundColor: getTagTypeColor(formData.tag_type), color: 'white' }"
@@ -449,27 +502,88 @@ onMounted(() => {
   padding: 1.5rem;
 }
 
-.item-display {
+.items-display {
   padding: 0.75rem;
   background-color: #f8f9fa;
   border: 1px solid #dee2e6;
   border-radius: 0.375rem;
 }
 
+.items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.item-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  background-color: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 0.375rem;
+  transition: all 0.2s ease;
+}
+
+.item-card:hover {
+  border-color: #007bff;
+  box-shadow: 0 2px 4px rgba(0, 123, 255, 0.1);
+}
+
 .item-info {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  flex: 1;
 }
 
 .item-name {
   font-weight: 600;
   color: #212529;
+  font-size: 0.9rem;
 }
 
 .item-details {
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   color: #6c757d;
+}
+
+.item-quantity {
+  display: flex;
+  align-items: center;
+}
+
+.quantity-badge {
+  background-color: #007bff;
+  color: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  min-width: 2rem;
+  text-align: center;
+}
+
+.tag-summary {
+  padding: 0.75rem;
+  background-color: #e7f3ff;
+  border: 1px solid #b3d9ff;
+  border-radius: 0.375rem;
+  margin-bottom: 1rem;
+}
+
+.summary-stats {
+  display: flex;
+  gap: 2rem;
+  font-size: 0.9rem;
+  color: #0056b3;
+}
+
+.summary-stats span {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 .loading-state {

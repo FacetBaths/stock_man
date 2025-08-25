@@ -59,46 +59,49 @@ const validateTag = [
     .withMessage('Status must be active, fulfilled, or cancelled')
 ];
 // Helper function to check item availability and validate quantities
-// Proper architecture: Tags reference Items, Items reference SKUs
+// Updated to work with inventory-based architecture (current frontend sends inventory IDs)
 async function checkItemAvailability(items) {
   const availability = [];
   
   for (const tagItem of items) {
     try {
-      // Get the item details (this should be an actual Item ID)
-      const item = await ItemNew.findById(tagItem.item_id)
+      // First try to find by ItemNew ID (proper architecture)
+      let item = await ItemNew.findById(tagItem.item_id)
         .populate({
           path: 'sku_id',
           populate: { path: 'category_id' }
         });
       
-      if (!item) {
-        availability.push({
-          item_id: tagItem.item_id,
-          error: 'Item not found',
-          can_fulfill: false
-        });
-        continue;
+      let inventory = null;
+      
+      if (item) {
+        // Found as ItemNew - get corresponding inventory
+        inventory = await Inventory.findOne({ sku_id: item.sku_id });
+      } else {
+        // Not found as ItemNew - check if it's an Inventory ID (current frontend behavior)
+        inventory = await Inventory.findById(tagItem.item_id)
+          .populate({
+            path: 'sku_id',
+            populate: { path: 'category_id' }
+          });
+        
+        if (inventory) {
+          // Create a virtual item object from inventory data
+          item = {
+            _id: inventory._id,
+            sku_id: inventory.sku_id,
+            quantity: inventory.available_quantity,
+            location: inventory.primary_location,
+            condition: 'new',
+            serial_number: inventory.sku_id?.sku_code || 'N/A'
+          };
+        }
       }
       
-      // Check if the item itself has sufficient quantity
-      if (tagItem.quantity > item.quantity) {
+      if (!item || !inventory) {
         availability.push({
           item_id: tagItem.item_id,
-          item_details: item,
-          error: `Item only has ${item.quantity} units, requested ${tagItem.quantity}`,
-          can_fulfill: false
-        });
-        continue;
-      }
-      
-      // Get current inventory status for this SKU
-      const inventory = await Inventory.findOne({ sku_id: item.sku_id });
-      if (!inventory) {
-        availability.push({
-          item_id: tagItem.item_id,
-          item_details: item,
-          error: 'No inventory record found',
+          error: 'Item/Inventory not found',
           can_fulfill: false
         });
         continue;
@@ -111,6 +114,7 @@ async function checkItemAvailability(items) {
       availability.push({
         item_id: tagItem.item_id,
         item_details: item,
+        inventory_details: inventory,
         requested_quantity: tagItem.quantity,
         available_quantity: availableQuantity,
         can_fulfill: canFulfill,
@@ -130,19 +134,36 @@ async function checkItemAvailability(items) {
 }
 
 // Helper function to update inventory when tag is created/modified
-// Proper architecture: Items reference SKUs, update inventory based on SKU
+// Updated to work with inventory-based architecture
 async function updateInventoryForTag(items, tagType, operation = 'reserve') {
   const updates = [];
   
   for (const tagItem of items) {
     try {
-      // Get the item to find its SKU
-      const item = await ItemNew.findById(tagItem.item_id);
-      if (!item) continue;
+      let inventory = null;
+      let skuId = null;
       
-      // Update inventory for the SKU
-      const inventory = await Inventory.findOne({ sku_id: item.sku_id });
-      if (!inventory) continue;
+      // First try to find by ItemNew ID
+      const item = await ItemNew.findById(tagItem.item_id);
+      if (item) {
+        skuId = item.sku_id;
+        inventory = await Inventory.findOne({ sku_id: skuId });
+      } else {
+        // If not found as ItemNew, treat as inventory ID
+        inventory = await Inventory.findById(tagItem.item_id).populate('sku_id');
+        if (inventory) {
+          skuId = inventory.sku_id._id;
+        }
+      }
+      
+      if (!inventory) {
+        updates.push({
+          item_id: tagItem.item_id,
+          success: false,
+          error: 'Inventory record not found'
+        });
+        continue;
+      }
       
       let updateData = {};
       
@@ -646,16 +667,31 @@ router.post('/',
         });
       }
 
-      // Create tag data
+      // Create tag data - handle both ItemNew and Inventory IDs
+      const processedItems = [];
+      for (const item of req.body.items) {
+        let finalItemId = item.item_id;
+        
+        // Check if this is an inventory ID that needs conversion
+        const availabilityInfo = availability.find(a => a.item_id === item.item_id);
+        if (availabilityInfo && availabilityInfo.inventory_details && !availabilityInfo.item_details?.sku_id?._id) {
+          // This is an inventory ID - for now, store it as is
+          // TODO: In future iterations, create actual ItemNew records for inventory items
+          finalItemId = item.item_id; // Keep the inventory ID for now
+        }
+        
+        processedItems.push({
+          item_id: finalItemId,
+          quantity: item.quantity,
+          notes: item.notes || ''
+        });
+      }
+      
       const tagData = {
         customer_name: req.body.customer_name,
         tag_type: req.body.tag_type,
         project_name: req.body.project_name || '',
-        items: req.body.items.map(item => ({
-          item_id: item.item_id,
-          quantity: item.quantity,
-          notes: item.notes || ''
-        })),
+        items: processedItems,
         notes: req.body.notes || '',
         due_date: req.body.due_date || null,
         status: 'active',
@@ -680,19 +716,26 @@ router.post('/',
         console.warn('Some inventory updates failed:', failedUpdates);
       }
 
-      // Populate item details for response
-      await tag.populate({
-        path: 'items.item_id',
-        populate: {
-          path: 'sku_id',
-          populate: { path: 'category_id' }
-        }
-      });
-
+      // Manually enrich item details for response (since we may have inventory IDs stored)
       const tagObj = tag.toObject();
       tagObj.total_quantity = tag.getTotalQuantity();
       tagObj.remaining_quantity = tag.getTotalRemainingQuantity();
       tagObj.inventory_updates = inventoryUpdates;
+      
+      // Enrich items with details from availability check results
+      if (availability && availability.length > 0) {
+        tagObj.items = tagObj.items.map(tagItem => {
+          const availabilityInfo = availability.find(a => a.item_id === tagItem.item_id.toString());
+          if (availabilityInfo) {
+            return {
+              ...tagItem,
+              item_details: availabilityInfo.item_details,
+              inventory_details: availabilityInfo.inventory_details
+            };
+          }
+          return tagItem;
+        });
+      }
 
       // Log tag creation
       await AuditLog.logTagEvent({

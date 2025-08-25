@@ -90,6 +90,9 @@ api.interceptors.response.use(
     
     // Handle 401 errors with automatic token refresh
     if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
+      console.log('=== 401 UNAUTHORIZED ERROR DETECTED ===')
+      console.log('Request URL:', originalRequest.url)
+      
       originalRequest._retry = true // Prevent infinite retry loops
       
       try {
@@ -97,57 +100,84 @@ api.interceptors.response.use(
         
         // Skip auth endpoints to avoid infinite loops
         if (originalRequest.url?.includes('/auth/')) {
-          console.log('Auth endpoint failed, clearing auth data')
+          console.log('401 on auth endpoint - clearing auth data and rejecting')
           if (store && typeof store.clearAuthData === 'function') {
             store.clearAuthData()
+          }
+          // Force redirect to login if not already there
+          if (typeof window !== 'undefined' && !window.location.hash.includes('/login')) {
+            console.log('Redirecting to login from auth endpoint failure')
+            window.location.href = '/#/login'
+          }
+          return Promise.reject(error)
+        }
+        
+        // Check if we have auth data to work with
+        if (!store) {
+          console.log('No auth store available, redirecting to login')
+          if (typeof window !== 'undefined' && !window.location.hash.includes('/login')) {
+            window.location.href = '/#/login'
           }
           return Promise.reject(error)
         }
         
         // If we have a refresh token, try to refresh
-        if (store?.refreshToken) {
+        if (store.refreshToken) {
           try {
-            console.log('401 error - attempting token refresh')
+            console.log('401 error - attempting token refresh for URL:', originalRequest.url)
             await store.refreshTokens()
+            console.log('Token refresh successful, retrying original request')
             
             // Retry the original request with new token
             const newToken = await store.getValidAccessToken()
             if (newToken && originalRequest) {
               originalRequest.headers = originalRequest.headers || {}
               originalRequest.headers.Authorization = `Bearer ${newToken}`
+              console.log('Retrying request with new token')
               return api.request(originalRequest)
-            }
-          } catch (refreshError) {
-            console.error('Token refresh failed, clearing auth:', refreshError)
-            // Clear auth data and fall through to redirect
-            if (store && typeof store.clearAuthData === 'function') {
+            } else {
+              console.log('No valid token after refresh, clearing auth')
               store.clearAuthData()
             }
+          } catch (refreshError) {
+            console.error('Token refresh failed during 401 handling:', refreshError)
+            // Clear auth data and fall through to redirect
+            store.clearAuthData()
           }
-        }
-        
-        // If no refresh token or refresh failed, clear auth and redirect
-        console.log('No valid refresh token or refresh failed, redirecting to login')
-        if (store && typeof store.clearAuthData === 'function') {
+        } else {
+          console.log('No refresh token available, clearing auth')
           store.clearAuthData()
         }
         
+        // If we get here, auth failed - clear everything and redirect
+        console.log('Authentication failed completely, redirecting to login')
+        
         // Only redirect if we're not already on login page
-        if (typeof window !== 'undefined' && window.location.hash !== '#/login') {
+        if (typeof window !== 'undefined' && !window.location.hash.includes('/login')) {
+          console.log('Forcing redirect to login page')
           window.location.href = '/#/login'
         }
+        
       } catch (storeError) {
-        console.error('Error handling 401:', storeError)
+        console.error('Error in 401 handler:', storeError)
         // Fallback cleanup
         try {
-          localStorage.clear()
+          console.log('Clearing localStorage as fallback')
+          localStorage.removeItem('accessToken')
+          localStorage.removeItem('refreshToken')
+          localStorage.removeItem('token')
+          localStorage.removeItem('user')
         } catch (storageError) {
           console.error('Failed to clear localStorage:', storageError)
         }
-        if (typeof window !== 'undefined' && window.location.hash !== '#/login') {
+        
+        if (typeof window !== 'undefined' && !window.location.hash.includes('/login')) {
+          console.log('Fallback redirect to login')
           window.location.href = '/#/login'
         }
       }
+      
+      console.log('=== 401 ERROR HANDLING COMPLETED ===')
     }
     
     return Promise.reject(error)

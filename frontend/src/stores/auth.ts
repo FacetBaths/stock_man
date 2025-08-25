@@ -148,28 +148,60 @@ export const useAuthStore = defineStore('auth', () => {
   const initializeAuth = async () => {
     if (initialized.value) return
     
+    console.log('=== INITIALIZING AUTH ===')
+    
     try {
       const storedAccessToken = localStorage.getItem('accessToken') || localStorage.getItem('token')
       const storedRefreshToken = localStorage.getItem('refreshToken')
       const storedUser = localStorage.getItem('user')
+      
+      console.log('Stored auth data:', {
+        hasAccessToken: !!storedAccessToken,
+        hasRefreshToken: !!storedRefreshToken,
+        hasUser: !!storedUser
+      })
       
       if (storedAccessToken && storedUser) {
         try {
           // Parse user data first to validate it
           const userData = JSON.parse(storedUser)
           
-          // Set initial values
-          accessToken.value = storedAccessToken
-          refreshToken.value = storedRefreshToken
-          user.value = userData
+          // Check if access token is expired
+          const tokenExpired = isTokenExpired(storedAccessToken)
+          console.log('Access token expired:', tokenExpired)
           
-          // Check if token is expired rather than making an API call
-          if (isTokenExpired(storedAccessToken)) {
-            console.log('Stored token expired, will refresh on first API call')
-            // Don't clear auth - let the API interceptor handle refresh
+          if (tokenExpired) {
+            // If access token is expired but we have refresh token, try to refresh
+            if (storedRefreshToken && !isTokenExpired(storedRefreshToken)) {
+              console.log('Access token expired but refresh token is valid, setting up for refresh...')
+              // Set the tokens so refresh can work
+              accessToken.value = storedAccessToken
+              refreshToken.value = storedRefreshToken
+              user.value = userData
+              
+              // Try to refresh immediately during initialization
+              try {
+                await refreshTokens()
+                console.log('Token refresh during init successful')
+              } catch (refreshError) {
+                console.error('Token refresh during init failed:', refreshError)
+                clearAuthData()
+                return
+              }
+            } else {
+              console.log('Both access and refresh tokens are expired, clearing auth')
+              clearAuthData()
+              return
+            }
+          } else {
+            // Token is still valid
+            console.log('Access token is still valid')
+            accessToken.value = storedAccessToken
+            refreshToken.value = storedRefreshToken
+            user.value = userData
           }
           
-          console.log('Auth initialized:', { 
+          console.log('Auth initialized successfully:', { 
             user: user.value?.username,
             hasAccessToken: !!accessToken.value,
             hasRefreshToken: !!refreshToken.value
@@ -179,7 +211,7 @@ export const useAuthStore = defineStore('auth', () => {
           clearAuthData()
         }
       } else {
-        console.log('No stored auth data found')
+        console.log('No complete stored auth data found, clearing any partial data')
         clearAuthData()
       }
     } catch (error) {
@@ -187,6 +219,7 @@ export const useAuthStore = defineStore('auth', () => {
       clearAuthData()
     } finally {
       initialized.value = true
+      console.log('=== AUTH INITIALIZATION COMPLETED ===')
     }
   }
 

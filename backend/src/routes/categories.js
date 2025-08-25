@@ -2,7 +2,7 @@ const express = require('express');
 const { body, query, param, validationResult } = require('express-validator');
 const router = express.Router();
 const Category = require('../models/Category');
-const { auth, requireWriteAccess } = require('../middleware/auth');
+const { auth, requireWriteAccess } = require('../middleware/authEnhanced');
 
 // Validation middleware for category creation/updates
 const validateCategory = [

@@ -25,11 +25,11 @@ const tagNewSchema = new mongoose.Schema({
     index: true
   },
   
-  // Items in this tag (proper item references)
-  items: [{
-    item_id: {
+  // SKU items in this tag (references to SKUs with quantities)
+  sku_items: [{
+    sku_id: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'ItemNew',
+      ref: 'SKUNew',
       required: true
     },
     quantity: {

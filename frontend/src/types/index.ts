@@ -70,7 +70,7 @@ export interface Category {
   updatedAt: string
 }
 
-// Enhanced SKU model - Single source of truth
+// Enhanced SKU model - matches backend SKUNew model
 export interface SKU {
   _id: string
   sku_code: string
@@ -82,7 +82,7 @@ export interface SKU {
   brand?: string
   model?: string
   
-  // Category-specific details (polymorphic)
+  // Category-specific details (polymorphic) - matches backend details structure
   details: {
     // For walls:
     product_line?: string
@@ -139,6 +139,10 @@ export interface SKU {
     notes?: string
   }>
   
+  // Additional backend fields
+  is_active?: boolean
+  is_lendable?: boolean
+  
   created_by: string
   last_updated_by: string
   createdAt: string
@@ -188,53 +192,49 @@ export interface Item {
   updatedAt: string
 }
 
-// New Inventory model - Real-time aggregation
+// Inventory model - matches backend Inventory model structure
 export interface Inventory {
   _id: string
   sku_id: string | SKU
   
-  // Real-time quantity tracking by status
-  quantities: {
-    total: number
-    available: number
-    reserved: number
-    broken: number
-    loaned: number
-  }
+  // Current inventory levels (direct fields from backend model)
+  total_quantity: number
+  available_quantity: number
+  reserved_quantity: number
+  broken_quantity: number
+  loaned_quantity: number
+  
+  // Inventory thresholds and alerts
+  minimum_stock_level: number
+  reorder_point: number
+  maximum_stock_level?: number
   
   // Location tracking
+  primary_location: string
   locations: Array<{
-    location: string
+    location_name: string
     quantity: number
   }>
   
-  // Financial information
-  valuation: {
-    total_value: number
-    average_cost: number
-    last_cost: number
-  }
+  // Valuation
+  total_value: number
+  average_cost: number
   
-  // Status flags
-  status_flags: {
-    is_low_stock: boolean
-    is_out_of_stock: boolean
-    is_overstocked: boolean
-    has_reservations: boolean
-    has_broken_items: boolean
-  }
+  // Status and flags
+  is_active: boolean
+  is_low_stock: boolean
+  is_out_of_stock: boolean
+  is_overstock: boolean
   
   // Last activity tracking
-  last_movement: {
-    type: 'received' | 'reserved' | 'used' | 'transferred'
-    quantity: number
-    date: string
-    user: string
-    notes?: string
-  }
+  last_movement_date: string
+  last_updated_by: string
   
-  last_updated: string
+  createdAt: string
   updatedAt: string
+  
+  // Computed properties
+  needs_reorder?: boolean
 }
 
 export interface InventoryStats {

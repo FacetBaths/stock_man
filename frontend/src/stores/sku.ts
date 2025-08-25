@@ -87,7 +87,7 @@ export const useSKUStore = defineStore('sku', () => {
       if (inventory) {
         if (inventory.is_out_of_stock) result.out_of_stock.push(sku)
         else if (inventory.is_low_stock) result.low_stock.push(sku)
-        else if (inventory.needs_reorder) result.needs_reorder.push(sku)
+        else if (inventory.available_quantity <= inventory.reorder_point) result.needs_reorder.push(sku)
         else result.adequate.push(sku)
       }
     })
