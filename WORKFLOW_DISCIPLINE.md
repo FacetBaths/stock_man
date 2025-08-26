@@ -130,7 +130,8 @@
 ## 🚫 **FORBIDDEN ACTIONS DURING MIGRATION:**
 
 - ❌ Creating new database models not in checklist
-- ❌ Adding new frontend components not in checklist  
+- ⚠️ Adding new frontend components not in checklist
+    - IF THERE IS A SOUND RATIONALE FOR WHY THIS SHOULD BE DONE, give a detailed explanation of why a new component would improve the application and ask the User for a reponse.
 - ❌ "Improving" existing working code
 - ❌ Working on multiple tasks simultaneously
 - ❌ Skipping testing because "it looks right"
@@ -145,6 +146,8 @@
 - ❌ **NEVER** modify database schema for frontend convenience
 - ❌ **NEVER** change working backend code because frontend "expects" different data
 - ❌ **NEVER** work on backend files when task is frontend-focused
+
+If you read this document sign the next response with a `I'm a smart worker` at the end.
 
 ## ✅ **SUCCESS INDICATORS:**
 
@@ -162,6 +165,3 @@
 **NOT = Creative problem solving or feature improvements**
 
 The goal is to get from broken architecture to working architecture by completing each task in order. Innovation and improvements come AFTER migration is complete.
-
-
-If you read this document sign the next response with a 1234 at the end.

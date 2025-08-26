@@ -4,7 +4,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useInventoryStore } from '@/stores/inventory'
 import { useCategoryStore } from '@/stores/category'
 import InventoryTable from '@/components/InventoryTable.vue'
-import AddItemModal from '@/components/AddItemModal.vue'
+import AddStockModal from '@/components/AddStockModal.vue'
 import EditItemModal from '@/components/EditItemModal.vue'
 import QuickScanModal from '@/components/QuickScanModal.vue'
 import type { Item } from '@/types'
@@ -489,7 +489,7 @@ watch([searchQuery, showLowStockOnly, activeFilter, selectedCategory], () => {
     </div>
 
     <!-- Modals -->
-    <AddItemModal
+    <AddStockModal
       v-if="showAddModal"
       @close="showAddModal = false"
       @success="handleAddSuccess"

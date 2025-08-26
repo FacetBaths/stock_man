@@ -62,7 +62,14 @@ FRONTEND PROGRESS: 2/10 Tasks Complete (20%)
    - CRITICAL BUG FIXED: Infinite loop in watchEffect causing system freeze
    - Backend integration tested: API returns real data with correct structure
    - All functionality verified with actual backend data (TOILET-751131 test)
-❌ Update AddItemModal → AddStockModal
+⏳ Update AddItemModal → AddStockModal - IN PROGRESS (2/8 criteria complete)
+   - ✅ AddItemModal.vue renamed to AddStockModal.vue
+   - ✅ Component import statements updated in Inventory.vue
+   - ❌ Component still uses legacy Item creation (needs instancesApi.addStock)
+   - ❌ Missing supplier and reference number fields
+   - ❌ Legacy item creation fields not yet removed
+   - ❌ Not yet tested with backend instances endpoints
+   - NEXT: Complete remaining 6/8 success criteria for full Instance creation
 ❌ Update CreateTagModal component
 ❌ Fix category dropdown issue
 ❌ Update Dashboard component

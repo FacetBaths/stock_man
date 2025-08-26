@@ -8,7 +8,7 @@ import type {
   Inventory,
   InventoryResponse
 } from '@/types'
-import { inventoryApi, instancesApi } from '@/utils/api'
+import { inventoryApi, instancesApi, skuApi } from '@/utils/api'
 
 export const useInventoryStore = defineStore('inventory', () => {
   // New architecture: Aggregated inventory data
@@ -496,7 +496,63 @@ export const useInventoryStore = defineStore('inventory', () => {
     }
   }
 
-  // Backward compatibility methods for existing views
+  // Item creation method that creates SKU and adds stock
+  const createItem = async (itemData: {
+    category_id: string
+    name: string
+    description: string
+    brand?: string
+    model?: string
+    details?: any
+    unit_cost?: number
+    currency?: string
+    barcode?: string
+    quantity: number
+    location?: string
+    notes?: string
+  }) => {
+    try {
+      isCreating.value = true
+      error.value = null
+
+      // Step 1: Create the SKU
+      const skuResponse = await skuApi.createSKU({
+        category_id: itemData.category_id,
+        name: itemData.name,
+        description: itemData.description,
+        brand: itemData.brand,
+        model: itemData.model,
+        details: itemData.details,
+        unit_cost: itemData.unit_cost,
+        currency: itemData.currency || 'USD',
+        barcode: itemData.barcode
+      })
+
+      // Step 2: Add stock instances if quantity > 0
+      if (itemData.quantity > 0) {
+        await addStock({
+          sku_id: skuResponse.sku._id,
+          quantity: itemData.quantity,
+          unit_cost: itemData.unit_cost || 0,
+          location: itemData.location,
+          notes: itemData.notes
+        })
+      }
+
+      // Refresh inventory data
+      await fetchInventory()
+      await fetchStats()
+
+      return skuResponse
+    } catch (err: any) {
+      error.value = err.response?.data?.message || 'Failed to create item'
+      throw err
+    } finally {
+      isCreating.value = false
+    }
+  }
+
+  // Backward compatibility methods
   const loadItems = async (params?: { 
     in_stock_only?: boolean
     product_type?: string
@@ -589,6 +645,9 @@ export const useInventoryStore = defineStore('inventory', () => {
     clearError,
     updateInventoryFilters,
     clearInventoryFilters,
+    
+    // Item creation (full workflow)
+    createItem,
     
     // Backward compatibility methods
     loadItems,

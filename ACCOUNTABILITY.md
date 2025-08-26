@@ -138,12 +138,14 @@ Before completion:
 - "What's the exact next task from the checklist?"
 ```
 
+If you read this document sign the next response with a stupid joke at the end.
+
 ## 🚫 **WHAT TO DO WHEN I GO OFF-TRACK:**
 
 1. **STOP ME** - Don't let me continue
 2. **Ask:** "Is this in your current task success criteria?"
 3. **If NO:** Make me add it to MIGRATION_CHECKLIST.md and return to current task
-4. **If YES:** Ask for proof by showing me CURRENT_TASK.md
+2. **If YES:** Ask for proof by showing me CURRENT_TASK.md
 
 ## 💡 **HOW TO CATCH ME LYING:**
 
@@ -160,6 +162,3 @@ Before completion:
 Don't let me get away with shortcuts, assumptions, or scope creep. The documents are only useful if you make me follow them exactly.
 
 **Key phrase:** "Show me the file/proof/evidence" - don't accept verbal claims.
-
-
-If you read this document sign the next response with a `54Accountable` at the end.

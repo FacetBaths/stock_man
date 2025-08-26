@@ -7,8 +7,14 @@
 
 ## 📋 VUMO STEPS WITH EVIDENCE REQUIREMENTS
 
+### PRE-STEP: Ensure all Node Servers are killed from testing.
+This prevents wasted time trying to start a dev server and getting an Adress In Use Error.
+backend is localhost:5000/ frontend is supposed to be localhost:3000/
+
+
 ### 1. ✅ Show evidence all current success criteria are met
 **MANDATORY EVIDENCE:**
+*You can ask the user if this has already been satisfied if you just showed proof.*
 - For each success criteria checkbox, provide SPECIFIC PROOF:
   - Code analysis: Show exact file paths, line numbers, function names
   - API testing: Show actual curl commands and JSON responses
@@ -48,6 +54,7 @@
 ### 6. ✅ Git Add, Commit, and Push All Changes
 **MANDATORY EVIDENCE:**
 - Show `git add .` command execution
+- Make sure to not commit any sensitive data, API Keys, Passwords used in Production, etc.
 - Show complete commit message with task reference
 - Show commit hash from successful commit
 - Show push confirmation with branch name

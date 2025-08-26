@@ -5,7 +5,7 @@ import { useInventoryStore } from '@/stores/inventory'
 import { useCategoryStore } from '@/stores/category'
 import { PRODUCT_TYPES } from '@/types'
 import InventoryTable from '@/components/InventoryTable.vue'
-import AddItemModal from '@/components/AddItemModal.vue'
+import AddStockModal from '@/components/AddStockModal.vue'
 import EditItemModal from '@/components/EditItemModal.vue'
 import QuickScanModal from '@/components/QuickScanModal.vue'
 import type { Item } from '@/types'
@@ -325,7 +325,7 @@ watch([searchQuery, showInStockOnly], () => {
     </div>
 
     <!-- Modals -->
-    <AddItemModal
+    <AddStockModal
       v-if="showAddModal"
       @close="showAddModal = false"
       @success="handleAddSuccess"

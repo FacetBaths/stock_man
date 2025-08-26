@@ -114,10 +114,12 @@
   - [x] **Status:** COMPLETE ✅
 
 - [ ] **Update AddItemModal.vue → AddStockModal.vue**
+  - [x] Rename component file to AddStockModal.vue
+  - [x] Update import statements in parent components
   - [ ] Change to add instances with cost tracking
-  - [ ] Add supplier and reference number fields
+  - [ ] Add supplier and reference number fields  
   - [ ] Remove legacy item fields
-  - [ ] **Status:** NOT STARTED ❌
+  - [ ] **Status:** IN PROGRESS ⏳ (2/6 subtasks complete)
 
 - [ ] **Update CreateTagModal.vue**
   - [ ] Show available instances for selection

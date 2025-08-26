@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useInventoryStore } from '@/stores/inventory'
-import type { CreateSKURequest } from '@/types'
+import { skuApi } from '@/utils/api'
+import type { AddStockRequest, SKU } from '@/types'
 
 const emit = defineEmits<{
   close: []
@@ -12,36 +13,78 @@ const emit = defineEmits<{
 const authStore = useAuthStore()
 const inventoryStore = useInventoryStore()
 
+// SKU-related state
+const availableSKUs = ref<SKU[]>([])
+const isLoadingSKUs = ref(false)
 
-const formData = ref({
-  category_id: '',
-  name: '',
-  description: '',
-  brand: '',
-  model: '',
-  unit_cost: 0,
+const formData = ref<AddStockRequest>({
+  sku_id: '',
   quantity: 1,
+  unit_cost: 0,
   location: '',
-  notes: '',
-  barcode: ''
+  supplier: '',
+  reference_number: '',
+  notes: ''
 })
 
-// For simplicity, we'll just use a basic form
 const canEditCost = computed(() => authStore.user?.role === 'admin' || authStore.user?.role === 'warehouse_manager')
 
+// Load all active SKUs
+const loadSKUs = async () => {
+  try {
+    isLoadingSKUs.value = true
+    const response = await skuApi.getSKUs({ 
+      status: 'active',
+      limit: 100
+    })
+    availableSKUs.value = response.skus
+  } catch (error) {
+    console.error('Failed to load SKUs:', error)
+    availableSKUs.value = []
+  } finally {
+    isLoadingSKUs.value = false
+  }
+}
+
+// Helper function to format SKU description
+const formatSKUDescription = (sku: SKU): string => {
+  if (!sku) return 'No description'
+  
+  // If SKU has a description, use it
+  if (sku.description && sku.description.trim()) {
+    return sku.description
+  }
+  
+  // Build description from SKU name or category
+  if (sku.name && sku.name.trim()) {
+    return sku.name
+  }
+  
+  // Fallback to SKU code
+  return sku.sku_code || 'No description'
+}
 
 const handleSubmit = async () => {
   try {
-    await inventoryStore.createItem(formData.value)
+    if (!formData.value.sku_id) {
+      throw new Error('Please select a SKU')
+    }
+    
+    await inventoryStore.addStock(formData.value)
     emit('success')
   } catch (error) {
-    console.error('Create item error:', error)
+    console.error('Add stock error:', error)
   }
 }
 
 const handleClose = () => {
   emit('close')
 }
+
+// Load SKUs on mount
+onMounted(() => {
+  loadSKUs()
+})
 </script>
 
 <template>
@@ -49,7 +92,7 @@ const handleClose = () => {
     <div class="modal-dialog">
       <div class="modal-content">
         <div class="modal-header">
-          <h3>Add New Item</h3>
+          <h3>Add Stock</h3>
           <button class="close-button" @click="handleClose">&times;</button>
         </div>
 
@@ -59,52 +102,30 @@ const handleClose = () => {
               {{ inventoryStore.error }}
             </div>
 
-            <!-- Basic Product Details -->
+            <!-- SKU Selection -->
             <div class="form-group">
-              <label for="name" class="form-label">Product Name *</label>
-              <input
-                id="name"
-                v-model="formData.name"
-                type="text"
-                class="form-control"
+              <label for="sku" class="form-label">SKU *</label>
+              <select
+                id="sku"
+                v-model="formData.sku_id"
+                class="form-select"
+                :disabled="isLoadingSKUs"
                 required
-              />
+              >
+                <option value="">Select a SKU to add stock to...</option>
+                <option v-if="isLoadingSKUs" disabled>Loading SKUs...</option>
+                <option 
+                  v-for="sku in availableSKUs" 
+                  :key="sku._id" 
+                  :value="sku._id"
+                >
+                  {{ sku.sku_code }} - {{ formatSKUDescription(sku) }}
+                </option>
+              </select>
+              <small class="form-text text-muted">Select the SKU you want to add stock instances for</small>
             </div>
 
-            <div class="form-group">
-              <label for="description" class="form-label">Description</label>
-              <textarea
-                id="description"
-                v-model="formData.description"
-                class="form-control"
-                rows="3"
-                placeholder="Describe the product..."
-              ></textarea>
-            </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label for="brand" class="form-label">Brand</label>
-                <input
-                  id="brand"
-                  v-model="formData.brand"
-                  type="text"
-                  class="form-control"
-                />
-              </div>
-
-              <div class="form-group">
-                <label for="model" class="form-label">Model</label>
-                <input
-                  id="model"
-                  v-model="formData.model"
-                  type="text"
-                  class="form-control"
-                />
-              </div>
-            </div>
-
-            <!-- Common Fields -->
+            <!-- Stock Details -->
             <div class="form-row">
               <div class="form-group">
                 <label for="quantity" class="form-label">Quantity *</label>
@@ -113,13 +134,13 @@ const handleClose = () => {
                   v-model.number="formData.quantity"
                   type="number"
                   class="form-control"
-                  min="0"
+                  min="1"
                   required
                 />
               </div>
 
               <div v-if="canEditCost" class="form-group">
-                <label for="unit_cost" class="form-label">Unit Cost (USD)</label>
+                <label for="unit_cost" class="form-label">Unit Cost (USD) *</label>
                 <input
                   id="unit_cost"
                   v-model.number="formData.unit_cost"
@@ -128,9 +149,12 @@ const handleClose = () => {
                   min="0"
                   step="0.01"
                   placeholder="0.00"
+                  required
                 />
               </div>
+            </div>
 
+            <div class="form-row">
               <div class="form-group">
                 <label for="location" class="form-label">Location</label>
                 <input
@@ -141,34 +165,29 @@ const handleClose = () => {
                   placeholder="e.g., Warehouse A, Shelf 3"
                 />
               </div>
+
+              <div class="form-group">
+                <label for="supplier" class="form-label">Supplier</label>
+                <input
+                  id="supplier"
+                  v-model="formData.supplier"
+                  type="text"
+                  class="form-control"
+                  placeholder="e.g., ABC Supply Co."
+                />
+              </div>
             </div>
 
-            <!-- Category and Barcode -->
-            <div class="form-row">
-              <div class="form-group">
-                <label for="category_id" class="form-label">Category *</label>
-                <input
-                  id="category_id"
-                  v-model="formData.category_id"
-                  type="text"
-                  class="form-control"
-                  placeholder="Enter category ID (temporary)"
-                  required
-                />
-                <small class="form-text text-muted">Required: Category ID for this SKU</small>
-              </div>
-
-              <div class="form-group">
-                <label for="barcode" class="form-label">Barcode</label>
-                <input
-                  id="barcode"
-                  v-model="formData.barcode"
-                  type="text"
-                  class="form-control"
-                  placeholder="Enter barcode if available"
-                />
-                <small class="form-text text-muted">Optional: Barcode for this SKU</small>
-              </div>
+            <div class="form-group">
+              <label for="reference_number" class="form-label">Reference Number</label>
+              <input
+                id="reference_number"
+                v-model="formData.reference_number"
+                type="text"
+                class="form-control"
+                placeholder="e.g., PO#12345, Invoice#INV-001"
+              />
+              <small class="form-text text-muted">Optional: Purchase order, invoice, or receipt number</small>
             </div>
 
             <div class="form-group">
@@ -177,8 +196,8 @@ const handleClose = () => {
                 id="notes"
                 v-model="formData.notes"
                 class="form-control"
-                rows="2"
-                placeholder="Any additional notes..."
+                rows="3"
+                placeholder="Any additional notes about this stock receipt..."
               ></textarea>
             </div>
 
@@ -192,7 +211,7 @@ const handleClose = () => {
                 :disabled="inventoryStore.isCreating"
               >
                 <span v-if="inventoryStore.isCreating" class="spinner mr-2"></span>
-                {{ inventoryStore.isCreating ? 'Adding...' : 'Add Item' }}
+                {{ inventoryStore.isCreating ? 'Adding Stock...' : 'Add Stock' }}
               </button>
             </div>
           </form>
