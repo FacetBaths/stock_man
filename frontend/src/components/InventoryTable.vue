@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watchEffect } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useInventoryStore } from '@/stores/inventory'
 import type { Item, WallDetails, ProductDetails } from '@/types'
@@ -20,9 +20,21 @@ const props = defineProps<Props>()
 const authStore = useAuthStore()
 const inventoryStore = useInventoryStore()
 
-// Load inventory data when component mounts
-onMounted(async () => {
-  await inventoryStore.fetchInventory(props.filters)
+// Track previous filters to prevent unnecessary API calls
+const prevFiltersRef = ref<string>('')
+
+// Watch for changes in filters and fetch inventory accordingly
+watchEffect(() => {
+  if (inventoryStore.isLoading) return // Prevent multiple concurrent calls
+  
+  // Use JSON.stringify for deep comparison of filters object
+  const currentFiltersKey = JSON.stringify(props.filters || {})
+  
+  // Only fetch if filters actually changed
+  if (currentFiltersKey !== prevFiltersRef.value) {
+    prevFiltersRef.value = currentFiltersKey
+    inventoryStore.fetchInventory(props.filters).catch(console.error)
+  }
 })
 
 // Use inventory data from store
