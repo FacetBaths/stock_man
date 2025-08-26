@@ -8,6 +8,9 @@ This document outlines the organized structure of the Stock Manager project.
 stock_manager/
 ├── README.md                           # Main project documentation
 ├── DIRECTORY_STRUCTURE.md             # This file
+├── MIGRATION_CHECKLIST.md             # Detailed migration task list
+├── PROGRESS.txt                        # Simple progress tracker
+├── CURRENT_TASK.md                    # Active task tracker (updated frequently)
 ├── .gitignore                          # Git ignore rules
 ├── package.json                        # Root package.json for scripts
 ├── Procfile                           # Deployment configuration
@@ -28,7 +31,8 @@ stock_manager/
 │   │   ├── AUTHENTICATION_SYSTEM.md  # Auth system docs
 │   │   ├── DEPRECIATION_SCHEDULE_FEAT.md  # Future feature spec
 │   │   ├── DUAL_MODEL_COMPATIBILITY.md   # Legacy compatibility
-│   │   └── README_NEW_ARCHITECTURE.md    # Architecture docs
+│   │   ├── README_NEW_ARCHITECTURE.md    # Architecture docs
+│   │   └── WORKFLOW_DISCIPLINE.md    # Process discipline guide
 │   └── scripts/                      # Development scripts (ignored)
 │       └── .gitkeep                  # Preserves directory
 │

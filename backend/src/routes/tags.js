@@ -690,6 +690,20 @@ router.post('/',
       const tag = new Tag(tagData);
       await tag.save();
 
+      // Assign available Instances to this tag (NEW: Instance model integration)
+      try {
+        await tag.assignInstances();
+        await tag.save(); // Save the tag again to persist instance assignments
+      } catch (assignError) {
+        // If instance assignment fails, we should clean up the tag
+        await Tag.findByIdAndDelete(tag._id);
+        return res.status(400).json({
+          message: 'Failed to assign instances to tag',
+          error: assignError.message,
+          suggestion: 'Check if enough instances are available for the requested quantities'
+        });
+      }
+
       // Update inventory to reflect the reservation/allocation
       const inventoryUpdates = await updateInventoryForTag(
         processedItems, 
@@ -802,7 +816,8 @@ router.put('/:id',
           // Release inventory when cancelling active tag
           await updateInventoryForTag(tag.sku_items, tag.tag_type, 'release');
         } else if (req.body.status === 'fulfilled' && tag.status === 'active') {
-          // Mark as fulfilled
+          // NEW: Use fulfillItems() method to delete Instances and mark as fulfilled
+          await tag.fulfillItems();
           updateData.fulfilled_date = new Date();
           updateData.fulfilled_by = req.user.username;
           await updateInventoryForTag(tag.sku_items, tag.tag_type, 'fulfill');
@@ -866,17 +881,24 @@ router.post('/:id/fulfill',
         return res.status(400).json({ message: 'Can only fulfill active tags' });
       }
 
-      // Process each fulfillment
+      // NEW: Use the updated fulfillItems() method that deletes Instances
       const fulfillmentResults = [];
-      for (const fulfillmentItem of req.body.fulfillment_items) {
-        try {
-          tag.fulfillItems(fulfillmentItem, req.user.username);
+      try {
+        // Call the new fulfillItems() method (no parameters - fulfills all items)
+        await tag.fulfillItems();
+        
+        // Mark all requested items as successfully fulfilled
+        for (const fulfillmentItem of req.body.fulfillment_items) {
           fulfillmentResults.push({
             item_id: fulfillmentItem.item_id,
             quantity_fulfilled: fulfillmentItem.quantity_fulfilled,
-            success: true
+            success: true,
+            note: 'Instances deleted from database'
           });
-        } catch (fulfillError) {
+        }
+      } catch (fulfillError) {
+        // If fulfillment fails, mark all items as failed
+        for (const fulfillmentItem of req.body.fulfillment_items) {
           fulfillmentResults.push({
             item_id: fulfillmentItem.item_id,
             quantity_fulfilled: fulfillmentItem.quantity_fulfilled,

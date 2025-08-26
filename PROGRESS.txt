@@ -1,0 +1,43 @@
+STOCK MANAGER MIGRATION PROGRESS
+================================
+Last Updated: 2025-08-26 00:34 UTC
+
+BACKEND PROGRESS: 4/12 Tasks Complete (33%)
+==========================================
+✅ Delete legacy models and references
+✅ Create Instance model for cost tracking
+✅ Fix Tag model to be SKU-based status system - COMPLETED 2025-08-26
+✅ Fix tags.js routes for Instance model - COMPLETED 2025-08-26
+❌ Update CSV/JSON import/export functionality
+❌ Integrate barcode into SKU routes
+❌ Verify all routes use authEnhanced
+❌ Test all API endpoints
+❌ Performance optimization
+
+FRONTEND PROGRESS: 0/10 Tasks Complete (0%)
+===========================================
+❌ Update TypeScript interfaces
+❌ Update Pinia stores
+❌ Update InventoryTable component
+❌ Update AddItemModal → AddStockModal
+❌ Update CreateTagModal component
+❌ Fix category dropdown issue
+❌ Update Dashboard component
+❌ Update all other components
+
+DATABASE CONVERSION: 0/1 Tasks Complete (0%)
+============================================
+❌ Create db_conversion utility (CRITICAL - run after all other tasks)
+
+TESTING & DEPLOYMENT: 0/3 Tasks Complete (0%)
+=============================================
+❌ End-to-end testing
+❌ Deployment verification
+❌ Production database conversion
+
+OVERALL: 4/28 Tasks Complete (14%)
+
+NEXT IMMEDIATE TASK: Update CSV/JSON import/export functionality
+
+NOTE: db_conversion utility will map legacy Items → Instances with costs,
+      convert Tags to SKU-based, handle conflicts, prompt for missing data

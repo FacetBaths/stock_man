@@ -134,9 +134,72 @@ tagSchema.methods.getTotalRemainingQuantity = function() {
   return this.sku_items.reduce((total, item) => total + (item.remaining_quantity || 0), 0);
 };
 
-// Method to fulfill items (reduce remaining quantity)
-tagSchema.methods.fulfillItems = function(fulfillmentData, fulfilledBy) {
+// Method to assign instances automatically based on sku_items (simplified version - no parameters)
+tagSchema.methods.assignInstances = async function() {
+  const Instance = mongoose.model('Instance');
+  
+  for (const item of this.sku_items) {
+    // Find available instances for this SKU (FIFO - oldest first)
+    const availableInstances = await Instance.find({ 
+      sku_id: item.sku_id, 
+      tag_id: null 
+    })
+    .sort({ acquisition_date: 1 })
+    .limit(item.quantity);
+    
+    if (availableInstances.length < item.quantity) {
+      throw new Error(`Not enough available instances for SKU ${item.sku_id}. Need ${item.quantity}, found ${availableInstances.length}`);
+    }
+    
+    // Assign the instances to this tag
+    const instanceIds = availableInstances.map(instance => instance._id);
+    await Instance.updateMany(
+      { _id: { $in: instanceIds } },
+      { tag_id: this._id }
+    );
+  }
+  
+  return this;
+};
+
+// Method to fulfill all items (delete all assigned Instance records - no parameters)
+tagSchema.methods.fulfillItems = async function() {
+  const Instance = mongoose.model('Instance');
+  
+  for (const item of this.sku_items) {
+    if (item.remaining_quantity > 0) {
+      // Find instances assigned to this tag for this SKU (FIFO - oldest first)
+      const instancesToDelete = await Instance.find({ 
+        tag_id: this._id, 
+        sku_id: item.sku_id 
+      })
+      .sort({ acquisition_date: 1 })
+      .limit(item.remaining_quantity);
+      
+      // Delete the Instance records from database
+      const instanceIds = instancesToDelete.map(instance => instance._id);
+      if (instanceIds.length > 0) {
+        await Instance.deleteMany({ _id: { $in: instanceIds } });
+      }
+      
+      // Update tag remaining quantity to 0
+      item.remaining_quantity = 0;
+    }
+  }
+  
+  // Mark tag as fulfilled
+  this.status = 'fulfilled';
+  this.fulfilled_date = new Date();
+  this.fulfilled_by = this.last_updated_by;
+  
+  return this;
+};
+
+// Method to fulfill specific items (delete Instance records and update inventory)
+tagSchema.methods.fulfillSpecificItems = async function(fulfillmentData, fulfilledBy) {
   const { sku_id, quantity_fulfilled } = fulfillmentData;
+  const Instance = mongoose.model('Instance');
+  const Inventory = mongoose.model('Inventory');
   
   const item = this.sku_items.find(item => item.sku_id.toString() === sku_id.toString());
   if (!item) {
@@ -147,6 +210,48 @@ tagSchema.methods.fulfillItems = function(fulfillmentData, fulfilledBy) {
     throw new Error(`Cannot fulfill ${quantity_fulfilled} items. Only ${item.remaining_quantity} remaining.`);
   }
   
+  // Find specific instances assigned to this tag for this SKU (FIFO - oldest first)
+  const instancesToDelete = await Instance.find({ 
+    tag_id: this._id, 
+    sku_id: sku_id 
+  })
+  .sort({ acquisition_date: 1 })
+  .limit(quantity_fulfilled);
+  
+  if (instancesToDelete.length !== quantity_fulfilled) {
+    throw new Error(`Expected ${quantity_fulfilled} instances but found ${instancesToDelete.length}`);
+  }
+  
+  // Delete the Instance records from database
+  const instanceIds = instancesToDelete.map(instance => instance._id);
+  await Instance.deleteMany({ _id: { $in: instanceIds } });
+  
+  // Update inventory quantities to reflect the deleted instances
+  const inventory = await Inventory.findOne({ sku_id: sku_id });
+  if (inventory) {
+    // Determine which inventory status to reduce based on tag type
+    switch (this.tag_type) {
+      case 'reserved':
+        inventory.reserved_quantity = Math.max(0, inventory.reserved_quantity - quantity_fulfilled);
+        break;
+      case 'broken':
+      case 'imperfect':
+        inventory.broken_quantity = Math.max(0, inventory.broken_quantity - quantity_fulfilled);
+        break;
+      case 'loaned':
+        inventory.loaned_quantity = Math.max(0, inventory.loaned_quantity - quantity_fulfilled);
+        break;
+      case 'stock':
+        inventory.available_quantity = Math.max(0, inventory.available_quantity - quantity_fulfilled);
+        break;
+    }
+    
+    inventory.last_movement_date = new Date();
+    inventory.last_updated_by = fulfilledBy;
+    await inventory.save();
+  }
+  
+  // Update tag remaining quantity
   item.remaining_quantity -= quantity_fulfilled;
   this.last_updated_by = fulfilledBy;
   
