@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { tagApi, inventoryApi, instancesApi, skuApi } from '@/utils/api'
+import { tagApi, inventoryApi, skuApi } from '@/utils/api'
 import { TAG_TYPES } from '@/types'
-import type { Item, SKU } from '@/types'
+import type { SKU, CreateTagRequest } from '@/types'
 
 const emit = defineEmits<{
   close: []
@@ -12,10 +12,26 @@ const emit = defineEmits<{
 
 const authStore = useAuthStore()
 
-interface TaggedItem {
-  item: Item & { availableQuantity: number }
-  sku?: SKU
+interface TaggedSKU {
+  sku: SKU
   quantity: number
+  available_instances: number
+  selection_method: 'fifo' | 'cost_based'
+  notes: string
+}
+
+interface SKUInventory {
+  sku: SKU
+  total_quantity: number
+  available_quantity: number
+  reserved_quantity: number
+  primary_location: string
+  tag_summary: {
+    reserved: number
+    broken: number
+    loaned: number
+    totalTagged: number
+  }
 }
 
 // Multi-step form state
@@ -27,18 +43,19 @@ const tagDetails = ref({
   tag_type: 'reserved' as const,
   customer_name: '',
   notes: '',
-  due_date: ''
+  due_date: '',
+  project_name: ''
 })
 
-// Step 2: Items Selection
-const taggedItems = ref<TaggedItem[]>([])
+// Step 2: SKU Selection  
+const taggedSKUs = ref<TaggedSKU[]>([])
+const availableSKUs = ref<SKUInventory[]>([])
 const skuInput = ref('')
 const isScanning = ref(false)
-const showItemSelector = ref(true) // Show by default for better UX
-const availableItems = ref<Item[]>([])
-const itemSearchQuery = ref('')
-const itemTypeFilter = ref('all')
-const showColorLegend = ref(false)
+const showSKUSelector = ref(true)
+const skuSearchQuery = ref('')
+const productTypeFilter = ref('all')
+const isLoadingSKUs = ref(false)
 
 // Step 3: Review & Submit
 const isSubmitting = ref(false)
@@ -53,6 +70,8 @@ const customerFieldLabel = computed(() => {
       return 'Reported By (Name/Department) *'
     case 'imperfect':
       return 'Noted By (Name/Department) *'
+    case 'loaned':
+      return 'Loaned To (Name/Department) *'
     case 'stock':
     default:
       return 'Tagged By (Name/Department) *'
@@ -67,6 +86,8 @@ const customerFieldPlaceholder = computed(() => {
       return 'e.g., Quality Control, John Doe, Shipping Dept'
     case 'imperfect':
       return 'e.g., QC Inspector, Sarah Smith, Receiving Dept'
+    case 'loaned':
+      return 'e.g., Installation Team, John Smith, Customer ABC'
     case 'stock':
     default:
       return 'e.g., Inventory Manager, Stock Team'
@@ -76,13 +97,15 @@ const customerFieldPlaceholder = computed(() => {
 const tagTypeDescription = computed(() => {
   switch (tagDetails.value.tag_type) {
     case 'stock':
-      return 'Item is available for sale/use'
+      return 'Mark items as available stock (remove other tags)'
     case 'reserved':
-      return 'Item is reserved for a specific customer, project, or purpose'
+      return 'Reserve items for a specific customer, project, or purpose'
     case 'broken':
-      return 'Item is damaged and may not be suitable for normal use'
+      return 'Mark items as damaged and unsuitable for normal use'
     case 'imperfect':
-      return 'Item has cosmetic defects but may be suitable for certain applications'
+      return 'Mark items with cosmetic defects but suitable for certain applications'
+    case 'loaned':
+      return 'Mark items as temporarily loaned out'
     default:
       return ''
   }
@@ -93,28 +116,29 @@ const canProceedToStep2 = computed(() => {
 })
 
 const canProceedToStep3 = computed(() => {
-  return taggedItems.value.length > 0 && taggedItems.value.every(ti => ti.quantity > 0)
+  return taggedSKUs.value.length > 0 && taggedSKUs.value.every(ts => ts.quantity > 0)
 })
 
-const totalTaggedItems = computed(() => taggedItems.value.length)
-const totalTaggedQuantity = computed(() => taggedItems.value.reduce((sum, ti) => sum + ti.quantity, 0))
+const totalTaggedSKUs = computed(() => taggedSKUs.value.length)
+const totalTaggedQuantity = computed(() => taggedSKUs.value.reduce((sum, ts) => sum + ts.quantity, 0))
 
-// Filtered items for browsing
-const filteredItems = computed(() => {
-  let filtered = availableItems.value
+// Filtered SKUs for browsing
+const filteredSKUs = computed(() => {
+  let filtered = availableSKUs.value
   
   // Filter by type
-  if (itemTypeFilter.value !== 'all') {
-    filtered = filtered.filter(item => item.product_type === itemTypeFilter.value)
+  if (productTypeFilter.value !== 'all') {
+    filtered = filtered.filter(item => item.sku.product_type === productTypeFilter.value)
   }
   
   // Filter by search query
-  if (itemSearchQuery.value.trim()) {
-    const query = itemSearchQuery.value.toLowerCase().trim()
+  if (skuSearchQuery.value.trim()) {
+    const query = skuSearchQuery.value.toLowerCase().trim()
     filtered = filtered.filter(item => {
-      const itemName = getItemDisplayName(item).toLowerCase()
-      const location = item.location?.toLowerCase() || ''
-      return itemName.includes(query) || location.includes(query)
+      const skuName = getSKUDisplayName(item.sku).toLowerCase()
+      const location = item.primary_location?.toLowerCase() || ''
+      const skuCode = item.sku.sku_code?.toLowerCase() || ''
+      return skuName.includes(query) || location.includes(query) || skuCode.includes(query)
     })
   }
   
@@ -123,27 +147,22 @@ const filteredItems = computed(() => {
 
 // Product types for filter
 const productTypeOptions = computed(() => {
-  const uniqueTypes = [...new Set(availableItems.value.map(item => item.product_type))]
+  const uniqueTypes = [...new Set(availableSKUs.value.map(item => item.sku.product_type))]
   return [
     { label: 'All Types', value: 'all' },
     ...uniqueTypes.map(type => ({ 
-      label: type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' '), 
-      value: type 
+      label: type ? type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ') : 'Unknown', 
+      value: type || 'unknown'
     }))
   ]
 })
 
-// Methods
-const getItemDisplayName = (item: Item) => {
-  const details = item.product_details as any
-  if (item.product_type === 'wall') {
-    return `${details.product_line} - ${details.color_name} (${details.dimensions})`
-  } else {
-    let name = details.name || 'Unnamed Item'
-    if (details.brand) name = `${details.brand} ${name}`
-    if (details.model) name = `${name} (${details.model})`
-    return name
+// Helper methods
+const getSKUDisplayName = (sku: SKU): string => {
+  if (sku.description && sku.description.trim()) {
+    return `${sku.sku_code} - ${sku.description}`
   }
+  return sku.sku_code || 'Unknown SKU'
 }
 
 const getTagTypeColor = (tagType: string) => {
@@ -151,23 +170,20 @@ const getTagTypeColor = (tagType: string) => {
   return type?.color || '#6c757d'
 }
 
-const getItemProductTypeClass = (item: Item) => {
-  // Return CSS class based on product type for color-coded left border
-  if (!item.product_type) {
+const getSKUProductTypeClass = (sku: SKU) => {
+  if (!sku.product_type) {
     return 'product-unknown'
   }
   
-  // Normalize product type: lowercase, replace spaces/underscores with hyphens
-  const normalizedType = item.product_type
+  const normalizedType = sku.product_type
     .toLowerCase()
     .replace(/[\s_]+/g, '-')
-    .replace(/[^a-z0-9-]/g, '') // Remove any other special characters
+    .replace(/[^a-z0-9-]/g, '')
   
-  const className = `product-${normalizedType}`
-  return className
+  return `product-${normalizedType}`
 }
 
-// SKU Scanning/Input
+// SKU Scanning/Input - Updated for new architecture
 const handleSkuInput = async () => {
   const skuCode = skuInput.value.trim().toUpperCase()
   if (!skuCode) return
@@ -176,127 +192,139 @@ const handleSkuInput = async () => {
     isScanning.value = true
     error.value = null
 
-    // Check if item already added
-    const existingIndex = taggedItems.value.findIndex(ti => {
-      const item = ti.item
-      const sku = typeof item.sku_id === 'object' ? item.sku_id : null
-      return sku?.sku_code === skuCode
-    })
+    // Check if SKU already added
+    const existingIndex = taggedSKUs.value.findIndex(ts => 
+      ts.sku.sku_code === skuCode
+    )
 
     if (existingIndex >= 0) {
-      // Increment quantity of existing item
-      taggedItems.value[existingIndex].quantity += 1
+      // Increment quantity of existing SKU
+      const tagged = taggedSKUs.value[existingIndex]
+      if (tagged.quantity < tagged.available_instances) {
+        tagged.quantity += 1
+      } else {
+        error.value = `Maximum available quantity (${tagged.available_instances}) already selected for ${skuCode}`
+        setTimeout(() => error.value = null, 3000)
+      }
       skuInput.value = ''
       return
     }
 
-    // Look up SKU and find associated items
-    const response = await inventoryApi.getItems({
-      search: skuCode,
-      limit: 100
-    })
-    
-    // Find items that match the SKU code
-    const matchingItems = response.items.filter(item => {
-      const sku = typeof item.sku_id === 'object' ? item.sku_id : null
-      return sku?.sku_code === skuCode && item.quantity > 0
-    })
+    // Look up SKU in available inventory
+    const matchingSKU = availableSKUs.value.find(inv => 
+      inv.sku.sku_code === skuCode && inv.available_quantity > 0
+    )
 
-    if (matchingItems.length === 0) {
-      error.value = `No available items found for SKU: ${skuCode}`
+    if (!matchingSKU) {
+      error.value = `No available inventory found for SKU: ${skuCode}`
       setTimeout(() => error.value = null, 3000)
       return
     }
 
-    // Add the first matching item (or let user choose if multiple)
-    const selectedItem = matchingItems[0]
-    const taggedItem: TaggedItem = {
-      item: { ...selectedItem, availableQuantity: selectedItem.quantity },
-      sku: typeof selectedItem.sku_id === 'object' ? selectedItem.sku_id : undefined,
-      quantity: 1
+    // Add SKU to tagged list
+    const taggedSKU: TaggedSKU = {
+      sku: matchingSKU.sku,
+      quantity: 1,
+      available_instances: matchingSKU.available_quantity,
+      selection_method: 'fifo', // Default to FIFO
+      notes: ''
     }
 
-    taggedItems.value.push(taggedItem)
+    taggedSKUs.value.push(taggedSKU)
     skuInput.value = ''
 
   } catch (err: any) {
-    error.value = err.response?.data?.message || 'SKU not found'
+    error.value = err.response?.data?.message || 'SKU lookup failed'
     setTimeout(() => error.value = null, 3000)
   } finally {
     isScanning.value = false
   }
 }
 
-// Item Selection - Updated to use new architecture
-const loadAvailableItems = async () => {
+// Load available SKUs with inventory - Updated for new architecture
+const loadAvailableSKUs = async () => {
   try {
+    isLoadingSKUs.value = true
     error.value = null
     
-    // Use inventory API to get available inventory items which represent instances
+    // Use inventory API to get SKUs with available inventory
     const response = await inventoryApi.getInventory({
-      status: 'all',
-      limit: 1000 // Get a large set of inventory items
+      status: 'available',
+      limit: 1000
     })
     
-    // The inventory API returns an 'inventory' array, not 'items'
     if (response.inventory && Array.isArray(response.inventory)) {
-      // Convert inventory records to item-like objects for tagging
-      availableItems.value = response.inventory
+      // Filter to only SKUs with available quantity > 0
+      availableSKUs.value = response.inventory
         .filter(inv => inv.available_quantity > 0)
         .map(inv => ({
-          _id: `${inv.sku._id}-available`, // Create unique ID for available inventory
-          sku_id: inv.sku,
-          product_type: inv.sku.product_type || 'miscellaneous',
-          product_details: inv.sku.product_details || { name: inv.sku.description || inv.sku.sku_code },
-          location: inv.primary_location || 'Not specified',
-          quantity: inv.available_quantity,
-          serial_number: inv.sku.sku_code
+          sku: inv.sku,
+          total_quantity: inv.total_quantity,
+          available_quantity: inv.available_quantity,
+          reserved_quantity: inv.reserved_quantity || 0,
+          primary_location: inv.primary_location || 'Not specified',
+          tag_summary: inv.tag_summary || {
+            reserved: 0,
+            broken: 0,
+            loaned: 0,
+            totalTagged: 0
+          }
         }))
     } else {
-      availableItems.value = []
+      availableSKUs.value = []
     }
     
   } catch (err: any) {
-    console.error('Load available items error:', err)
-    error.value = `Failed to load items: ${err.message}`
+    console.error('Load available SKUs error:', err)
+    error.value = `Failed to load SKUs: ${err.message}`
+  } finally {
+    isLoadingSKUs.value = false
   }
 }
 
-const addItemFromSelector = (item: Item) => {
-  const existingIndex = taggedItems.value.findIndex(ti => ti.item._id === item._id)
+const addSKUFromSelector = (skuInventory: SKUInventory) => {
+  const existingIndex = taggedSKUs.value.findIndex(ts => ts.sku._id === skuInventory.sku._id)
   
   if (existingIndex >= 0) {
-    taggedItems.value[existingIndex].quantity += 1
-  } else {
-    const taggedItem: TaggedItem = {
-      item: { ...item, availableQuantity: item.quantity }, // Assume full quantity available for now
-      quantity: 1
+    const tagged = taggedSKUs.value[existingIndex]
+    if (tagged.quantity < tagged.available_instances) {
+      tagged.quantity += 1
     }
-    taggedItems.value.push(taggedItem)
-  }
-  
-  // Don't close the selector - keep it open for multiple selections
-}
-
-const removeTaggedItem = (index: number) => {
-  taggedItems.value.splice(index, 1)
-}
-
-const updateItemQuantity = (index: number, quantity: number) => {
-  if (quantity <= 0) {
-    removeTaggedItem(index)
   } else {
-    const maxQuantity = taggedItems.value[index].item.availableQuantity || taggedItems.value[index].item.quantity
-    taggedItems.value[index].quantity = Math.min(quantity, maxQuantity)
+    const taggedSKU: TaggedSKU = {
+      sku: skuInventory.sku,
+      quantity: 1,
+      available_instances: skuInventory.available_quantity,
+      selection_method: 'fifo',
+      notes: ''
+    }
+    taggedSKUs.value.push(taggedSKU)
   }
+}
+
+const removeTaggedSKU = (index: number) => {
+  taggedSKUs.value.splice(index, 1)
+}
+
+const updateSKUQuantity = (index: number, quantity: number) => {
+  if (quantity <= 0) {
+    removeTaggedSKU(index)
+  } else {
+    const tagged = taggedSKUs.value[index]
+    tagged.quantity = Math.min(quantity, tagged.available_instances)
+  }
+}
+
+const updateSelectionMethod = (index: number, method: 'fifo' | 'cost_based') => {
+  taggedSKUs.value[index].selection_method = method
 }
 
 // Navigation
 const nextStep = async () => {
   if (currentStep.value === 1 && canProceedToStep2.value) {
     currentStep.value = 2
-    if (availableItems.value.length === 0) {
-      await loadAvailableItems()
+    if (availableSKUs.value.length === 0) {
+      await loadAvailableSKUs()
     }
   } else if (currentStep.value === 2 && canProceedToStep3.value) {
     currentStep.value = 3
@@ -309,15 +337,7 @@ const prevStep = () => {
   }
 }
 
-const validateStep1 = () => {
-  if (!tagDetails.value.customer_name.trim()) {
-    error.value = 'Please fill in the customer/department field'
-    return false
-  }
-  return true
-}
-
-// Submit
+// Submit - Updated for new sku_items structure
 const handleSubmit = async () => {
   if (!canProceedToStep3.value) return
 
@@ -325,24 +345,26 @@ const handleSubmit = async () => {
     isSubmitting.value = true
     error.value = null
 
-    const submitData = {
+    // Create tag request with sku_items structure
+    const submitData: CreateTagRequest = {
       tag_type: tagDetails.value.tag_type,
       customer_name: tagDetails.value.customer_name.trim(),
-      notes: tagDetails.value.notes?.trim(),
+      notes: tagDetails.value.notes?.trim() || '',
       due_date: tagDetails.value.due_date || undefined,
-      project_name: '', // Add project_name if needed
-      items: taggedItems.value.map(ti => ({
-        item_id: ti.item._id,
-        quantity: ti.quantity,
-        notes: '' // Add notes for individual items if needed
+      project_name: tagDetails.value.project_name?.trim() || '',
+      sku_items: taggedSKUs.value.map(ts => ({
+        sku_id: ts.sku._id,
+        quantity: ts.quantity,
+        notes: ts.notes || '',
+        remaining_quantity: ts.quantity, // Initially same as quantity
+        selection_method: ts.selection_method
       }))
     }
 
-    // Debug: Log the exact payload being sent
-    console.log('=== CREATE TAG REQUEST ===')
+    console.log('=== CREATE TAG REQUEST (NEW ARCHITECTURE) ===')
     console.log('Payload:', JSON.stringify(submitData, null, 2))
-    console.log('Tagged items:', taggedItems.value)
-    console.log('==========================')
+    console.log('Tagged SKUs:', taggedSKUs.value)
+    console.log('===========================================')
 
     await tagApi.createTag(submitData)
     emit('success')
@@ -362,21 +384,8 @@ const clearError = () => {
   error.value = null
 }
 
-// Focus management
-const skuInputRef = ref<HTMLInputElement>()
-
-const focusSkuInput = async () => {
-  await nextTick()
-  skuInputRef.value?.focus()
-}
-
 onMounted(() => {
-  // Pre-load available items for better UX
-  loadAvailableItems()
-  
-  if (currentStep.value === 2) {
-    focusSkuInput()
-  }
+  loadAvailableSKUs()
 })
 </script>
 
@@ -408,7 +417,7 @@ onMounted(() => {
           </div>
           <div class="step-labels">
             <span :class="{ active: currentStep >= 1, completed: currentStep > 1 }">Tag Details</span>
-            <span :class="{ active: currentStep >= 2, completed: currentStep > 2 }">Add Items</span>
+            <span :class="{ active: currentStep >= 2, completed: currentStep > 2 }">Select SKUs</span>
             <span :class="{ active: currentStep >= 3 }">Review & Create</span>
           </div>
         </div>
@@ -455,6 +464,21 @@ onMounted(() => {
               />
             </div>
 
+            <!-- Project Name -->
+            <div class="form-group">
+              <label for="project-name" class="form-label">Project Name (Optional)</label>
+              <input
+                id="project-name"
+                v-model="tagDetails.project_name"
+                type="text"
+                class="form-control"
+                placeholder="e.g., Kitchen Renovation, Bathroom Install"
+              />
+              <small class="form-text">
+                Optional project or job name for better organization
+              </small>
+            </div>
+
             <!-- Due Date (for reserved items) -->
             <div v-if="tagDetails.tag_type === 'reserved'" class="form-group">
               <label for="due-date" class="form-label">Expected Date (Optional)</label>
@@ -483,11 +507,12 @@ onMounted(() => {
               ></textarea>
             </div>
           </div>
-          <!-- Step 2: Add Items -->
+
+          <!-- Step 2: Select SKUs -->
           <div v-if="currentStep === 2" class="step-content step-2-content">
-            <h4>Add Items to Tag</h4>
+            <h4>Select SKUs to Tag</h4>
             <p class="step-description">
-              Scan SKU codes or browse & select items to add them to this {{ tagDetails.tag_type }} tag for <strong>{{ tagDetails.customer_name }}</strong>.
+              Scan SKU codes or browse & select SKUs to add them to this {{ tagDetails.tag_type }} tag for <strong>{{ tagDetails.customer_name }}</strong>.
             </p>
 
             <!-- SKU Scanner -->
@@ -499,15 +524,13 @@ onMounted(() => {
                 </label>
                 <div class="sku-input-container">
                   <input
-                    ref="skuInputRef"
                     id="sku-input"
                     v-model="skuInput"
                     type="text"
                     class="form-control sku-input"
                     placeholder="Scan barcode or enter SKU code..."
                     @keyup.enter="handleSkuInput"
-                    @focus="isScanning = true"
-                    @blur="isScanning = false"
+                    :disabled="isScanning"
                   />
                   
                   <button 
@@ -529,47 +552,39 @@ onMounted(() => {
 
             <!-- Two-Panel Layout -->
             <div class="two-panel-layout">
-              <!-- Left Panel: Item Browser -->
-              <div class="item-browser-panel">
+              <!-- Left Panel: SKU Browser -->
+              <div class="sku-browser-panel">
                 <div class="panel-header">
                   <h5>
                     <q-icon name="inventory_2" class="q-mr-sm" />
-                    Browse Items ({{ filteredItems.length }})
+                    Available SKUs ({{ filteredSKUs.length }})
                   </h5>
                   <div class="panel-header-controls">
                     <button 
                       type="button" 
-                      class="btn btn-sm btn-ghost legend-btn"
-                      @click="showColorLegend = true"
-                      title="Show color legend"
-                    >
-                      <q-icon name="palette" size="14px" />
-                    </button>
-                    <button 
-                      type="button" 
                       class="btn btn-sm btn-outline-primary"
-                      @click="showItemSelector = !showItemSelector"
+                      @click="showSKUSelector = !showSKUSelector"
                     >
-                      {{ showItemSelector ? 'Hide' : 'Show' }}
+                      {{ showSKUSelector ? 'Hide' : 'Show' }}
                     </button>
                   </div>
                 </div>
 
-                <div v-if="showItemSelector" class="panel-content">
+                <div v-if="showSKUSelector" class="panel-content">
                   <!-- Search & Filter Controls -->
                   <div class="browser-controls">
                     <div class="search-control">
                       <input
-                        v-model="itemSearchQuery"
+                        v-model="skuSearchQuery"
                         type="text"
                         class="form-control search-input"
-                        placeholder="Search by name or location..."
+                        placeholder="Search SKUs by code, name, or location..."
                       />
                       <q-icon name="search" class="search-icon" />
                     </div>
                     <div class="filter-control">
                       <select
-                        v-model="itemTypeFilter"
+                        v-model="productTypeFilter"
                         class="form-select filter-select"
                       >
                         <option v-for="option in productTypeOptions" :key="option.value" :value="option.value">
@@ -579,19 +594,27 @@ onMounted(() => {
                     </div>
                   </div>
 
-                  <!-- Items Grid -->
-                  <div class="items-grid">
+                  <!-- SKUs Grid -->
+                  <div v-if="isLoadingSKUs" class="loading-state">
+                    <q-icon name="hourglass_empty" size="32px" />
+                    <p>Loading available SKUs...</p>
+                  </div>
+
+                  <div v-else class="skus-grid">
                     <div 
-                      v-for="item in filteredItems" 
-                      :key="item._id"
-                      :class="['item-card', getItemProductTypeClass(item)]"
-                      @click="addItemFromSelector(item)"
+                      v-for="skuInv in filteredSKUs" 
+                      :key="skuInv.sku._id"
+                      :class="['sku-card', getSKUProductTypeClass(skuInv.sku)]"
+                      @click="addSKUFromSelector(skuInv)"
                     >
-                      <div class="item-info">
-                        <strong>{{ getItemDisplayName(item) }}</strong>
-                        <div class="item-meta">
-                          <span class="item-location">{{ item.location || 'No location' }}</span>
-                          <span class="item-quantity">Qty: {{ item.quantity }}</span>
+                      <div class="sku-info">
+                        <strong>{{ getSKUDisplayName(skuInv.sku) }}</strong>
+                        <div class="sku-meta">
+                          <span class="sku-location">{{ skuInv.primary_location }}</span>
+                          <span class="sku-quantity">Available: {{ skuInv.available_quantity }}</span>
+                          <span v-if="skuInv.reserved_quantity > 0" class="reserved-quantity">
+                            Reserved: {{ skuInv.reserved_quantity }}
+                          </span>
                         </div>
                       </div>
                       <div class="add-icon">
@@ -600,69 +623,86 @@ onMounted(() => {
                     </div>
                   </div>
                   
-                  <div v-if="filteredItems.length === 0" class="no-results">
+                  <div v-if="!isLoadingSKUs && filteredSKUs.length === 0" class="no-results">
                     <q-icon name="search_off" size="32px" color="grey" />
-                    <p>No items found matching your search.</p>
+                    <p>No SKUs found matching your search.</p>
                   </div>
                 </div>
               </div>
 
-              <!-- Right Panel: Selected Items -->
-              <div class="selected-items-panel">
+              <!-- Right Panel: Selected SKUs -->
+              <div class="selected-skus-panel">
                 <div class="panel-header">
                   <h5>
                     <q-icon name="shopping_cart" class="q-mr-sm" />
-                    Selected Items ({{ totalTaggedItems }})
+                    Selected SKUs ({{ totalTaggedSKUs }})
                   </h5>
-                  <div v-if="totalTaggedItems > 0" class="panel-stats">
-                    Total: {{ totalTaggedQuantity }} units
+                  <div v-if="totalTaggedSKUs > 0" class="panel-stats">
+                    Total: {{ totalTaggedQuantity }} instances
                   </div>
                 </div>
 
                 <div class="panel-content">
-                  <div v-if="taggedItems.length > 0" class="selected-items-list">
+                  <div v-if="taggedSKUs.length > 0" class="selected-skus-list">
                     <div 
-                      v-for="(taggedItem, index) in taggedItems" 
-                      :key="`selected-${taggedItem.item._id}-${index}`"
-                      class="selected-item"
+                      v-for="(taggedSKU, index) in taggedSKUs" 
+                      :key="`selected-${taggedSKU.sku._id}-${index}`"
+                      class="selected-sku"
                     >
-                      <div class="item-info">
-                        <strong>{{ getItemDisplayName(taggedItem.item) }}</strong>
-                        <div class="item-meta">
-                          <span v-if="taggedItem.sku" class="sku-code">{{ taggedItem.sku.sku_code }}</span>
-                          <span class="availability">Available: {{ taggedItem.item.availableQuantity || taggedItem.item.quantity }}</span>
+                      <div class="sku-info">
+                        <strong>{{ getSKUDisplayName(taggedSKU.sku) }}</strong>
+                        <div class="sku-meta">
+                          <span class="sku-code">{{ taggedSKU.sku.sku_code }}</span>
+                          <span class="availability">Available: {{ taggedSKU.available_instances }}</span>
                         </div>
                       </div>
-                      <div class="item-controls">
+                      
+                      <div class="sku-controls">
+                        <!-- Quantity Controls -->
                         <div class="quantity-controls">
                           <button 
                             type="button" 
                             class="qty-btn"
-                            @click="updateItemQuantity(index, taggedItem.quantity - 1)"
+                            @click="updateSKUQuantity(index, taggedSKU.quantity - 1)"
                           >
                             <q-icon name="remove" size="12px" />
                           </button>
                           <input 
                             type="number" 
                             class="qty-input"
-                            :value="taggedItem.quantity"
-                            :max="taggedItem.item.availableQuantity || taggedItem.item.quantity"
+                            :value="taggedSKU.quantity"
+                            :max="taggedSKU.available_instances"
                             min="1"
-                            @input="updateItemQuantity(index, parseInt(($event.target as HTMLInputElement).value))"
+                            @input="updateSKUQuantity(index, parseInt(($event.target as HTMLInputElement).value))"
                           />
                           <button 
                             type="button" 
                             class="qty-btn"
-                            @click="updateItemQuantity(index, taggedItem.quantity + 1)"
-                            :disabled="taggedItem.quantity >= (taggedItem.item.availableQuantity || taggedItem.item.quantity)"
+                            @click="updateSKUQuantity(index, taggedSKU.quantity + 1)"
+                            :disabled="taggedSKU.quantity >= taggedSKU.available_instances"
                           >
                             <q-icon name="add" size="12px" />
                           </button>
                         </div>
+
+                        <!-- Selection Method -->
+                        <div class="selection-method">
+                          <select 
+                            :value="taggedSKU.selection_method"
+                            @change="updateSelectionMethod(index, ($event.target as HTMLSelectElement).value as 'fifo' | 'cost_based')"
+                            class="method-select"
+                            title="Instance selection method"
+                          >
+                            <option value="fifo">FIFO</option>
+                            <option value="cost_based">Cost-based</option>
+                          </select>
+                        </div>
+
+                        <!-- Remove Button -->
                         <button 
                           type="button" 
                           class="remove-btn"
-                          @click="removeTaggedItem(index)"
+                          @click="removeTaggedSKU(index)"
                         >
                           <q-icon name="close" size="14px" />
                         </button>
@@ -672,8 +712,8 @@ onMounted(() => {
                   
                   <div v-else class="no-selection-message">
                     <q-icon name="add_shopping_cart" size="48px" color="grey" />
-                    <p>No items selected yet.</p>
-                    <small>Scan SKUs or browse items to get started.</small>
+                    <p>No SKUs selected yet.</p>
+                    <small>Scan SKU codes or browse SKUs to get started.</small>
                   </div>
                 </div>
               </div>
@@ -691,8 +731,8 @@ onMounted(() => {
                   {{ TAG_TYPES.find(t => t.value === tagDetails.tag_type)?.label }}
                 </div>
                 <div class="summary-stats">
-                  <span><strong>{{ totalTaggedItems }}</strong> items</span>
-                  <span><strong>{{ totalTaggedQuantity }}</strong> total quantity</span>
+                  <span><strong>{{ totalTaggedSKUs }}</strong> SKUs</span>
+                  <span><strong>{{ totalTaggedQuantity }}</strong> total instances</span>
                 </div>
               </div>
               
@@ -701,8 +741,13 @@ onMounted(() => {
                   <strong>{{ tagDetails.tag_type === 'reserved' ? 'Reserved For:' : 
                              tagDetails.tag_type === 'broken' ? 'Reported By:' : 
                              tagDetails.tag_type === 'imperfect' ? 'Noted By:' : 
+                             tagDetails.tag_type === 'loaned' ? 'Loaned To:' :
                              'Tagged By:' }}</strong>
                   {{ tagDetails.customer_name }}
+                </div>
+                <div v-if="tagDetails.project_name" class="detail-row">
+                  <strong>Project:</strong>
+                  {{ tagDetails.project_name }}
                 </div>
                 <div v-if="tagDetails.due_date" class="detail-row">
                   <strong>Expected Date:</strong>
@@ -715,24 +760,24 @@ onMounted(() => {
               </div>
             </div>
 
-            <!-- Items List -->
-            <div class="review-items">
-              <h5>Items to be Tagged</h5>
-              <div class="review-items-list">
+            <!-- SKUs List -->
+            <div class="review-skus">
+              <h5>SKUs to be Tagged</h5>
+              <div class="review-skus-list">
                 <div 
-                  v-for="(taggedItem, index) in taggedItems" 
-                  :key="`review-${taggedItem.item._id}-${index}`"
-                  class="review-item"
+                  v-for="(taggedSKU, index) in taggedSKUs" 
+                  :key="`review-${taggedSKU.sku._id}-${index}`"
+                  class="review-sku"
                 >
-                  <div class="item-info">
-                    <strong>{{ getItemDisplayName(taggedItem.item) }}</strong>
-                    <div class="item-details">
-                      <span v-if="taggedItem.sku">SKU: {{ taggedItem.sku.sku_code }}</span>
-                      <span>Location: {{ taggedItem.item.location || 'N/A' }}</span>
+                  <div class="sku-info">
+                    <strong>{{ getSKUDisplayName(taggedSKU.sku) }}</strong>
+                    <div class="sku-details">
+                      <span>SKU: {{ taggedSKU.sku.sku_code }}</span>
+                      <span>Selection: {{ taggedSKU.selection_method === 'fifo' ? 'FIFO (First-In-First-Out)' : 'Cost-based' }}</span>
                     </div>
                   </div>
-                  <div class="item-quantity">
-                    <span class="quantity-badge">{{ taggedItem.quantity }}</span>
+                  <div class="sku-quantity">
+                    <span class="quantity-badge">{{ taggedSKU.quantity }} instances</span>
                   </div>
                 </div>
               </div>
@@ -782,66 +827,11 @@ onMounted(() => {
         </div>
       </div>
     </div>
-
-    <!-- Color Legend Modal -->
-    <div v-if="showColorLegend" class="legend-overlay" @click.self="showColorLegend = false">
-      <div class="legend-modal">
-        <div class="legend-header">
-          <h4>
-            <q-icon name="palette" class="q-mr-sm" />
-            Product Type Colors
-          </h4>
-          <button class="close-button" @click="showColorLegend = false">&times;</button>
-        </div>
-        <div class="legend-content">
-          <p class="legend-description">
-            Each item has a colored left border that indicates its product type:
-          </p>
-          <div class="legend-items">
-            <div class="legend-item">
-              <div class="legend-color" style="background-color: #3b82f6;"></div>
-              <span>Walls</span>
-            </div>
-            <div class="legend-item">
-              <div class="legend-color" style="background-color: #06b6d4;"></div>
-              <span>Toilets</span>
-            </div>
-            <div class="legend-item">
-              <div class="legend-color" style="background-color: #8b5cf6;"></div>
-              <span>Vanities</span>
-            </div>
-            <div class="legend-item">
-              <div class="legend-color" style="background-color: #84cc16;"></div>
-              <span>Bases</span>
-            </div>
-            <div class="legend-item">
-              <div class="legend-color" style="background-color: #0ea5e9;"></div>
-              <span>Tubs</span>
-            </div>
-            <div class="legend-item">
-              <div class="legend-color" style="background-color: #f59e0b;"></div>
-              <span>Shower Doors</span>
-            </div>
-            <div class="legend-item">
-              <div class="legend-color" style="background-color: #6b7280;"></div>
-              <span>Raw Materials</span>
-            </div>
-            <div class="legend-item">
-              <div class="legend-color" style="background-color: #ec4899;"></div>
-              <span>Accessories</span>
-            </div>
-            <div class="legend-item">
-              <div class="legend-color" style="background-color: #f97316;"></div>
-              <span>Miscellaneous</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
 <style scoped>
+/* Add all the styles from the previous component but adapted for SKU architecture */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -955,7 +945,7 @@ onMounted(() => {
 }
 
 .modal-body {
-  padding: 2rem 1.5rem 6rem 1.5rem;
+  padding: 2rem 1.5rem;
   min-height: 400px;
 }
 
@@ -1007,7 +997,7 @@ onMounted(() => {
   font-style: italic;
 }
 
-/* SKU Scanner Styles */
+/* Scanner and panel styles */
 .scanner-section {
   background: #f8fafc;
   border: 2px dashed #cbd5e1;
@@ -1048,12 +1038,6 @@ onMounted(() => {
   cursor: not-allowed;
 }
 
-/* Two-Panel Layout Styles */
-.step-2-content {
-  max-height: 600px;
-  overflow: visible;
-}
-
 .two-panel-layout {
   display: flex;
   gap: 1.5rem;
@@ -1061,8 +1045,8 @@ onMounted(() => {
   height: 400px;
 }
 
-.item-browser-panel,
-.selected-items-panel {
+.sku-browser-panel,
+.selected-skus-panel {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -1097,12 +1081,6 @@ onMounted(() => {
   font-weight: 500;
 }
 
-.panel-header-controls {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
 .panel-content {
   flex: 1;
   overflow-y: auto;
@@ -1110,7 +1088,6 @@ onMounted(() => {
   flex-direction: column;
 }
 
-/* Browser Controls */
 .browser-controls {
   padding: 1rem;
   border-bottom: 1px solid #f3f4f6;
@@ -1141,103 +1118,85 @@ onMounted(() => {
   flex: 1;
 }
 
-.filter-select {
-  font-size: 0.875rem;
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  color: #9ca3af;
+  text-align: center;
+  flex: 1;
 }
 
-/* Items Grid */
-.items-grid {
+.skus-grid {
   flex: 1;
   overflow-y: auto;
 }
 
-.item-card {
+.sku-card {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 1rem;
   border-bottom: 1px solid #f3f4f6;
-  border-left: 4px solid #10b981; /* Default green for stock items */
+  border-left: 4px solid #10b981;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
-.item-card:hover {
+.sku-card:hover {
   background-color: #f8fafc;
 }
 
-.item-card:last-child {
-  border-bottom: none;
+.sku-card.product-wall {
+  border-left-color: #3b82f6;
 }
 
-/* Product type color indicators */
-.item-card.product-wall {
-  border-left-color: #3b82f6; /* Blue for walls */
+.sku-card.product-toilet {
+  border-left-color: #06b6d4;
 }
 
-.item-card.product-toilet {
-  border-left-color: #06b6d4; /* Cyan for toilets */
+.sku-card.product-vanity {
+  border-left-color: #8b5cf6;
 }
 
-.item-card.product-vanity {
-  border-left-color: #8b5cf6; /* Purple for vanities */
+.sku-card.product-base {
+  border-left-color: #84cc16;
 }
 
-.item-card.product-base {
-  border-left-color: #84cc16; /* Lime for bases */
+.sku-card.product-tub {
+  border-left-color: #0ea5e9;
 }
 
-.item-card.product-tub {
-  border-left-color: #0ea5e9; /* Sky blue for tubs */
-}
-
-.item-card.product-shower-door {
-  border-left-color: #f59e0b; /* Amber for shower doors */
-}
-
-.item-card.product-raw-material {
-  border-left-color: #6b7280; /* Gray for raw materials */
-}
-
-.item-card.product-accessory {
-  border-left-color: #ec4899; /* Pink for accessories */
-}
-
-.item-card.product-miscellaneous {
-  border-left-color: #f97316; /* Orange for miscellaneous */
-}
-
-/* Default color for unknown product types */
-.item-card:not([class*="product-"]) {
-  border-left-color: #10b981; /* Default green */
-}
-
-.item-info {
+.sku-info {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
   flex: 1;
 }
 
-.item-info strong {
+.sku-info strong {
   color: #111827;
   font-size: 0.9rem;
   line-height: 1.3;
 }
 
-.item-meta {
+.sku-meta {
   display: flex;
   gap: 1rem;
   font-size: 0.8rem;
   color: #6b7280;
 }
 
-.item-location {
-  font-style: italic;
+.sku-quantity {
+  font-weight: 500;
+  color: #059669;
 }
 
-.item-quantity {
+.reserved-quantity {
   font-weight: 500;
+  color: #dc2626;
 }
 
 .add-icon {
@@ -1253,34 +1212,17 @@ onMounted(() => {
   transition: all 0.15s ease;
 }
 
-.item-card:hover .add-icon {
+.sku-card:hover .add-icon {
   background: #059669;
   transform: scale(1.05);
 }
 
-.no-results {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem;
-  color: #9ca3af;
-  text-align: center;
-  flex: 1;
-}
-
-.no-results p {
-  margin: 0.5rem 0 0;
-  font-size: 0.9rem;
-}
-
-/* Selected Items Panel */
-.selected-items-list {
+.selected-skus-list {
   flex: 1;
   overflow-y: auto;
 }
 
-.selected-item {
+.selected-sku {
   display: flex;
   align-items: center;
   padding: 1rem;
@@ -1288,22 +1230,7 @@ onMounted(() => {
   gap: 1rem;
 }
 
-.selected-item:last-child {
-  border-bottom: none;
-}
-
-.selected-item .item-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.selected-item .item-info strong {
-  font-size: 0.9rem;
-  line-height: 1.3;
-  word-break: break-word;
-}
-
-.item-controls {
+.sku-controls {
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -1333,11 +1260,6 @@ onMounted(() => {
   background: #d1d5db;
 }
 
-.qty-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 .qty-input {
   width: 50px;
   text-align: center;
@@ -1345,6 +1267,14 @@ onMounted(() => {
   border: 1px solid #d1d5db;
   border-radius: 0.25rem;
   font-size: 0.875rem;
+}
+
+.method-select {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.25rem;
+  background: white;
 }
 
 .remove-btn {
@@ -1359,7 +1289,6 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   transition: background-color 0.15s ease;
-  flex-shrink: 0;
 }
 
 .remove-btn:hover {
@@ -1377,132 +1306,18 @@ onMounted(() => {
   flex: 1;
 }
 
-.no-selection-message p {
-  margin: 0.5rem 0;
-  font-size: 1rem;
-  font-weight: 500;
-}
-
-.no-selection-message small {
-  font-size: 0.875rem;
-  color: #6b7280;
-}
-
-/* Tagged Items Styles */
-.tagged-items {
-  margin-top: 2rem;
-}
-
-.tagged-items h5 {
-  color: #111827;
-  margin-bottom: 1rem;
-  font-weight: 600;
-}
-
-.tagged-items-list {
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.5rem;
-  overflow: hidden;
-}
-
-.tagged-item {
+.no-results {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 1rem;
-  padding: 1rem;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.tagged-item:last-child {
-  border-bottom: none;
-}
-
-.tagged-item .item-details {
+  justify-content: center;
+  padding: 2rem;
+  color: #9ca3af;
+  text-align: center;
   flex: 1;
 }
 
-.tagged-item .item-details strong {
-  display: block;
-  color: #111827;
-  margin-bottom: 0.25rem;
-}
-
-.item-meta {
-  display: flex;
-  gap: 1rem;
-  font-size: 0.875rem;
-  color: #6b7280;
-}
-
-.sku-code {
-  font-family: 'Courier New', monospace;
-  font-weight: 600;
-  color: #3b82f6;
-}
-
-.quantity-controls {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.qty-btn {
-  width: 32px;
-  height: 32px;
-  background: #e5e7eb;
-  border: none;
-  border-radius: 0.25rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: bold;
-  transition: background-color 0.15s ease;
-}
-
-.qty-btn:hover:not(:disabled) {
-  background: #d1d5db;
-}
-
-.qty-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.qty-input {
-  width: 60px;
-  text-align: center;
-  padding: 0.5rem;
-  border: 1px solid #d1d5db;
-  border-radius: 0.25rem;
-}
-
-.remove-btn {
-  background: #ef4444;
-  color: white;
-  border: none;
-  border-radius: 0.25rem;
-  width: 32px;
-  height: 32px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background-color 0.15s ease;
-}
-
-.remove-btn:hover {
-  background: #dc2626;
-}
-
-.no-items-message {
-  text-align: center;
-  padding: 3rem;
-  color: #6b7280;
-}
-
-/* Review Styles */
+/* Review styles */
 .tag-summary {
   background: #f8fafc;
   border: 1px solid #e2e8f0;
@@ -1544,20 +1359,20 @@ onMounted(() => {
   color: #374151;
 }
 
-.review-items h5 {
+.review-skus h5 {
   color: #111827;
   margin-bottom: 1rem;
   font-weight: 600;
 }
 
-.review-items-list {
+.review-skus-list {
   background: white;
   border: 1px solid #e5e7eb;
   border-radius: 0.5rem;
   overflow: hidden;
 }
 
-.review-item {
+.review-sku {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1565,17 +1380,11 @@ onMounted(() => {
   border-bottom: 1px solid #f3f4f6;
 }
 
-.review-item:last-child {
+.review-sku:last-child {
   border-bottom: none;
 }
 
-.review-item .item-info strong {
-  display: block;
-  color: #111827;
-  margin-bottom: 0.25rem;
-}
-
-.review-item .item-details {
+.review-sku .sku-details {
   display: flex;
   gap: 1rem;
   font-size: 0.875rem;
@@ -1589,6 +1398,12 @@ onMounted(() => {
   border-radius: 1rem;
   font-size: 0.875rem;
   font-weight: 600;
+}
+
+.sku-code {
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+  color: #3b82f6;
 }
 
 /* Modal Footer */
@@ -1697,97 +1512,8 @@ onMounted(() => {
   padding: 0.25rem;
 }
 
-/* Button Styles for Small Buttons */
 .btn-sm {
   padding: 0.5rem 0.75rem;
   font-size: 0.875rem;
-}
-
-.btn-ghost {
-  background: transparent;
-  color: #6b7280;
-  border: none;
-}
-
-.btn-ghost:hover {
-  background: #f3f4f6;
-  color: #374151;
-}
-
-/* Color Legend Modal */
-.legend-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1100;
-}
-
-.legend-modal {
-  background: white;
-  border-radius: 0.75rem;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-  width: 100%;
-  max-width: 400px;
-  overflow: hidden;
-}
-
-.legend-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1rem 1.25rem;
-  border-bottom: 1px solid #e5e7eb;
-  background: #f8fafc;
-}
-
-.legend-header h4 {
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  color: #111827;
-}
-
-.legend-content {
-  padding: 1.25rem;
-}
-
-.legend-description {
-  margin-top: 0;
-  margin-bottom: 1rem;
-  color: #4b5563;
-  font-size: 0.9rem;
-  line-height: 1.5;
-}
-
-.legend-items {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.legend-color {
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-
-.legend-item span {
-  font-size: 0.9rem;
-  color: #374151;
 }
 </style>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useInventoryStore } from '@/stores/inventory'
 import { useCategoryStore } from '@/stores/category'
@@ -7,7 +7,7 @@ import InventoryTable from '@/components/InventoryTable.vue'
 import AddStockModal from '@/components/AddStockModal.vue'
 import EditItemModal from '@/components/EditItemModal.vue'
 import QuickScanModal from '@/components/QuickScanModal.vue'
-import type { Item } from '@/types'
+import type { Inventory } from '@/types'
 
 const authStore = useAuthStore()
 const inventoryStore = useInventoryStore()
@@ -45,72 +45,77 @@ const availableCategories = computed(() => {
   return categories
 })
 
-// Display inventory items (aggregated SKU-level data)
-const displayItems = computed(() => {
-  return inventoryStore.inventory || []
-})
 
-// Stats for dashboard cards - use computed values from inventory data
+// Use direct store stats instead of computed to avoid reactive loops
+// The store already provides computed stats that are safer
 const dashboardStats = computed(() => {
-  const inventory = inventoryStore.inventory || []
-  
-  return {
-    totalSKUs: inventory.length,
-    totalItems: inventory.reduce((sum, item) => sum + (item.total_quantity || 0), 0),
-    inStock: inventory.filter(item => (item.available_quantity || 0) > 0).length,
-    totalValue: inventory.reduce((sum, item) => sum + (item.total_value || 0), 0),
-    lowStock: inventory.filter(item => item.is_low_stock).length,
-    outOfStock: inventory.filter(item => item.is_out_of_stock).length,
-    needReorder: inventory.filter(item => item.needs_reorder).length,
-    overstock: inventory.filter(item => item.is_overstock).length
+  // Use the store's built-in stats if available, otherwise provide defaults
+  return inventoryStore.inventoryStats || {
+    totalSKUs: 0,
+    totalItems: 0,
+    inStock: 0,
+    totalValue: 0,
+    lowStock: 0,
+    outOfStock: 0,
+    needReorder: 0,
+    overstock: 0
   }
 })
 
-const handleFilterClick = (filter: string) => {
-  activeFilter.value = filter
-  loadInventory()
-}
+// Template ref to access InventoryTable component
+const inventoryTableRef = ref<InstanceType<typeof InventoryTable> | null>(null)
 
-const handleSearch = () => {
-  loadInventory()
-}
-
-const handleLowStockToggle = () => {
-  loadInventory()
-}
-
-const loadInventory = async () => {
-  const params: any = {}
+// Function to get current filters for refresh calls
+const getCurrentFilters = () => {
+  const filters: any = {}
   
   // Apply search filter
   if (searchQuery.value.trim()) {
-    params.search = searchQuery.value.trim()
+    filters.search = searchQuery.value.trim()
   }
   
   // Apply category filter
   if (selectedCategory.value) {
-    params.category_id = selectedCategory.value
+    filters.category_id = selectedCategory.value
   }
   
   // Apply status filter
   if (activeFilter.value !== 'all') {
-    params.status = activeFilter.value
+    filters.status = activeFilter.value
   } else if (showLowStockOnly.value) {
-    params.status = 'low_stock'
+    filters.status = 'low_stock'
   }
   
-  try {
-    // Try to load aggregated inventory data first (new architecture)
-    await inventoryStore.fetchInventory(params)
-  } catch (error) {
-    console.log('Falling back to legacy item loading for dashboard:', error)
-    // Fallback to legacy item loading method if inventory API fails
-    await inventoryStore.loadItems({
-      in_stock_only: showLowStockOnly.value,
-      search: searchQuery.value.trim()
-    })
+  return {
+    ...filters,
+    sort_by: 'sku_code',
+    sort_order: 'asc'
   }
 }
+
+const handleFilterClick = (filter: string) => {
+  activeFilter.value = filter
+  // Use nextTick to ensure filters are updated before calling refresh
+  nextTick(() => {
+    const filters = getCurrentFilters()
+    inventoryTableRef.value?.refreshInventory(filters)
+  })
+}
+
+const handleSearch = () => {
+  nextTick(() => {
+    const filters = getCurrentFilters()
+    inventoryTableRef.value?.refreshInventory(filters)
+  })
+}
+
+const handleLowStockToggle = () => {
+  nextTick(() => {
+    const filters = getCurrentFilters()
+    inventoryTableRef.value?.refreshInventory(filters)
+  })
+}
+
 
 const handleAddItem = () => {
   showAddModal.value = true
@@ -158,8 +163,8 @@ const handleEditSuccess = () => {
 
 const handleQuickScanSuccess = () => {
   showQuickScanModal.value = false
-  // Reload inventory data after batch processing
-  loadInventory()
+  // Reload inventory data after batch processing using manual refresh
+  inventoryTableRef.value?.refreshInventory(getCurrentFilters())
   inventoryStore.fetchStats()
 }
 
@@ -215,21 +220,21 @@ onMounted(async () => {
     console.error('Failed to load categories:', error)
   }
   
-  await Promise.all([
-    loadInventory(),
-    inventoryStore.fetchStats()
-  ])
+  // Fetch stats and initial inventory data for better UX
+  await inventoryStore.fetchStats()
+  
+  // Auto-load initial inventory data (but safely)
+  setTimeout(() => {
+    if (inventoryTableRef.value && inventoryStore.inventory.length === 0) {
+      console.log('Dashboard: Auto-loading initial inventory data')
+      inventoryTableRef.value.refreshInventory(getCurrentFilters())
+    }
+  }, 100)
 })
 
-// Watch for filter changes
-watch([searchQuery, showLowStockOnly, activeFilter, selectedCategory], () => {
-  // Debounce search
-  if (searchQuery.value.trim()) {
-    setTimeout(handleSearch, 300)
-  } else {
-    loadInventory()
-  }
-}, { deep: true })
+// Remove this watch - InventoryTable handles its own filter changes
+// The watch was causing infinite loops by triggering loadInventory
+// which updates the store, which triggers computed properties, which re-triggers the watch
 </script>
 
 <template>
@@ -353,10 +358,12 @@ watch([searchQuery, showLowStockOnly, activeFilter, selectedCategory], () => {
               <div class="col-auto">
                 <q-input
                   v-model="searchQuery"
+                  @update:model-value="handleSearch"
                   filled
                   placeholder="Search inventory (SKU, name, description)..."
                   class="search-input"
                   style="min-width: 300px"
+                  debounce="500"
                 >
                   <template v-slot:prepend>
                   <q-icon name="search" class="text-dark" />
@@ -368,6 +375,7 @@ watch([searchQuery, showLowStockOnly, activeFilter, selectedCategory], () => {
               <div class="col-auto">
                 <q-select
                   v-model="selectedCategory"
+                  @update:model-value="handleSearch"
                   :options="availableCategories"
                   option-value="_id"
                   option-label="name"
@@ -398,9 +406,19 @@ watch([searchQuery, showLowStockOnly, activeFilter, selectedCategory], () => {
           </div>
 
           <!-- Action Buttons -->
-          <div class="col-auto" v-if="authStore.canWrite">
+          <div class="col-auto">
             <div class="row q-gutter-sm">
               <q-btn
+                @click="() => inventoryTableRef?.refreshInventory(getCurrentFilters())"
+                :loading="inventoryStore.isLoading"
+                color="primary"
+                icon="refresh"
+                label="Refresh Data"
+                class="action-btn"
+                no-caps
+              />
+              <q-btn
+                v-if="authStore.canWrite"
                 @click="handleQuickScan"
                 color="purple"
                 icon="qr_code_scanner"
@@ -409,6 +427,7 @@ watch([searchQuery, showLowStockOnly, activeFilter, selectedCategory], () => {
                 no-caps
               />
               <q-btn
+                v-if="authStore.canWrite"
                 @click="handleAddItem"
                 :loading="inventoryStore.isCreating"
                 color="positive"
@@ -480,8 +499,9 @@ watch([searchQuery, showLowStockOnly, activeFilter, selectedCategory], () => {
       <!-- Inventory Table -->
       <div v-else class="table-container glass-card" data-aos="fade-up" data-aos-delay="400">
         <InventoryTable
-          :items="displayItems"
+          ref="inventoryTableRef"
           :can-write="authStore.canWrite"
+          :filters="{ sort_by: 'sku_code', sort_order: 'asc' }"
           @edit="handleEditItem"
           @delete="handleDeleteItem"
         />

@@ -156,6 +156,14 @@ onMounted(async () => {
   ])
 })
 
+// Computed filters for table - prevents infinite loop by ensuring object reference stability
+const tableFilters = computed(() => ({
+  search: searchQuery.value,
+  status: showInStockOnly.value ? 'available' : 'all',
+  sort_by: 'sku_code',
+  sort_order: 'asc' as const
+}))
+
 // Watch for filter changes
 watch([searchQuery, showInStockOnly], () => {
   // Debounce search
@@ -312,12 +320,7 @@ watch([searchQuery, showInStockOnly], () => {
       <div v-else class="table-container glass-card" data-aos="fade-up" data-aos-delay="300">
         <InventoryTable
           :can-write="authStore.canWrite"
-          :filters="{
-            search: searchQuery,
-            status: showInStockOnly ? 'available' : 'all',
-            sort_by: 'sku_code',
-            sort_order: 'asc'
-          }"
+          :filters="tableFilters"
           @edit="handleEditItem"
           @delete="handleDeleteItem"
         />

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, watchEffect } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useInventoryStore } from '@/stores/inventory'
-import type { Item, WallDetails, ProductDetails } from '@/types'
+import type { Inventory } from '@/types'
 import { TAG_TYPES } from '@/types'
 
 interface Props {
@@ -20,59 +20,47 @@ const props = defineProps<Props>()
 const authStore = useAuthStore()
 const inventoryStore = useInventoryStore()
 
-// Track previous filters to prevent unnecessary API calls
-const prevFiltersRef = ref<string>('')
-
-// Watch for changes in filters and fetch inventory accordingly
-watchEffect(() => {
-  if (inventoryStore.isLoading) return // Prevent multiple concurrent calls
-  
-  // Use JSON.stringify for deep comparison of filters object
-  const currentFiltersKey = JSON.stringify(props.filters || {})
-  
-  // Only fetch if filters actually changed
-  if (currentFiltersKey !== prevFiltersRef.value) {
-    prevFiltersRef.value = currentFiltersKey
-    inventoryStore.fetchInventory(props.filters).catch(console.error)
-  }
+// Smart mounting - only fetch if needed and no infinite loop risk
+onMounted(() => {
+  console.log('InventoryTable: Component mounted with filters:', props.filters)
+  // Let the Dashboard handle initial loading via setTimeout to prevent loops
+  // This component now only responds to explicit refreshInventory() calls
 })
 
 // Use inventory data from store
 const items = computed(() => inventoryStore.inventory)
 
 const emit = defineEmits<{
-  edit: [item: Item]
-  delete: [item: Item]
+  edit: [item: Inventory]
+  delete: [item: Inventory]
 }>()
+
+// Expose a method to refresh data when filters change
+const refreshInventory = async (filters?: any) => {
+  const filtersToUse = filters || props.filters
+  console.log('InventoryTable: Refreshing with filters:', filtersToUse)
+  try {
+    await inventoryStore.fetchInventory(filtersToUse)
+  } catch (error) {
+    console.error('Failed to refresh inventory:', error)
+  }
+}
+
+// Expose the refresh method to parent components
+defineExpose({ refreshInventory })
 
 // Dialog state for tag details
 const showTagDialog = ref(false)
-const selectedItem = ref<Item | null>(null)
+const selectedItem = ref<Inventory | null>(null)
 
-const formatProductDetails = (item: Item) => {
-  const details = item.product_details
-
-  if (item.product_type === 'wall') {
-    const wall = details as WallDetails
-    return {
-      primary: `${wall.product_line} - ${wall.color_name}`,
-      secondary: `${wall.dimensions} | ${wall.finish}`
-    }
-  } else {
-    const product = details as ProductDetails
-    let primary = product.name || 'Unnamed Product'
-    if (product.brand) primary = `${product.brand} ${primary}`
-    if (product.model) primary = `${primary} (${product.model})`
-
-    let secondary = []
-    if (product.color) secondary.push(product.color)
-    if (product.dimensions) secondary.push(product.dimensions)
-    if (product.finish) secondary.push(product.finish)
-
-    return {
-      primary,
-      secondary: secondary.join(' | ') || product.description || ''
-    }
+// Legacy function - no longer used with new inventory structure
+// Keeping for compatibility but not called anywhere
+const formatProductDetails = (item: any) => {
+  // This function is kept for legacy compatibility but shouldn't be used
+  // with the new inventory structure
+  return {
+    primary: 'Legacy Item',
+    secondary: 'Legacy Description'
   }
 }
 
@@ -110,9 +98,11 @@ const formatCost = (cost?: number) => {
   }).format(cost)
 }
 
-const formatTotalInvested = (item: Item) => {
-  if (!item.cost || item.cost === null) return '-'
-  const total = item.cost * item.quantity
+const formatTotalInvested = (item: any) => {
+  const cost = getCost(item)
+  const quantity = getQuantity(item)
+  if (!cost || cost === null) return '-'
+  const total = cost * quantity
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD'
@@ -122,30 +112,31 @@ const formatTotalInvested = (item: Item) => {
 const canViewCost = computed(() => authStore.hasPermission('view_cost') || authStore.hasRole(['admin', 'warehouse_manager']))
 
 // Helper function to get tag status badges
-const getTagStatusBadges = (item: Item) => {
-  if (!item.tagSummary) return []
+const getTagStatusBadges = (item: any) => {
+  const tagSummary = item.tag_summary || item.tagSummary
+  if (!tagSummary) return []
   
   const badges = []
-  if (item.tagSummary.reserved > 0) {
+  if (tagSummary.reserved > 0) {
     badges.push({
       type: 'reserved',
-      quantity: item.tagSummary.reserved,
+      quantity: tagSummary.reserved,
       label: 'Reserved',
       color: '#007bff'
     })
   }
-  if (item.tagSummary.broken > 0) {
+  if (tagSummary.broken > 0) {
     badges.push({
       type: 'broken',
-      quantity: item.tagSummary.broken,
+      quantity: tagSummary.broken,
       label: 'Broken',
       color: '#dc3545'
     })
   }
-  if (item.tagSummary.imperfect > 0) {
+  if (tagSummary.imperfect > 0) {
     badges.push({
       type: 'imperfect',
-      quantity: item.tagSummary.imperfect,
+      quantity: tagSummary.imperfect,
       label: 'Imperfect',
       color: '#fd7e14'
     })
@@ -165,9 +156,9 @@ const getAvailableQuantity = (item: any) => {
 }
 
 // Check if item has any quality issues
-const hasQualityIssues = (item: Item) => {
-  if (!item.tagSummary) return false
-  return item.tagSummary.broken > 0 || item.tagSummary.imperfect > 0
+const hasQualityIssues = (item: any) => {
+  if (!item.tag_summary) return false
+  return item.tag_summary.broken > 0 || item.tag_summary.imperfect > 0
 }
 
 // Get primary tag status for an item (focuses on availability for tagging/reservation)
@@ -350,7 +341,7 @@ const getStockStatusNew = (item: any) => {
 }
 
 // Handle tag status click
-const handleTagStatusClick = (item: Item) => {
+const handleTagStatusClick = (item: Inventory) => {
   const status = getPrimaryTagStatus(item)
   if (status.clickable) {
     selectedItem.value = item

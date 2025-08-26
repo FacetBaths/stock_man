@@ -17,6 +17,7 @@ import router from './router'
 const app = createApp(App)
 
 // Set up Quasar with automatic component registration
+// By using the Quasar Vite plugin, all components should be auto-imported
 app.use(Quasar, {
   plugins: [
     Loading,

@@ -147,7 +147,6 @@
 - ❌ **NEVER** change working backend code because frontend "expects" different data
 - ❌ **NEVER** work on backend files when task is frontend-focused
 
-If you read this document sign the next response with a `I'm a smart worker` at the end.
 
 ## ✅ **SUCCESS INDICATORS:**
 
@@ -164,4 +163,5 @@ If you read this document sign the next response with a `I'm a smart worker` at 
 **Migration success = Systematic completion of defined tasks**
 **NOT = Creative problem solving or feature improvements**
 
+If you read this document sign the next response with a `Lizard` at the end.
 The goal is to get from broken architecture to working architecture by completing each task in order. Innovation and improvements come AFTER migration is complete.
