@@ -1120,4 +1120,173 @@ router.post('/import/system-restore',
   }
 );
 
+// GET /api/export/templates/sku-import - Download SKU import template
+router.get('/templates/sku-import',
+  auth,
+  [
+    query('format').optional().isIn(['csv', 'json']).withMessage('Format must be csv or json')
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
+      }
+
+      const format = req.query.format || 'csv';
+      
+      const templateData = [
+        {
+          sku_code: 'EXAMPLE001',
+          name: 'Example Product Name',
+          category: 'Electronics',
+          brand: 'Example Brand',
+          model: 'Model X1',
+          description: 'Example product description',
+          unit_cost: '29.99',
+          barcode: '1234567890123',
+          status: 'active',
+          is_bundle: 'false',
+          supplier_name: 'Example Supplier Ltd',
+          supplier_sku: 'SUP-EX001',
+          lead_time_days: '7'
+        },
+        {
+          sku_code: 'EXAMPLE002', 
+          name: 'Another Example Product',
+          category: 'Office Supplies',
+          brand: '',
+          model: '',
+          description: 'Basic office supply item',
+          unit_cost: '5.50',
+          barcode: '',
+          status: 'active',
+          is_bundle: 'false',
+          supplier_name: 'Office Depot',
+          supplier_sku: 'OD-12345',
+          lead_time_days: '3'
+        }
+      ];
+
+      if (format === 'csv') {
+        const headers = Object.keys(templateData[0]);
+        const csvContent = jsonToCsv(templateData, headers);
+        
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', 'attachment; filename="sku_import_template.csv"');
+        res.send(csvContent);
+      } else {
+        res.json({
+          template_type: 'sku_import',
+          description: 'Template for SKU import with examples',
+          required_fields: ['sku_code', 'name'],
+          optional_fields: ['category', 'brand', 'model', 'description', 'unit_cost', 'barcode', 'status', 'is_bundle', 'supplier_name', 'supplier_sku', 'lead_time_days'],
+          field_descriptions: {
+            sku_code: 'Unique SKU identifier (required, will be converted to uppercase)',
+            name: 'Product name (required)',
+            category: 'Category name (will be created if does not exist)',
+            brand: 'Product brand',
+            model: 'Product model',
+            description: 'Product description',
+            unit_cost: 'Cost per unit (numeric)',
+            barcode: 'Product barcode',
+            status: 'active, discontinued, or pending (default: active)',
+            is_bundle: 'true/false - whether this is a bundle of items (default: false)',
+            supplier_name: 'Supplier company name (stored in supplier_info)',
+            supplier_sku: 'Supplier part number (stored in supplier_info)',
+            lead_time_days: 'Days to deliver from supplier (numeric, stored in supplier_info)'
+          },
+          data: templateData
+        });
+      }
+    } catch (error) {
+      console.error('SKU template error:', error);
+      res.status(500).json({ message: 'Server error', error: error.message });
+    }
+  }
+);
+
+// GET /api/export/templates/stock-import - Download stock import template
+router.get('/templates/stock-import',
+  auth,
+  [
+    query('format').optional().isIn(['csv', 'json']).withMessage('Format must be csv or json')
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
+      }
+
+      const format = req.query.format || 'csv';
+      
+      const templateData = [
+        {
+          sku_code: 'EXAMPLE001',
+          acquisition_date: '2025-08-26',
+          acquisition_cost: '29.99',
+          location: 'Warehouse A - Shelf B2',
+          supplier: 'Example Supplier Ltd',
+          reference_number: 'PO-2025-001',
+          notes: 'Received in good condition'
+        },
+        {
+          sku_code: 'EXAMPLE001',
+          acquisition_date: '2025-08-25', 
+          acquisition_cost: '28.50',
+          location: 'Warehouse A - Shelf B3',
+          supplier: 'Example Supplier Ltd',
+          reference_number: 'PO-2025-001',
+          notes: 'Part of bulk order - slightly damaged box'
+        },
+        {
+          sku_code: 'EXAMPLE002',
+          acquisition_date: '2025-08-24',
+          acquisition_cost: '5.50',
+          location: 'Office Storage',
+          supplier: 'Office Depot',
+          reference_number: 'INV-54321',
+          notes: ''
+        }
+      ];
+
+      if (format === 'csv') {
+        const headers = Object.keys(templateData[0]);
+        const csvContent = jsonToCsv(templateData, headers);
+        
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', 'attachment; filename="stock_import_template.csv"');
+        res.send(csvContent);
+      } else {
+        res.json({
+          template_type: 'stock_import',
+          description: 'Template for bulk stock (Instance) import with examples',
+          required_fields: ['sku_code'],
+          optional_fields: ['acquisition_date', 'acquisition_cost', 'location', 'supplier', 'reference_number', 'notes'],
+          field_descriptions: {
+            sku_code: 'SKU code that must exist in system (required)',
+            sku_id: 'Alternative to sku_code - MongoDB ObjectId of SKU',
+            acquisition_date: 'Date item was acquired (YYYY-MM-DD format, default: today)',
+            acquisition_cost: 'Cost paid for this specific item (numeric, default: SKU unit_cost)',
+            location: 'Physical location of this item',
+            supplier: 'Supplier this item was purchased from',
+            reference_number: 'Purchase order, invoice, or reference number',
+            notes: 'Additional notes about this specific item'
+          },
+          conflict_resolution_options: {
+            skip: 'Skip items with duplicate reference numbers',
+            update: 'Update existing items with same reference number',
+            duplicate: 'Create duplicate items even if reference number exists'
+          },
+          data: templateData
+        });
+      }
+    } catch (error) {
+      console.error('Stock template error:', error);
+      res.status(500).json({ message: 'Server error', error: error.message });
+    }
+  }
+);
+
 module.exports = router;

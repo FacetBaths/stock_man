@@ -1,7 +1,7 @@
 # Stock Manager Migration Checklist
 
-**Last Updated:** 2025-08-26 01:16 UTC
-**Status:** 5/12 Backend Tasks Complete, Frontend Not Started
+**Last Updated:** 2025-08-26 01:25 UTC
+**Status:** 6/13 Backend Tasks Complete, Frontend Not Started
 
 ## 📋 Backend Migration Tasks
 
@@ -44,6 +44,15 @@
   - [x] **Status:** COMPLETE ✅
 
 ### ❌ Phase 4: Integration Features (PENDING)
+- [ ] **Add template download endpoints for import formats**
+  - [ ] Create GET /api/export/templates/sku-import endpoint (CSV & JSON)
+  - [ ] Create GET /api/export/templates/stock-import endpoint (CSV & JSON)
+  - [ ] Use only actual model fields (no made-up fields)
+  - [ ] Include realistic example data for both creating SKUs and stock instances
+  - [ ] JSON format should include field descriptions and validation rules
+  - [ ] CSV format should be ready for Excel/Google Sheets
+  - [ ] **Status:** COMPLETED ✅ (Added 2025-08-26)
+
 - [ ] **Integrate barcode functionality into SKU routes**
   - [ ] Move barcode scanning from legacy routes to SKU management
   - [ ] Add barcode lookup for stock additions
@@ -154,13 +163,13 @@
 
 ## 📊 Progress Summary
 
-**Overall Progress:** 5/28 Major Tasks Complete (18%)
+**Overall Progress:** 6/29 Major Tasks Complete (21%)
 
-### Backend: 5/12 Complete (42%)
+### Backend: 6/13 Complete (46%)
 - ✅ Model Architecture: 2/2 complete
 - ✅ Tag System: 1/1 complete  
 - ✅ Route Architecture: 4/4 complete
-- ❌ Integration: 0/3 complete
+- ❌ Integration: 1/4 complete
 - ❌ Polish: 0/2 complete
 
 ### Frontend: 0/10 Complete (0%)
@@ -186,3 +195,4 @@
 - Cost tracking now works at individual instance level
 - Repository structure is clean and organized
 - Need to focus on completing backend before frontend migration
+
