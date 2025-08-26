@@ -37,7 +37,7 @@ const instanceSchema = new mongoose.Schema({
   location: {
     type: String,
     trim: true,
-    default: 'Main Warehouse'
+    default: 'HQ'
   },
   
   // Optional supplier information
