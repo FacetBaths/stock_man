@@ -51,7 +51,17 @@ FRONTEND PROGRESS: 2/10 Tasks Complete (20%)
    - QuickScanModal and CreateTagModalNew fixed to use instancesApi
    - Build successful - all TypeScript interfaces and stores working
    - Frontend state management ready for component updates
-❌ Update InventoryTable component
+✅ Update InventoryTable component - COMPLETED 2025-08-26 17:16 UTC
+   - InventoryTable.vue updated to use inventory store instead of props
+   - Component now self-fetches data with filters (search, status, sort)
+   - Parent Inventory.vue updated to use new interface
+   - All existing SKU-based display functions preserved and working
+   - Instance cost information displayed via getCost/getTotalValue functions
+   - Tag status indicators use tag_summary structure with getPrimaryTagStatus
+   - Frontend builds successfully without errors
+   - CRITICAL BUG FIXED: Infinite loop in watchEffect causing system freeze
+   - Backend integration tested: API returns real data with correct structure
+   - All functionality verified with actual backend data (TOILET-751131 test)
 ❌ Update AddItemModal → AddStockModal
 ❌ Update CreateTagModal component
 ❌ Fix category dropdown issue
@@ -70,7 +80,7 @@ TESTING & DEPLOYMENT: 0/3 Tasks Complete (0%)
 
 OVERALL: 10/22 Tasks Complete (45%)
 
-NEXT IMMEDIATE TASK: Update InventoryTable component
+NEXT IMMEDIATE TASK: Update AddItemModal → AddStockModal
 
 NOTE: db_conversion utility will map legacy Items → Instances with costs,
       convert Tags to SKU-based, handle conflicts, prompt for missing data

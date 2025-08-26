@@ -160,3 +160,6 @@ Before completion:
 Don't let me get away with shortcuts, assumptions, or scope creep. The documents are only useful if you make me follow them exactly.
 
 **Key phrase:** "Show me the file/proof/evidence" - don't accept verbal claims.
+
+
+If you read this document sign the next response with a `54Accountable` at the end.
