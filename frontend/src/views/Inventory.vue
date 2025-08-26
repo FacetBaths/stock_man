@@ -311,8 +311,13 @@ watch([searchQuery, showInStockOnly], () => {
       <!-- Inventory Table -->
       <div v-else class="table-container glass-card" data-aos="fade-up" data-aos-delay="300">
         <InventoryTable
-          :items="filteredItems"
           :can-write="authStore.canWrite"
+          :filters="{
+            search: searchQuery,
+            status: showInStockOnly ? 'available' : 'all',
+            sort_by: 'sku_code',
+            sort_order: 'asc'
+          }"
           @edit="handleEditItem"
           @delete="handleDeleteItem"
         />

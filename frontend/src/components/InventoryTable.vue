@@ -1,16 +1,32 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { useInventoryStore } from '@/stores/inventory'
 import type { Item, WallDetails, ProductDetails } from '@/types'
 import { TAG_TYPES } from '@/types'
 
 interface Props {
-  items: Item[]
   canWrite: boolean
+  filters?: {
+    category_id?: string
+    search?: string
+    status?: 'all' | 'low_stock' | 'out_of_stock' | 'overstock' | 'needs_reorder'
+    sort_by?: string
+    sort_order?: 'asc' | 'desc'
+  }
 }
 
 const props = defineProps<Props>()
 const authStore = useAuthStore()
+const inventoryStore = useInventoryStore()
+
+// Load inventory data when component mounts
+onMounted(async () => {
+  await inventoryStore.fetchInventory(props.filters)
+})
+
+// Use inventory data from store
+const items = computed(() => inventoryStore.inventory)
 
 const emit = defineEmits<{
   edit: [item: Item]

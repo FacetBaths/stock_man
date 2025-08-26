@@ -43,11 +43,27 @@
 
 ### WORK LOG:
 ```
-[04:58] - Start task, update CURRENT_TASK.md
-[TIME] - Read current InventoryTable.vue component
-[TIME] - Update component to use inventory store
-[TIME] - Update table columns for SKU-based data
-[TIME] - Add instance cost information
+[05:20] - Backend auth system fixed, task switched to InventoryTable
+[05:25] - Read current InventoryTable.vue component structure
+           - Component has mixed legacy/new data structure support
+           - Already has helper functions for both structures
+           - Needs to import and use inventory store
+           - Needs props updated to use inventory data
+[05:27] - Update component imports to use inventory store - DONE
+           - Added useInventoryStore import
+           - Updated props to remove items array, add filters
+           - Added onMounted to fetch inventory data
+           - Made items computed from store data
+[05:28] - Test component builds successfully - PASSED ✅
+           - Frontend builds without errors
+           - Component syntax and imports are correct
+[05:30] - Update Inventory.vue to use new InventoryTable interface - DONE
+           - Removed :items prop, now uses :filters instead
+           - InventoryTable now fetches its own data from store
+           - Filters passed from parent (search, status, sort)
+           - Build test passed - no errors
+[TIME] - Update table columns for SKU-based data (Already supports new format)
+[TIME] - Add instance cost information display
 [TIME] - Update search and filtering
 [TIME] - Update tag status indicators
 [TIME] - Test with backend endpoints
