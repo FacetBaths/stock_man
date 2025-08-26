@@ -642,4 +642,199 @@ router.get('/lookup/:skuCode',
   }
 );
 
+// GET /api/skus/barcode/:barcode - Lookup SKU by barcode
+router.get('/barcode/:barcode', 
+  auth,
+  [
+    param('barcode').notEmpty().withMessage('Barcode is required'),
+    query('include_inventory').optional().isBoolean().withMessage('include_inventory must be a boolean')
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ 
+          message: 'Validation failed', 
+          errors: errors.array() 
+        });
+      }
+
+      const barcode = req.params.barcode.trim();
+      
+      // Find SKU by barcode
+      const sku = await SKU.findOne({ barcode: barcode })
+        .populate('category_id', 'name slug');
+
+      if (!sku) {
+        return res.status(404).json({ 
+          message: 'SKU not found for barcode',
+          barcode: barcode
+        });
+      }
+
+      const skuObj = sku.toObject();
+
+      // Include inventory data if requested
+      if (req.query.include_inventory === 'true') {
+        const inventory = await Inventory.findOne({ sku_id: sku._id });
+        if (inventory) {
+          skuObj.inventory = inventory.getSummary();
+        } else {
+          skuObj.inventory = {
+            total_quantity: 0,
+            available_quantity: 0,
+            reserved_quantity: 0,
+            broken_quantity: 0,
+            loaned_quantity: 0,
+            is_low_stock: false,
+            is_out_of_stock: true,
+            needs_reorder: true
+          };
+        }
+      }
+
+      res.json({ 
+        message: 'SKU found',
+        sku: skuObj,
+        barcode: barcode
+      });
+
+    } catch (error) {
+      console.error('Barcode lookup error:', error);
+      res.status(500).json({ 
+        message: 'Failed to lookup SKU by barcode', 
+        error: error.message 
+      });
+    }
+  }
+);
+
+// POST /api/skus/barcode/:barcode/add-stock - Add stock instance using barcode lookup
+router.post('/barcode/:barcode/add-stock', 
+  auth,
+  requireWriteAccess,
+  [
+    param('barcode').notEmpty().withMessage('Barcode is required'),
+    body('quantity').isInt({ min: 1 }).withMessage('Quantity must be a positive integer'),
+    body('acquisition_cost').optional().isFloat({ min: 0 }).withMessage('Acquisition cost must be non-negative'),
+    body('location').optional().trim().isLength({ max: 100 }).withMessage('Location cannot exceed 100 characters'),
+    body('supplier').optional().trim().isLength({ max: 100 }).withMessage('Supplier cannot exceed 100 characters'),
+    body('reference_number').optional().trim().isLength({ max: 50 }).withMessage('Reference number cannot exceed 50 characters'),
+    body('notes').optional().trim().isLength({ max: 500 }).withMessage('Notes cannot exceed 500 characters')
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ 
+          message: 'Validation failed', 
+          errors: errors.array() 
+        });
+      }
+
+      const barcode = req.params.barcode.trim();
+      
+      // Find SKU by barcode
+      const sku = await SKU.findOne({ barcode: barcode })
+        .populate('category_id', 'name slug');
+
+      if (!sku) {
+        return res.status(404).json({ 
+          message: 'SKU not found for barcode',
+          barcode: barcode
+        });
+      }
+
+      if (sku.status !== 'active') {
+        return res.status(400).json({ 
+          message: 'Cannot add stock to inactive SKU',
+          sku_code: sku.sku_code,
+          status: sku.status
+        });
+      }
+
+      const quantity = req.body.quantity;
+      const acquisitionCost = req.body.acquisition_cost || sku.unit_cost || 0;
+      const location = req.body.location || 'Main Warehouse';
+      const supplier = req.body.supplier || '';
+      const referenceNumber = req.body.reference_number || '';
+      const notes = req.body.notes || '';
+
+      // Import Instance model
+      const Instance = require('../models/Instance');
+      
+      const createdInstances = [];
+      const errors = [];
+
+      // Create multiple instances
+      for (let i = 0; i < quantity; i++) {
+        try {
+          const instance = new Instance({
+            sku_id: sku._id,
+            acquisition_date: new Date(),
+            acquisition_cost: acquisitionCost,
+            location: location,
+            supplier: supplier,
+            reference_number: referenceNumber,
+            notes: notes,
+            added_by: req.user.username
+          });
+          
+          await instance.save();
+          createdInstances.push(instance._id);
+        } catch (error) {
+          errors.push(`Instance ${i + 1}: ${error.message}`);
+        }
+      }
+
+      // Update inventory totals
+      let inventory = await Inventory.findOne({ sku_id: sku._id });
+      if (!inventory) {
+        inventory = new Inventory({
+          sku_id: sku._id,
+          last_updated_by: req.user.username
+        });
+      }
+
+      // Recalculate totals from instances
+      const totalInstances = await Instance.countDocuments({ sku_id: sku._id });
+      const availableInstances = await Instance.countDocuments({ 
+        sku_id: sku._id, 
+        tag_id: { $exists: false } 
+      });
+
+      inventory.total_quantity = totalInstances;
+      inventory.available_quantity = availableInstances;
+      inventory.last_updated_by = req.user.username;
+      await inventory.save();
+
+      res.json({ 
+        message: `Successfully added ${createdInstances.length} instances via barcode scan`,
+        sku: {
+          _id: sku._id,
+          sku_code: sku.sku_code,
+          name: sku.name,
+          category: sku.category_id.name
+        },
+        barcode: barcode,
+        instances_created: createdInstances.length,
+        instances_requested: quantity,
+        instances_failed: errors.length,
+        errors: errors.length > 0 ? errors : undefined,
+        inventory_updated: {
+          total_quantity: inventory.total_quantity,
+          available_quantity: inventory.available_quantity
+        }
+      });
+
+    } catch (error) {
+      console.error('Barcode stock addition error:', error);
+      res.status(500).json({ 
+        message: 'Failed to add stock via barcode scan', 
+        error: error.message 
+      });
+    }
+  }
+);
+
 module.exports = router;

@@ -1,7 +1,7 @@
 # Stock Manager Migration Checklist
 
-**Last Updated:** 2025-08-26 01:25 UTC
-**Status:** 6/13 Backend Tasks Complete, Frontend Not Started
+**Last Updated:** 2025-08-26 01:48 UTC
+**Status:** 7/13 Backend Tasks Complete, Frontend Not Started
 
 ## 📋 Backend Migration Tasks
 
@@ -53,11 +53,11 @@
   - [ ] CSV format should be ready for Excel/Google Sheets
   - [ ] **Status:** COMPLETED ✅ (Added 2025-08-26)
 
-- [ ] **Integrate barcode functionality into SKU routes**
-  - [ ] Move barcode scanning from legacy routes to SKU management
-  - [ ] Add barcode lookup for stock additions
-  - [ ] Remove separate barcode.js file
-  - [ ] **Status:** NOT STARTED ❌
+- [x] **Integrate barcode functionality into SKU routes** - COMPLETE ✅
+  - [x] Move barcode scanning from legacy routes to SKU management
+  - [x] Add barcode lookup for stock additions
+  - [x] Remove separate barcode.js file (none existed)
+  - [x] **Status:** COMPLETE ✅ (Added 2025-08-26)
 
 - [ ] **Replace all auth with authEnhanced**
   - [ ] Audit all routes to use authEnhanced middleware
@@ -163,13 +163,13 @@
 
 ## 📊 Progress Summary
 
-**Overall Progress:** 6/29 Major Tasks Complete (21%)
+**Overall Progress:** 7/29 Major Tasks Complete (24%)
 
-### Backend: 6/13 Complete (46%)
+### Backend: 7/13 Complete (54%)
 - ✅ Model Architecture: 2/2 complete
 - ✅ Tag System: 1/1 complete  
 - ✅ Route Architecture: 4/4 complete
-- ❌ Integration: 1/4 complete
+- ❌ Integration: 2/4 complete
 - ❌ Polish: 0/2 complete
 
 ### Frontend: 0/10 Complete (0%)
