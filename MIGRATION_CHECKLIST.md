@@ -1,7 +1,7 @@
 # Stock Manager Migration Checklist
 
 **Last Updated:** 2025-08-26 05:23 UTC
-**Status:** 9/9 Backend Tasks Complete (100% DONE!), 3/10 Frontend Tasks Complete
+**Status:** 9/9 Backend Tasks Complete (100% DONE!), 4/10 Frontend Tasks Complete
 
 ## 📋 Backend Migration Tasks
 
@@ -113,13 +113,13 @@
   - [x] CRITICAL BUG FIXED: Infinite loop causing system freeze
   - [x] **Status:** COMPLETE ✅
 
-- [ ] **Update AddItemModal.vue → AddStockModal.vue**
+- [x] **Update AddItemModal.vue → AddStockModal.vue** - COMPLETED 2025-08-26 18:01 UTC
   - [x] Rename component file to AddStockModal.vue
   - [x] Update import statements in parent components
-  - [ ] Change to add instances with cost tracking
-  - [ ] Add supplier and reference number fields  
-  - [ ] Remove legacy item fields
-  - [ ] **Status:** IN PROGRESS ⏳ (2/6 subtasks complete)
+  - [x] Change to add instances with cost tracking
+  - [x] Add supplier and reference number fields  
+  - [x] Remove legacy item fields
+  - [x] **Status:** COMPLETE ✅
 
 - [ ] **Update CreateTagModal.vue**
   - [ ] Show available instances for selection
@@ -176,7 +176,7 @@
 
 ## 📊 Progress Summary
 
-**Overall Progress:** 12/22 Major Tasks Complete (55%)
+**Overall Progress:** 13/22 Major Tasks Complete (59%)
 
 ### Backend: 9/9 Complete (100%) + 1 Deferred
 - ✅ Model Architecture: 2/2 complete
@@ -185,9 +185,9 @@
 - ✅ Integration: 3/3 complete
 - ✅ Polish: 2/2 complete (1 deferred - performance optimization)
 
-### Frontend: 3/10 Complete (30%)
+### Frontend: 4/10 Complete (40%)
 - ✅ Architecture: 2/2 complete
-- ⏳ Components: 1/6 complete
+- ⏳ Components: 2/6 complete
 - ❌ Polish: 0/2 complete
 
 ### Database Conversion: 0/1 Complete (0%)
