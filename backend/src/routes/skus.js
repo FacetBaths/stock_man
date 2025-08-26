@@ -764,7 +764,7 @@ router.post('/barcode/:barcode/add-stock',
       const Instance = require('../models/Instance');
       
       const createdInstances = [];
-      const errors = [];
+      const instanceErrors = [];
 
       // Create multiple instances
       for (let i = 0; i < quantity; i++) {
@@ -783,7 +783,7 @@ router.post('/barcode/:barcode/add-stock',
           await instance.save();
           createdInstances.push(instance._id);
         } catch (error) {
-          errors.push(`Instance ${i + 1}: ${error.message}`);
+          instanceErrors.push(`Instance ${i + 1}: ${error.message}`);
         }
       }
 
@@ -819,8 +819,8 @@ router.post('/barcode/:barcode/add-stock',
         barcode: barcode,
         instances_created: createdInstances.length,
         instances_requested: quantity,
-        instances_failed: errors.length,
-        errors: errors.length > 0 ? errors : undefined,
+        instances_failed: instanceErrors.length,
+        errors: instanceErrors.length > 0 ? instanceErrors : undefined,
         inventory_updated: {
           total_quantity: inventory.total_quantity,
           available_quantity: inventory.available_quantity
