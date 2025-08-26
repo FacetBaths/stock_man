@@ -235,18 +235,24 @@ const rateLimitAuth = (windowMs = 15 * 60 * 1000, maxAttempts = 5) => {
 const logSecurityEvent = async (userId, event, req, additionalData = {}) => {
   try {
     const auditData = {
-      userId,
+      event_type: 'authentication',
+      entity_type: 'user',
+      entity_id: userId,
+      user_id: userId || 'anonymous',
+      user_name: 'Unknown User', // Default for security events
       action: event,
-      resource: 'authentication',
-      ipAddress: req.ip || req.connection?.remoteAddress,
-      userAgent: req.get('User-Agent'),
-      timestamp: new Date(),
-      success: false, // Security events are typically failures
-      details: {
+      description: `Authentication event: ${event} from ${req.ip || req.connection?.remoteAddress}`,
+      metadata: {
+        ip_address: req.ip || req.connection?.remoteAddress,
+        user_agent: req.get('User-Agent'),
+        api_endpoint: req.originalUrl,
         method: req.method,
-        url: req.originalUrl,
+        response_status: 401, // Most security events are 401s
         ...additionalData
-      }
+      },
+      severity: 'medium',
+      category: 'security',
+      status: 'failure' // Security events are typically failures
     };
 
     // Only log if AuditLog model exists (to prevent circular dependency issues)
@@ -264,18 +270,24 @@ const logSecurityEvent = async (userId, event, req, additionalData = {}) => {
 const logAuthSuccess = async (userId, action, req, additionalData = {}) => {
   try {
     const auditData = {
-      userId,
-      action,
-      resource: 'authentication',
-      ipAddress: req.ip || req.connection?.remoteAddress,
-      userAgent: req.get('User-Agent'),
-      timestamp: new Date(),
-      success: true,
-      details: {
+      event_type: 'login',
+      entity_type: 'user',
+      entity_id: userId,
+      user_id: userId,
+      user_name: additionalData.username || 'Unknown User',
+      action: action,
+      description: `Successful authentication: ${action}`,
+      metadata: {
+        ip_address: req.ip || req.connection?.remoteAddress,
+        user_agent: req.get('User-Agent'),
+        api_endpoint: req.originalUrl,
         method: req.method,
-        url: req.originalUrl,
+        response_status: 200,
         ...additionalData
-      }
+      },
+      severity: 'low',
+      category: 'security',
+      status: 'success'
     };
 
     if (AuditLog) {
@@ -306,19 +318,25 @@ const logApiAccess = async (req, res, next) => {
       try {
         if (AuditLog) {
           await AuditLog.create({
-            userId: req.user?.id,
+            event_type: 'info',
+            entity_type: 'system',
+            user_id: req.user?.id || 'anonymous',
+            user_name: req.user?.username || 'Anonymous User',
             action: 'API_ACCESS',
-            resource: req.originalUrl,
-            ipAddress: req.ip || req.connection?.remoteAddress,
-            userAgent: req.get('User-Agent'),
-            success: res.statusCode < 400,
-            details: {
+            description: `API access: ${req.method} ${req.originalUrl}`,
+            metadata: {
+              ip_address: req.ip || req.connection?.remoteAddress,
+              user_agent: req.get('User-Agent'),
+              api_endpoint: req.originalUrl,
               method: req.method,
-              statusCode: res.statusCode,
-              responseTime,
-              requestSize: req.get('content-length') || 0,
-              responseSize: data ? JSON.stringify(data).length : 0
-            }
+              response_status: res.statusCode,
+              response_time_ms: responseTime,
+              request_size: req.get('content-length') || 0,
+              response_size: data ? JSON.stringify(data).length : 0
+            },
+            severity: 'low',
+            category: 'system',
+            status: res.statusCode < 400 ? 'success' : 'failure'
           });
         }
       } catch (error) {
