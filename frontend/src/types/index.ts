@@ -70,171 +70,87 @@ export interface Category {
   updatedAt: string
 }
 
-// Enhanced SKU model - matches backend SKUNew model
+// ✅ SKU model - matches BACKEND_API_REFERENCE.md EXACTLY
 export interface SKU {
   _id: string
   sku_code: string
-  category_id: string | Category
-  
-  // Core product information
-  name: string
-  description?: string
-  brand?: string
-  model?: string
-  
-  // Category-specific details (polymorphic) - matches backend details structure
-  details: {
-    // For walls:
-    product_line?: string
-    color_name?: string
-    dimensions?: string
-    finish?: string
-    
-    // For tools:
-    tool_type?: string
-    manufacturer?: string
-    serial_number?: string
-    voltage?: string
-    features?: string[]
-    
-    // Common fields:
-    weight?: number
-    specifications?: Record<string, any>
-  }
-  
-  // Costing information
-  unit_cost: number
-  currency: string
+  product_type: string
+  product_details: string
+  current_cost: number
   cost_history: Array<{
     cost: number
     effective_date: string
     updated_by: string
-    notes?: string
-    createdAt: string
-    updatedAt: string
+    notes: string
   }>
-  
-  // Status and metadata
-  status: 'active' | 'discontinued' | 'pending'
-  barcode?: string
-  
-  supplier_info: {
-    supplier_name: string
-    supplier_sku: string
-    lead_time_days: number
-  }
-  
-  images: string[]
-  
+  barcode: string
+  description: string
+  notes: string
+  status: string
   stock_thresholds: {
     understocked: number
     overstocked: number
   }
-  
-  // Bundle configuration
-  is_bundle: boolean
-  bundle_items: Array<{
-    sku_id: string | SKU
-    quantity: number
-    notes?: string
-  }>
-  
-  // Additional backend fields
-  is_active?: boolean
-  is_lendable?: boolean
-  
   created_by: string
   last_updated_by: string
   createdAt: string
   updatedAt: string
-  
-  // Computed fields from backend
-  inventory?: Inventory
-  total_quantity?: number
-  available_quantity?: number
-  stock_status?: StockStatus
 }
 
-// New Item model - Individual instances only
-export interface Item {
+// ✅ Instance model - matches BACKEND_API_REFERENCE.md EXACTLY
+export interface Instance {
   _id: string
-  sku_id: string | SKU
-  
-  // Instance-specific information only
-  serial_number?: string
-  condition: 'new' | 'used' | 'damaged' | 'refurbished'
+  sku_id: string
+  acquisition_date: string
+  acquisition_cost: number
+  tag_id: string | null
   location: string
-  notes?: string
-  
-  // Purchase information (instance-specific)
-  purchase_date?: string
-  purchase_price?: number
-  batch_number?: string
-  
-  // Quantity for this specific item instance
-  quantity: number
-  
-  // Usage history tracking
-  usage_history: Array<{
-    quantity_used: number
-    used_for: string
-    location?: string
-    project_name?: string
-    customer_name?: string
-    notes?: string
-    used_by: string
-    used_date: string
-  }>
-  
-  created_by: string
-  last_updated_by: string
+  supplier: string
+  reference_number: string
+  notes: string
+  added_by: string
   createdAt: string
   updatedAt: string
 }
 
-// Inventory model - matches backend Inventory model structure
+// ✅ Inventory model - matches BACKEND_API_REFERENCE.md EXACTLY
 export interface Inventory {
   _id: string
-  sku_id: string | SKU
-  
-  // Current inventory levels (direct fields from backend model)
+  sku_id: string
   total_quantity: number
   available_quantity: number
   reserved_quantity: number
   broken_quantity: number
   loaned_quantity: number
-  
-  // Inventory thresholds and alerts
-  minimum_stock_level: number
-  reorder_point: number
-  maximum_stock_level?: number
-  
-  // Location tracking
-  primary_location: string
-  locations: Array<{
-    location_name: string
-    quantity: number
-  }>
-  
-  // Valuation
   total_value: number
   average_cost: number
-  
-  // Status and flags
-  is_active: boolean
+  minimum_stock_level: number
+  reorder_point: number
+  maximum_stock_level: number
   is_low_stock: boolean
   is_out_of_stock: boolean
   is_overstock: boolean
-  
-  // Last activity tracking
-  last_movement_date: string
   last_updated_by: string
-  
+  last_movement_date: string
   createdAt: string
   updatedAt: string
   
-  // Computed properties
+  // ✅ Additional fields from API response (BACKEND_API_REFERENCE.md)
+  sku?: {
+    _id: string
+    sku_code: string
+    description: string
+    current_cost: number
+  }
   needs_reorder?: boolean
+  utilization_rate?: number
+  has_tags?: boolean
+  tag_summary?: {
+    reserved: number
+    broken: number
+    loaned: number
+    totalTagged: number
+  }
 }
 
 export interface InventoryStats {
@@ -269,11 +185,20 @@ export interface InventoryStats {
   }
 }
 
+// ✅ API Response types - match BACKEND_API_REFERENCE.md EXACTLY
 export interface InventoryResponse {
-  items: Item[]
-  totalItems: number
-  totalPages: number
-  currentPage: number
+  inventory: Inventory[]
+  pagination: {
+    current_page: number
+    total_pages: number
+    total_items: number
+    items_per_page: number
+  }
+  filters: {
+    status: string
+    sort_by: string
+    sort_order: string
+  }
 }
 
 // New architecture request/response models
@@ -348,27 +273,22 @@ export interface UpdateSKURequest {
   }>
 }
 
-export interface CreateItemRequest {
+// ✅ Instance management - matches backend endpoints
+export interface AddStockRequest {
   sku_id: string
-  serial_number?: string
-  condition?: 'new' | 'used' | 'damaged' | 'refurbished'
-  location: string
-  notes?: string
-  purchase_date?: string
-  purchase_price?: number
-  batch_number?: string
   quantity: number
+  unit_cost: number
+  location?: string
+  supplier?: string
+  reference_number?: string
+  notes?: string
 }
 
-export interface UpdateItemRequest {
-  serial_number?: string
-  condition?: 'new' | 'used' | 'damaged' | 'refurbished'
+export interface UpdateInstanceRequest {
   location?: string
+  supplier?: string
+  reference_number?: string
   notes?: string
-  purchase_date?: string
-  purchase_price?: number
-  batch_number?: string
-  quantity?: number
 }
 
 // Use items functionality
@@ -401,51 +321,53 @@ export interface UpdateCategoryRequest {
   sort_order?: number
 }
 
-// New Tag model with proper relationships
+// ✅ Tag model - matches BACKEND_API_REFERENCE.md EXACTLY
 export interface Tag {
   _id: string
   customer_name: string
   tag_type: 'reserved' | 'broken' | 'imperfect' | 'loaned' | 'stock'
   status: 'active' | 'fulfilled' | 'cancelled'
   
-  // Items in this tag (proper item references)
-  items: Array<{
-    item_id: string | Item
+  // ✅ CRITICAL: Backend uses sku_items, NOT items
+  sku_items: Array<{
+    sku_id: string | {
+      _id: string
+      sku_code: string
+      description: string
+    }
     quantity: number
+    notes: string
     remaining_quantity: number
-    notes?: string
   }>
   
-  // Metadata
-  notes?: string
-  due_date?: string
-  project_name?: string
-  
-  // Tracking
+  project_name: string
+  due_date: string
+  notes: string
   created_by: string
-  last_updated_by: string
-  
-  // Fulfillment tracking
-  fulfilled_date?: string
   fulfilled_by?: string
-  
+  fulfilled_date?: string
+  cancelled_by?: string
+  cancelled_date?: string
+  cancellation_reason?: string
+  last_updated_by: string
   createdAt: string
   updatedAt: string
   
-  // Computed properties (populated by backend)
+  // ✅ Computed fields from API response
   total_quantity?: number
-  total_remaining_quantity?: number
-  total_value?: number
+  remaining_quantity?: number
   is_partially_fulfilled?: boolean
   is_fully_fulfilled?: boolean
+  is_overdue?: boolean
+  fulfillment_progress?: number
 }
 
-// Create tag request for new architecture (multi-item)
+// ✅ Create tag request - matches backend sku_items structure
 export interface CreateTagRequest {
   customer_name: string
   tag_type?: 'reserved' | 'broken' | 'imperfect' | 'loaned' | 'stock'
-  items: Array<{
-    item_id: string
+  sku_items: Array<{
+    sku_id: string
     quantity: number
     notes?: string
   }>
@@ -454,12 +376,12 @@ export interface CreateTagRequest {
   project_name?: string
 }
 
-// Update tag request for new architecture
+// ✅ Update tag request - matches backend sku_items structure
 export interface UpdateTagRequest {
   customer_name?: string
   tag_type?: 'reserved' | 'broken' | 'imperfect' | 'loaned' | 'stock'
-  items?: Array<{
-    item_id: string
+  sku_items?: Array<{
+    sku_id: string
     quantity: number
     remaining_quantity?: number
     notes?: string
@@ -470,17 +392,25 @@ export interface UpdateTagRequest {
   project_name?: string
 }
 
-// Fulfill tag items request
+// ✅ Fulfill tag items request - matches backend structure
 export interface FulfillTagRequest {
-  item_id: string
-  quantity_fulfilled: number
+  fulfillment_items: Array<{
+    item_id: string
+    quantity_fulfilled: number
+  }>
 }
 
+// ✅ Tag API Response - matches BACKEND_API_REFERENCE.md EXACTLY
 export interface TagResponse {
   tags: Tag[]
-  totalTags: number
-  totalPages: number
-  currentPage: number
+  pagination: {
+    currentPage: number
+    totalPages: number
+    totalTags: number
+    limit: number
+    hasNextPage: boolean
+    hasPrevPage: boolean
+  }
 }
 
 export interface ItemTagsResponse {
@@ -599,7 +529,7 @@ export interface TagAssignmentRequest {
 
 export interface LinkExistingRequest {
   barcode: string
-  item_id: string
+  sku_id: string
   create_sku?: boolean
 }
 

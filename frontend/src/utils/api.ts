@@ -383,90 +383,45 @@ export const inventoryApi = {
   }
 }
 
-// New architecture: Items API for individual item instances
-export const itemsApi = {
-  // Get items with filtering
-  getItems: async (params?: {
-    sku_id?: string
-    condition?: string
-    location?: string
-    search?: string
-    page?: number
-    limit?: number
-  }) => {
-    const response = await api.get('/items', { params })
-    return response.data
-  },
-
-  // Get single item
-  getItem: async (id: string) => {
-    const response = await api.get(`/items/${id}`)
-    return response.data
-  },
-
-  // Create new item instance
-  createItem: async (item: CreateItemRequest) => {
-    const response = await api.post('/items', item)
-    return response.data
-  },
-
-  // Update item
-  updateItem: async (id: string, updates: UpdateItemRequest) => {
-    const response = await api.put(`/items/${id}`, updates)
-    return response.data
-  },
-
-  // Delete item
-  deleteItem: async (id: string) => {
-    const response = await api.delete(`/items/${id}`)
-    return response.data
-  },
-
-  // Use items (track usage)
-  useItems: async (id: string, data: UseItemsRequest) => {
-    const response = await api.post(`/items/${id}/use`, data)
-    return response.data
-  },
-
-  // Find items by SKU code (for scanning workflow)
-  findBySKU: async (skuCode: string, params?: {
-    condition?: string
-    location?: string
+// ✅ Instances API - matches BACKEND_API_REFERENCE.md EXACTLY
+export const instancesApi = {
+  // Get instances for specific SKU - /api/instances/:sku_id
+  getInstances: async (skuId: string, params?: {
     available_only?: boolean
+    include_tagged?: boolean
   }) => {
-    const response = await api.get(`/items/sku/${encodeURIComponent(skuCode)}`, { params })
+    const response = await api.get(`/instances/${skuId}`, { params })
     return response.data
   },
 
-  // Create multiple items from SKU scan (receiving workflow)
-  createFromSKU: async (data: {
-    sku_code: string
+  // Add new stock instances - POST /api/instances/add-stock
+  addStock: async (data: {
+    sku_id: string
     quantity: number
+    unit_cost: number
     location?: string
-    condition?: string
-    purchase_price?: number
-    batch_number?: string
+    supplier?: string
+    reference_number?: string
     notes?: string
   }) => {
-    const response = await api.post('/items/receive', data)
+    const response = await api.post('/instances/add-stock', data)
     return response.data
   },
 
-  // Scan item for tagging/fulfillment
-  scanItem: async (identifier: string) => {
-    // identifier could be item ID, SKU code, or barcode
-    const response = await api.get(`/items/scan/${encodeURIComponent(identifier)}`)
-    return response.data
-  },
-
-  // Get items available for tagging
-  getAvailableItems: async (params?: {
-    sku_id?: string
+  // Update instance details - PUT /api/instances/:id
+  updateInstance: async (id: string, updates: {
     location?: string
-    min_quantity?: number
-    exclude_tagged?: boolean
+    supplier?: string
+    reference_number?: string
+    notes?: string
   }) => {
-    const response = await api.get('/items/available', { params })
+    const response = await api.put(`/instances/${id}`, updates)
+    return response.data
+  },
+
+  // Get cost analysis - GET /api/instances/cost-breakdown/:sku_id
+  getCostBreakdown: async (skuId: string) => {
+    const response = await api.get(`/instances/cost-breakdown/${skuId}`)
     return response.data
   }
 }

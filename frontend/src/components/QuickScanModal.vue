@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { barcodeApi, inventoryApi, itemsApi, skuApi } from '@/utils/api'
+import { barcodeApi, inventoryApi, instancesApi, skuApi } from '@/utils/api'
 import type { SKU, Item } from '@/types'
 
 const emit = defineEmits<{
@@ -118,16 +118,16 @@ const processAllItems = async () => {
       if (!scannedItem.sku) continue
       
       try {
-        // Create multiple Item instances for the scanned quantity
-        const response = await itemsApi.createFromSKU({
-          sku_code: scannedItem.sku.sku_code,
+        // Create multiple instances for the scanned quantity using instancesApi
+        const response = await instancesApi.addStock({
+          sku_id: scannedItem.sku._id,
           quantity: scannedItem.quantity,
+          unit_cost: scannedItem.sku.unit_cost || 0,
           location: 'Scanned Location', // Could be made configurable
-          condition: 'new',
           notes: `Created from scan of ${scannedItem.barcode} on ${scannedItem.timestamp.toLocaleDateString()}`
         })
         
-        totalCreated += response.created_count || scannedItem.quantity
+        totalCreated += response.instances?.length || scannedItem.quantity
         results.push(`${scannedItem.sku.sku_code}: Created ${scannedItem.quantity} items`)
       } catch (itemError: any) {
         console.error(`Failed to create items for ${scannedItem.sku?.sku_code}:`, itemError)

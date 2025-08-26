@@ -913,11 +913,9 @@ router.post('/:id/fulfill',
       // Update inventory for fulfilled items
       const successfulFulfillments = fulfillmentResults.filter(r => r.success);
       if (successfulFulfillments.length > 0) {
+        // Use the original tag's sku_items structure for inventory updates
         await updateInventoryForTag(
-          successfulFulfillments.map(f => ({
-            item_id: f.item_id,
-            quantity: f.quantity_fulfilled
-          })),
+          tag.sku_items,
           tag.tag_type,
           'fulfill'
         );

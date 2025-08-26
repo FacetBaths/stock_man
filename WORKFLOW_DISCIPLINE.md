@@ -15,6 +15,15 @@
 - ✅ **ALWAYS** verify backend API endpoints work before frontend migration
 - ✅ **ALWAYS** test with actual HTTP requests (curl/Postman) before frontend work
 
+### 2.1 **FRONTEND ADAPTATION RULE** 🚨
+- ❌ **NEVER** modify backend models, routes, or API responses during frontend work
+- ❌ **NEVER** add backend endpoints to fit frontend preferences
+- ❌ **NEVER** change database schema for frontend convenience
+- ✅ **ALWAYS** adapt frontend to match EXACT backend structure
+- ✅ **ALWAYS** reference BACKEND_API_REFERENCE.md before frontend changes
+- ✅ **ALWAYS** use exact field names from API responses
+- ✅ **ALWAYS** fix frontend code if it doesn't match backend, not the other way around
+
 ### 3. **ARCHITECTURE ALIGNMENT RULE**
 - ❌ **NEVER** create new models or fields without checking existing architecture
 - ❌ **NEVER** reference models that don't exist or have been deleted
@@ -85,12 +94,13 @@
 4. **THEN:** Test route with curl/Postman
 5. **FINALLY:** Verify server starts and route returns expected data
 
-### **For Frontend Tasks (Later):**
-1. **FIRST:** Test ALL backend endpoints work
-2. **THEN:** Review current frontend code structure
-3. **THEN:** Update ONE component at a time
-4. **THEN:** Test component in isolation
-5. **FINALLY:** Ensure component works with actual backend data
+### **For Frontend Tasks:**
+1. **FIRST:** Read BACKEND_API_REFERENCE.md to understand EXACT backend structure
+2. **THEN:** Test ALL backend endpoints work with curl/Postman
+3. **THEN:** Review current frontend code structure
+4. **THEN:** Update ONE component at a time to match backend
+5. **THEN:** Test component with REAL backend data
+6. **FINALLY:** If component doesn't work, fix FRONTEND code, never backend
 
 ## 📋 **ACCOUNTABILITY SYSTEM:**
 
@@ -126,6 +136,15 @@
 - ❌ Skipping testing because "it looks right"
 - ❌ Frontend work before backend is complete
 - ❌ Marking tasks complete without actual verification
+
+## 🚨 **ABSOLUTELY FORBIDDEN DURING FRONTEND WORK:**
+
+- ❌ **NEVER** modify backend models during frontend development
+- ❌ **NEVER** change API response structures to fit frontend preferences
+- ❌ **NEVER** add backend endpoints during frontend work
+- ❌ **NEVER** modify database schema for frontend convenience
+- ❌ **NEVER** change working backend code because frontend "expects" different data
+- ❌ **NEVER** work on backend files when task is frontend-focused
 
 ## ✅ **SUCCESS INDICATORS:**
 

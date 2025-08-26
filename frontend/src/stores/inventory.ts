@@ -1,14 +1,14 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { 
-  Item, 
+  Instance,
   InventoryStats, 
-  CreateItemRequest, 
-  UpdateItemRequest,
-  UseItemsRequest,
-  Inventory
+  AddStockRequest,
+  UpdateInstanceRequest,
+  Inventory,
+  InventoryResponse
 } from '@/types'
-import { inventoryApi, itemsApi } from '@/utils/api'
+import { inventoryApi, instancesApi } from '@/utils/api'
 
 export const useInventoryStore = defineStore('inventory', () => {
   // New architecture: Aggregated inventory data
@@ -16,9 +16,9 @@ export const useInventoryStore = defineStore('inventory', () => {
   const stats = ref<InventoryStats | null>(null)
   const currentSKUInventory = ref<any | null>(null)
   
-  // Individual items for the new Items API
-  const items = ref<Item[]>([])
-  const currentItem = ref<Item | null>(null)
+  // Individual instances for stock management
+  const instances = ref<Instance[]>([])
+  const currentInstance = ref<Instance | null>(null)
   
   // Loading states
   const isLoading = ref(false)
@@ -48,12 +48,12 @@ export const useInventoryStore = defineStore('inventory', () => {
     sort_order: 'asc' as 'asc' | 'desc'
   })
   
-  // Current filters for items
-  const itemFilters = ref({
+  // Current filters for instances
+  const instanceFilters = ref({
     sku_id: '',
-    condition: '',
     location: '',
-    search: ''
+    search: '',
+    available_only: false
   })
 
   // Computed properties for inventory
@@ -86,14 +86,14 @@ export const useInventoryStore = defineStore('inventory', () => {
     }
   })
 
-  // Computed properties for items
-  const itemsByCondition = computed(() => {
-    const result: Record<string, Item[]> = {}
-    items.value.forEach(item => {
-      if (!result[item.condition]) {
-        result[item.condition] = []
+  // Computed properties for instances
+  const instancesByLocation = computed(() => {
+    const result: Record<string, Instance[]> = {}
+    instances.value.forEach(instance => {
+      if (!result[instance.location]) {
+        result[instance.location] = []
       }
-      result[item.condition].push(item)
+      result[instance.location].push(instance)
     })
     return result
   })
@@ -313,62 +313,33 @@ export const useInventoryStore = defineStore('inventory', () => {
     }
   }
 
-  // Actions for items management
-  const fetchItems = async (params?: {
-    sku_id?: string
-    condition?: string
-    location?: string
-    search?: string
-    page?: number
-    limit?: number
+  // ✅ Actions for instance management using instancesApi (correct backend endpoints)
+  const fetchInstances = async (skuId: string, params?: {
+    available_only?: boolean
+    include_tagged?: boolean
   }) => {
     try {
       isLoading.value = true
       error.value = null
       
-      // Update filters
-      if (params) {
-        itemFilters.value = { ...itemFilters.value, ...params }
-      }
-
-      const response = await itemsApi.getItems(itemFilters.value)
-      items.value = response.items
+      const response = await instancesApi.getInstances(skuId, params)
+      instances.value = response.instances || []
       
       return response
     } catch (err: any) {
-      error.value = err.response?.data?.message || 'Failed to fetch items'
+      error.value = err.response?.data?.message || 'Failed to fetch instances'
       throw err
     } finally {
       isLoading.value = false
     }
   }
 
-  const fetchItem = async (id: string) => {
-    try {
-      isLoading.value = true
-      error.value = null
-      
-      const response = await itemsApi.getItem(id)
-      currentItem.value = response.item
-      
-      return response.item
-    } catch (err: any) {
-      error.value = err.response?.data?.message || 'Failed to fetch item'
-      throw err
-    } finally {
-      isLoading.value = false
-    }
-  }
-
-  const createItem = async (itemData: CreateItemRequest) => {
+  const addStock = async (data: AddStockRequest) => {
     try {
       isCreating.value = true
       error.value = null
       
-      const response = await itemsApi.createItem(itemData)
-      
-      // Add to local items list
-      items.value.unshift(response.item)
+      const response = await instancesApi.addStock(data)
       
       // Refresh inventory data
       await fetchInventory()
@@ -376,90 +347,47 @@ export const useInventoryStore = defineStore('inventory', () => {
       
       return response
     } catch (err: any) {
-      error.value = err.response?.data?.message || 'Failed to create item'
+      error.value = err.response?.data?.message || 'Failed to add stock'
       throw err
     } finally {
       isCreating.value = false
     }
   }
 
-  const updateItem = async (id: string, updates: UpdateItemRequest) => {
+  const updateInstance = async (id: string, updates: UpdateInstanceRequest) => {
     try {
       isUpdating.value = true
       error.value = null
       
-      const response = await itemsApi.updateItem(id, updates)
+      const response = await instancesApi.updateInstance(id, updates)
       
-      // Update in local state
-      const index = items.value.findIndex(item => item._id === id)
+      // Update in local instances if present
+      const index = instances.value.findIndex(instance => instance._id === id)
       if (index !== -1) {
-        items.value[index] = response.item
+        instances.value[index] = { ...instances.value[index], ...response.instance }
       }
       
-      // Update current item if it's the same
-      if (currentItem.value?._id === id) {
-        currentItem.value = response.item
+      // Update current instance if it's the same
+      if (currentInstance.value?._id === id) {
+        currentInstance.value = { ...currentInstance.value, ...response.instance }
       }
       
       return response
     } catch (err: any) {
-      error.value = err.response?.data?.message || 'Failed to update item'
+      error.value = err.response?.data?.message || 'Failed to update instance'
       throw err
     } finally {
       isUpdating.value = false
     }
   }
 
-  const deleteItem = async (id: string) => {
+  const getCostBreakdown = async (skuId: string) => {
     try {
-      isDeleting.value = true
-      error.value = null
-      
-      await itemsApi.deleteItem(id)
-      
-      // Remove from local state
-      items.value = items.value.filter(item => item._id !== id)
-      
-      // Clear current item if it was deleted
-      if (currentItem.value?._id === id) {
-        currentItem.value = null
-      }
-      
-      // Refresh inventory data
-      await fetchInventory()
-      await fetchStats()
-      
-    } catch (err: any) {
-      error.value = err.response?.data?.message || 'Failed to delete item'
-      throw err
-    } finally {
-      isDeleting.value = false
-    }
-  }
-
-  const useItems = async (id: string, usageData: UseItemsRequest) => {
-    try {
-      isUpdating.value = true
-      error.value = null
-      
-      const response = await itemsApi.useItems(id, usageData)
-      
-      // Update in local state
-      const index = items.value.findIndex(item => item._id === id)
-      if (index !== -1) {
-        items.value[index] = response.item
-      }
-      
-      // Refresh inventory data
-      await fetchInventory()
-      await fetchStats()
-      
+      const response = await instancesApi.getCostBreakdown(skuId)
       return response
     } catch (err: any) {
-      error.value = err.response?.data?.message || 'Failed to use items'
+      error.value = err.response?.data?.message || 'Failed to get cost breakdown'
       throw err
-    } finally {
-      isUpdating.value = false
     }
   }
 
@@ -544,11 +472,6 @@ export const useInventoryStore = defineStore('inventory', () => {
     fetchInventory({ page: 1 })
   }
 
-  const updateItemFilters = (newFilters: Partial<typeof itemFilters.value>) => {
-    itemFilters.value = { ...itemFilters.value, ...newFilters }
-    fetchItems({ page: 1 })
-  }
-
   const clearInventoryFilters = () => {
     inventoryFilters.value = {
       category_id: '',
@@ -560,14 +483,17 @@ export const useInventoryStore = defineStore('inventory', () => {
     fetchInventory({ page: 1 })
   }
 
-  const clearItemFilters = () => {
-    itemFilters.value = {
+  const updateInstanceFilters = (newFilters: Partial<typeof instanceFilters.value>) => {
+    instanceFilters.value = { ...instanceFilters.value, ...newFilters }
+  }
+
+  const clearInstanceFilters = () => {
+    instanceFilters.value = {
       sku_id: '',
-      condition: '',
       location: '',
-      search: ''
+      search: '',
+      available_only: false
     }
-    fetchItems({ page: 1 })
   }
 
   // Backward compatibility methods for existing views
@@ -577,43 +503,27 @@ export const useInventoryStore = defineStore('inventory', () => {
     search?: string 
     page?: number
   }) => {
-    // The original loadItems actually called the inventory endpoint, not items
-    // So we should call inventoryApi.getItems() which maps to /inventory
-    try {
-      isLoading.value = true
-      error.value = null
-      
-      const response = await inventoryApi.getItems({
-        product_type: params?.product_type,
-        search: params?.search,
-        page: params?.page,
-        in_stock_only: params?.in_stock_only
-      })
-      
-      // Map the response to the items array (backward compatibility)
-      items.value = response.items || []
-      
-      return response
-    } catch (err: any) {
-      error.value = err.response?.data?.message || 'Failed to load items'
-      throw err
-    } finally {
-      isLoading.value = false
-    }
+    // Map to fetchInventory for backward compatibility
+    return await fetchInventory({
+      search: params?.search,
+      page: params?.page || 1,
+      status: params?.in_stock_only ? undefined : 'all'
+    })
   }
 
   const loadStats = async () => {
     return await fetchStats()
   }
 
-  // Computed property for backward compatibility
+  // Computed property for backward compatibility  
   const itemsByType = computed(() => {
     const result: Record<string, any[]> = {}
-    items.value.forEach(item => {
-      if (!result[item.product_type]) {
-        result[item.product_type] = []
+    inventory.value.forEach(item => {
+      const type = item.product_type || 'unknown'
+      if (!result[type]) {
+        result[type] = []
       }
-      result[item.product_type].push(item)
+      result[type].push(item)
     })
     return result
   })
@@ -624,10 +534,10 @@ export const useInventoryStore = defineStore('inventory', () => {
     currentSKUInventory,
     inventoryFilters,
     
-    // State - Items  
-    items,
-    currentItem,
-    itemFilters,
+    // State - Instances
+    instances,
+    currentInstance,
+    instanceFilters,
     
     // State - General
     stats,
@@ -647,7 +557,7 @@ export const useInventoryStore = defineStore('inventory', () => {
     // Computed
     inventoryByStatus,
     inventoryStats,
-    itemsByCondition,
+    instancesByLocation,
     itemsByType, // Backward compatibility
     
     // Actions - Inventory
@@ -659,13 +569,11 @@ export const useInventoryStore = defineStore('inventory', () => {
     moveStock,
     removeStock,
     
-    // Actions - Items
-    fetchItems,
-    fetchItem,
-    createItem,
-    updateItem,
-    deleteItem,
-    useItems,
+    // Actions - Instances
+    fetchInstances,
+    addStock,
+    updateInstance,
+    getCostBreakdown,
     
     // Actions - Alerts & Reports
     fetchLowStockAlerts,
@@ -680,9 +588,7 @@ export const useInventoryStore = defineStore('inventory', () => {
     // Helpers
     clearError,
     updateInventoryFilters,
-    updateItemFilters,
     clearInventoryFilters,
-    clearItemFilters,
     
     // Backward compatibility methods
     loadItems,

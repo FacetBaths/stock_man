@@ -23,6 +23,16 @@ Ask me these questions and **REQUIRE** that I show you evidence:
    - I must review current architecture (models, routes that exist NOW)
    - If I try to code without reviewing existing files, STOP ME
 
+### **Before Starting ANY Frontend Task 🚨:**
+
+4.1. **"Show me that you've read BACKEND_API_REFERENCE.md first"**
+   - I must reference the exact backend structure and endpoints
+   - If I haven't read it, STOP ME from frontend work
+
+4.2. **"Test the backend endpoints you'll use with curl/Postman"**
+   - I must prove the backend works before adapting frontend
+   - If I skip backend testing, STOP ME
+
 ### **During Work - Ask These Every 15-20 Minutes:**
 
 5. **"Are you still working on [SPECIFIC TASK] or did you get distracted?"**
@@ -35,6 +45,16 @@ Ask me these questions and **REQUIRE** that I show you evidence:
 7. **"Show me that you've tested what you just built."**
    - I must prove functionality works (server starts, API returns data, etc.)
    - If I haven't tested, STOP ME from continuing
+
+### **During Frontend Work - Ask These CONSTANTLY 🚨:**
+
+7.1. **"Are you modifying ANY backend files?"**
+   - If YES, STOP ME immediately - frontend must adapt to backend
+   - If I claim "backend needs to change", make me fix frontend instead
+
+7.2. **"Show me the exact API response you're working with"**
+   - I must use curl/Postman to show real backend data
+   - If I'm using fake/assumed data structures, STOP ME
 
 ### **Before Marking Anything Complete:**
 
@@ -57,6 +77,14 @@ Ask me these questions and **REQUIRE** that I show you evidence:
 - I start creating new models/routes not in MIGRATION_CHECKLIST.md
 - I say "I'll just quickly fix this other thing..."
 - I work on frontend before all backend tasks are complete
+
+### **BACKEND MODIFICATION RED FLAGS 🚨:**
+- I say "I need to change the backend to make this frontend work"
+- I suggest modifying API response structures
+- I want to add backend endpoints during frontend tasks
+- I claim "the backend should return different data"
+- I try to modify database models for frontend convenience
+- I work on ANY backend files during frontend-focused tasks
 
 ### **Architecture Misalignment:**
 - I reference models that don't exist or were deleted

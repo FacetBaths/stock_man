@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { tagApi, inventoryApi, itemsApi } from '@/utils/api'
+import { tagApi, inventoryApi, instancesApi, skuApi } from '@/utils/api'
 import { TAG_TYPES } from '@/types'
 import type { Item, SKU } from '@/types'
 
@@ -232,43 +232,28 @@ const loadAvailableItems = async () => {
   try {
     error.value = null
     
-    // Use the new items API to get actual Item records
-    const response = await itemsApi.getAvailableItems({
-      exclude_tagged: false, // Include already tagged items for flexibility
-      min_quantity: 1 // Only items with available quantity
+    // Use inventory API to get available inventory items which represent instances
+    const response = await inventoryApi.getInventory({
+      status: 'all',
+      limit: 1000 // Get a large set of inventory items
     })
     
-    // The response should have items that are actual Item instances
-    if (response.items && Array.isArray(response.items)) {
-      availableItems.value = response.items.map(item => ({
-        ...item,
-        // Ensure we have the quantity field for UI display
-        quantity: item.quantity || 0
-      }))
+    // The inventory API returns an 'inventory' array, not 'items'
+    if (response.inventory && Array.isArray(response.inventory)) {
+      // Convert inventory records to item-like objects for tagging
+      availableItems.value = response.inventory
+        .filter(inv => inv.available_quantity > 0)
+        .map(inv => ({
+          _id: `${inv.sku._id}-available`, // Create unique ID for available inventory
+          sku_id: inv.sku,
+          product_type: inv.sku.product_type || 'miscellaneous',
+          product_details: inv.sku.product_details || { name: inv.sku.description || inv.sku.sku_code },
+          location: inv.primary_location || 'Not specified',
+          quantity: inv.available_quantity,
+          serial_number: inv.sku.sku_code
+        }))
     } else {
-      // Fallback: use inventory API if items API not available
-      console.log('Falling back to inventory API')
-      const inventoryResponse = await inventoryApi.getInventory({
-        status: 'all',
-        limit: 1000
-      })
-      
-      if (inventoryResponse.inventory) {
-        // Convert inventory records to item-like objects for tagging
-        availableItems.value = inventoryResponse.inventory
-          .filter(inv => inv.available_quantity > 0)
-          .map(inv => ({
-            _id: inv.sku._id, // Use SKU ID as item ID for backward compatibility
-            sku_id: inv.sku,
-            product_type: inv.sku.product_type || 'miscellaneous',
-            product_details: inv.sku.details || { name: inv.sku.description || inv.sku.sku_code },
-            location: inv.primary_location || 'Not specified',
-            quantity: inv.available_quantity,
-            serial_number: inv.sku.sku_code
-          }))
-      } else {
-        availableItems.value = []
-      }
+      availableItems.value = []
     }
     
   } catch (err: any) {
