@@ -35,11 +35,11 @@ export const useCategoryStore = defineStore('category', () => {
   )
 
   const toolCategories = computed(() => 
-    categories.value.filter(cat => cat.is_tool_category)
+    categories.value.filter(cat => cat.type === 'tool')
   )
 
   const productCategories = computed(() => 
-    categories.value.filter(cat => !cat.is_tool_category)
+    categories.value.filter(cat => cat.type === 'product')
   )
 
   const categoryStats = computed(() => {
@@ -78,6 +78,12 @@ export const useCategoryStore = defineStore('category', () => {
     search?: string
   }) => {
     try {
+      console.log('🔍 [CategoryStore] fetchCategories called with:', {
+        filters: filters.value,
+        params,
+        mergedParams: { ...filters.value, ...params }
+      })
+      
       isLoading.value = true
       error.value = null
 
@@ -86,9 +92,17 @@ export const useCategoryStore = defineStore('category', () => {
         ...params
       })
 
+      console.log('✅ [CategoryStore] API response received:', response)
+      console.log('📦 [CategoryStore] Categories array:', response.categories)
+      console.log('📊 [CategoryStore] Categories count:', response.categories?.length || 0)
+
       categories.value = response.categories
+      console.log('💾 [CategoryStore] Categories stored in state:', categories.value)
+      
       return response
     } catch (err: any) {
+      console.error('❌ [CategoryStore] fetchCategories error:', err)
+      console.error('❌ [CategoryStore] Error response:', err.response?.data)
       error.value = err.response?.data?.message || 'Failed to fetch categories'
       throw err
     } finally {
@@ -225,8 +239,8 @@ export const useCategoryStore = defineStore('category', () => {
     return categories.value.find(cat => cat._id === id)
   }
 
-  const getCategoryBySlug = (slug: string): Category | undefined => {
-    return categories.value.find(cat => cat.slug === slug)
+  const getCategoryByName = (name: string): Category | undefined => {
+    return categories.value.find(cat => cat.name === name)
   }
 
   const getChildCategories = (parentId: string): Category[] => {
@@ -264,8 +278,7 @@ export const useCategoryStore = defineStore('category', () => {
     const searchTerm = query.toLowerCase()
     return categories.value.filter(cat => 
       cat.name.toLowerCase().includes(searchTerm) ||
-      cat.description?.toLowerCase().includes(searchTerm) ||
-      cat.slug.toLowerCase().includes(searchTerm)
+      cat.description?.toLowerCase().includes(searchTerm)
     )
   }
 
@@ -319,7 +332,7 @@ export const useCategoryStore = defineStore('category', () => {
     updateCategory,
     deleteCategory,
     getCategoryById,
-    getCategoryBySlug,
+    getCategoryByName,
     getChildCategories,
     getCategoryPath,
     getCategoryBreadcrumb,

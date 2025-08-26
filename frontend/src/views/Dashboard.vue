@@ -32,16 +32,38 @@ const availableFilters = computed(() => [
   { value: 'overstock', label: 'Overstock' }
 ])
 
+// Helper function to convert to title case
+const toTitleCase = (str: string): string => {
+  return str.replace(/\w\S*/g, (txt) => {
+    return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase()
+  })
+}
+
 // Available categories for filtering
 const availableCategories = computed(() => {
+  console.log('🎯 [Dashboard] availableCategories computed triggered')
+  console.log('📋 [Dashboard] categoryStore.categories:', categoryStore.categories)
+  console.log('📊 [Dashboard] categoryStore.categories.length:', categoryStore.categories?.length || 0)
+  
   const categories = [{ _id: '', name: 'All Categories' }]
   if (categoryStore.categories && categoryStore.categories.length > 0) {
-    // Handle both old and new category structures
-    categories.push(...categoryStore.categories.map(cat => ({
-      _id: cat._id || cat.id,
-      name: cat.name || cat.displayName || 'Unnamed Category'
-    })))
+    console.log('✅ [Dashboard] Categories found, mapping...')
+    // Handle both old and new category structures with title case formatting
+    const mappedCategories = categoryStore.categories.map(cat => {
+      console.log('🔄 [Dashboard] Mapping category:', cat)
+      const rawName = cat.name || cat.displayName || 'Unnamed Category'
+      return {
+        _id: cat._id || cat.id,
+        name: toTitleCase(rawName)
+      }
+    })
+    console.log('🔄 [Dashboard] Mapped categories:', mappedCategories)
+    categories.push(...mappedCategories)
+  } else {
+    console.log('❌ [Dashboard] No categories found or empty array')
   }
+  
+  console.log('📦 [Dashboard] Final availableCategories:', categories)
   return categories
 })
 
@@ -211,13 +233,22 @@ const formatTotalValue = (value?: number) => {
 const canViewCost = computed(() => authStore.hasPermission('view_cost') || authStore.hasRole(['admin', 'warehouse_manager']))
 
 onMounted(async () => {
+  console.log('🚀 [Dashboard] onMounted called')
+  
   try {
+    console.log('🔄 [Dashboard] Starting fetchCategories...')
     await categoryStore.fetchCategories()
+    console.log('✅ [Dashboard] fetchCategories completed')
+    console.log('📋 [Dashboard] categoryStore.categories after fetch:', categoryStore.categories)
+    console.log('📊 [Dashboard] Categories length after fetch:', categoryStore.categories?.length || 0)
+    
     if (!categoryStore.categories || categoryStore.categories.length === 0) {
-      console.warn('No categories found in database. Categories may need to be seeded.')
+      console.warn('⚠️ [Dashboard] No categories found in database. Categories may need to be seeded.')
+    } else {
+      console.log('✅ [Dashboard] Categories loaded successfully:', categoryStore.categories.length)
     }
   } catch (error) {
-    console.error('Failed to load categories:', error)
+    console.error('❌ [Dashboard] Failed to load categories:', error)
   }
   
   // Fetch stats and initial inventory data for better UX

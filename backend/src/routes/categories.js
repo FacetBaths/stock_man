@@ -64,8 +64,14 @@ router.get('/',
   ],
   async (req, res) => {
     try {
+      console.log('🔍 [Categories API] Request received:', {
+        query: req.query,
+        url: req.url
+      })
+      
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
+        console.error('❌ [Categories API] Validation failed:', errors.array())
         return res.status(400).json({ 
           message: 'Validation failed', 
           errors: errors.array() 
@@ -76,7 +82,8 @@ router.get('/',
       const filter = {};
       
       if (req.query.active_only === 'true') {
-        filter.is_active = true;
+        filter.status = 'active';
+        console.log('✅ [Categories API] Adding active filter: status = active')
       }
       
       if (req.query.parent_id) {
@@ -94,6 +101,8 @@ router.get('/',
         ];
       }
 
+      console.log('🔎 [Categories API] Final filter object:', filter)
+
       let query = Category.find(filter).sort({ sort_order: 1, name: 1 });
       
       if (req.query.include_children === 'true') {
@@ -101,18 +110,24 @@ router.get('/',
       }
 
       const categories = await query;
+      console.log('📦 [Categories API] Query result:', {
+        count: categories.length,
+        categories: categories.map(c => ({ _id: c._id, name: c.name, status: c.status }))
+      })
 
       // If requesting top-level categories with children, build hierarchy
       if (req.query.parent_id === 'null' && req.query.include_children === 'true') {
         // Build hierarchical structure
         const hierarchical = await Category.buildHierarchy();
+        console.log('🌳 [Categories API] Returning hierarchy')
         return res.json({ categories: hierarchical });
       }
 
+      console.log('✅ [Categories API] Returning categories:', categories.length)
       res.json({ categories });
 
     } catch (error) {
-      console.error('Get categories error:', error);
+      console.error('❌ [Categories API] Error:', error);
       res.status(500).json({ 
         message: 'Failed to fetch categories', 
         error: error.message 

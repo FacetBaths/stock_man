@@ -53,21 +53,21 @@ export interface ChangePasswordRequest {
   newPassword: string
 }
 
-// New Category system for hierarchical organization
+// New Category system - matches actual backend Category model structure
 export interface Category {
   _id: string
   name: string
-  slug: string
+  type: 'product' | 'tool'        // Backend uses 'type' not is_tool_category
   description?: string
-  parent_id?: string | Category
-  children?: Category[]
-  is_tool_category: boolean
-  status: 'active' | 'inactive'
+  attributes?: string[]           // Backend has attributes array
   sort_order: number
-  created_by: string
-  last_updated_by: string
-  createdAt: string
-  updatedAt: string
+  status: 'active' | 'inactive'
+  createdAt?: string
+  updatedAt?: string
+  displayName?: string            // Backend virtual field
+  id?: string                     // Backend includes this
+  parent_id?: string | Category   // For hierarchical structure (if used)
+  children?: Category[]           // For hierarchical structure (if used)
 }
 
 // ✅ SKU model - matches BACKEND_API_REFERENCE.md EXACTLY

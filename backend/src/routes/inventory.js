@@ -99,7 +99,7 @@ router.get('/', auth, async (req, res) => {
     // Category filtering
     if (category_id && category_id !== 'all') {
       pipeline.push({
-        $match: { 'sku.category_id': require('mongoose').Types.ObjectId(category_id) }
+        $match: { 'sku.category_id': new require('mongoose').Types.ObjectId(category_id) }
       });
     }
 
