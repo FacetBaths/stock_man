@@ -6,10 +6,9 @@ import { useCategoryStore } from '@/stores/category'
 import { tagApi } from '@/utils/api'
 import type { Tag, Item } from '@/types'
 import { TAG_TYPES } from '@/types'
-import CreateTagModalNew from '@/components/CreateTagModalNew.vue'
+import CreateTagModal from '@/components/CreateTagModal.vue'
 import EditTagModal from '@/components/EditTagModal.vue'
-import SendForInstallDialog from '@/components/SendForInstallDialog.vue'
-import ProductUsedDialog from '@/components/ProductUsedDialog.vue'
+import FulfillTagsDialog from '@/components/FulfillTagsDialog.vue'
 import { useQuasar } from 'quasar'
 
 const authStore = useAuthStore()
@@ -21,8 +20,7 @@ const $q = useQuasar()
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const tagToEdit = ref<Tag | null>(null)
-const showSendForInstallDialog = ref(false)
-const showProductUsedDialog = ref(false)
+const showFulfillDialog = ref(false)
 const selectedTags = ref<Tag[]>([])
 
 // Store state computed properties
@@ -137,23 +135,31 @@ const clearError = () => {
   tagStore.clearError()
 }
 
-// Send for Install workflow
-const handleSendForInstall = () => {
-  showSendForInstallDialog.value = true
+// Fulfill Tags workflow
+const handleFulfillTags = () => {
+  showFulfillDialog.value = true
 }
 
-// Product Used workflow  
-const handleProductUsed = () => {
-  showProductUsedDialog.value = true
-}
-
-// Handle dialog success events
-const handleDialogSuccess = async (results: any) => {
-  $q.notify({
-    type: 'positive',
-    message: results.message || 'Operation completed successfully',
-    timeout: 5000
-  })
+// Handle fulfill dialog success
+const handleFulfillSuccess = async (results: any) => {
+  const fulfilledCount = results.fulfilled_tags?.length || 0
+  const failedCount = results.failed_tags?.length || 0
+  
+  if (fulfilledCount > 0) {
+    $q.notify({
+      type: 'positive',
+      message: `Successfully fulfilled ${fulfilledCount} tag${fulfilledCount === 1 ? '' : 's'}`,
+      timeout: 5000
+    })
+  }
+  
+  if (failedCount > 0) {
+    $q.notify({
+      type: 'warning',
+      message: `${failedCount} tag${failedCount === 1 ? '' : 's'} failed to fulfill`,
+      timeout: 5000
+    })
+  }
   
   await loadTags()
   await loadStats()
@@ -163,33 +169,38 @@ const formatDate = (dateString: string) => {
   return new Date(dateString).toLocaleDateString()
 }
 
-const getItemsDisplay = (items: any[]) => {
-  if (!items || items.length === 0) return 'No items'
+const getItemsDisplay = (skuItems: any[]) => {
+  console.log('📋 [Tags] getItemsDisplay called with:', skuItems)
   
-  return items.map(tagItem => {
-    // Handle populated vs unpopulated item references
-    const item = typeof tagItem.item_id === 'object' ? tagItem.item_id : null
-    if (!item) return `Item ${tagItem.item_id} (${tagItem.remaining_quantity || tagItem.quantity})`
+  if (!skuItems || skuItems.length === 0) {
+    console.log('❌ [Tags] No sku_items found')
+    return 'No items'
+  }
+  
+  return skuItems.map(tagItem => {
+    console.log('🔄 [Tags] Processing tagItem:', tagItem)
     
-    const sku = typeof item.sku_id === 'object' ? item.sku_id : null
-    if (!sku) return `Unknown SKU (${tagItem.remaining_quantity || tagItem.quantity})`
+    // NEW STRUCTURE: Handle sku_items with direct sku_id reference or populated SKU data
+    const sku = tagItem.sku_details || tagItem.sku_id || null
+    const quantity = tagItem.remaining_quantity || tagItem.quantity || 0
     
-    const quantity = tagItem.remaining_quantity || tagItem.quantity
-    let displayName = sku.sku_code || 'Unknown SKU'
-    
-    // Add product details if available
-    if (sku.details) {
-      const details = sku.details
-      if (details.product_line && details.color_name) {
-        displayName += ` (${details.product_line} - ${details.color_name})`
-      } else if (sku.name) {
-        displayName += ` (${sku.name})`
-      } else if (details.brand) {
-        displayName += ` (${details.brand})`
-      }
+    if (!sku) {
+      console.log('⚠️ [Tags] No SKU data found for item')
+      return `SKU ${tagItem.sku_id} (${quantity})`
     }
     
-    return `${displayName} (${quantity})`
+    let displayName = sku.sku_code || 'Unknown SKU'
+    
+    // Add description if available
+    if (sku.description && sku.description.trim()) {
+      displayName = `${sku.sku_code} - ${sku.description}`
+    } else if (sku.name) {
+      displayName = `${sku.sku_code} - ${sku.name}`
+    }
+    
+    const result = `${displayName} (${quantity})`
+    console.log('✅ [Tags] Item display result:', result)
+    return result
   }).join(', ')
 }
 
@@ -206,8 +217,8 @@ const tableColumns = [
   {
     name: 'items',
     label: 'Items',
-    field: 'items',
-    format: (items: any[]) => getItemsDisplay(items),
+    field: 'sku_items',  // Changed from 'items' to 'sku_items'
+    format: (skuItems: any[]) => getItemsDisplay(skuItems),
     align: 'left',
     sortable: false
   },
@@ -228,8 +239,8 @@ const tableColumns = [
   {
     name: 'quantity',
     label: 'Total Quantity',
-    field: 'items',
-    format: (items: any[]) => getTotalQuantity(items),
+    field: 'sku_items',  // Changed from 'items' to 'sku_items'
+    format: (skuItems: any[]) => getTotalQuantity(skuItems),
     align: 'center',
     sortable: false
   },
@@ -365,34 +376,22 @@ const tableColumns = [
           <!-- Action Buttons -->
           <div class="col-auto" v-if="authStore.canWrite">
             <div class="row q-gutter-sm">
-              <!-- Send for Install -->
+              <!-- Fulfill Tags -->
               <q-btn
-                @click="handleSendForInstall"
-                color="orange"
-                icon="local_shipping"
-                label="Send for Install"
-                class="add-btn"
-                no-caps
-              >
-                <q-tooltip>Batch scan and send tagged materials for installation</q-tooltip>
-              </q-btn>
-              
-              <!-- Product Used -->
-              <q-btn
-                @click="handleProductUsed"
-                color="deep-orange"
+                @click="handleFulfillTags"
+                color="positive"
                 icon="done_all"
-                label="Product Used"
+                label="Fulfill Tags"
                 class="add-btn"
                 no-caps
               >
-                <q-tooltip>Mark tagged products as used/consumed</q-tooltip>
+                <q-tooltip>Select and fulfill active tags</q-tooltip>
               </q-btn>
               
               <!-- Create Tag -->
               <q-btn
                 @click="showCreateModal = true"
-                color="positive"
+                color="primary"
                 icon="add"
                 label="Create Tag"
                 class="add-btn"
@@ -443,8 +442,8 @@ const tableColumns = [
           <template v-slot:body-cell-items="props">
             <q-td :props="props" style="max-width: 400px">
               <div class="items-display">
-                <div v-if="props.row.items && props.row.items.length > 0" class="q-gutter-xs">
-                  <div v-for="(tagItem, index) in props.row.items" :key="index" class="item-chip">
+                <div v-if="props.row.sku_items && props.row.sku_items.length > 0" class="q-gutter-xs">
+                  <div v-for="(skuItem, index) in props.row.sku_items" :key="index" class="item-chip">
                     <q-chip 
                       size="sm" 
                       color="blue-grey-2" 
@@ -453,26 +452,18 @@ const tableColumns = [
                       class="q-mb-xs"
                     >
                       <span class="text-weight-medium">
-                        <template v-if="typeof tagItem.item_id === 'object' && tagItem.item_id?.sku_id">
-                          {{ tagItem.item_id.sku_id.sku_code || 'Unknown SKU' }}
+                        <template v-if="typeof skuItem.sku_id === 'object' && skuItem.sku_id?.sku_code">
+                          {{ skuItem.sku_id.sku_code || 'Unknown SKU' }}
                         </template>
                         <template v-else>
-                          Item {{ tagItem.item_id }}
+                          SKU {{ skuItem.sku_id }}
                         </template>
                       </span>
-                      <span v-if="typeof tagItem.item_id === 'object' && tagItem.item_id?.sku_id?.details" class="q-ml-xs text-caption">
-                        (<template v-if="tagItem.item_id.sku_id.details.product_line && tagItem.item_id.sku_id.details.color_name">
-                          {{ tagItem.item_id.sku_id.details.product_line }} - {{ tagItem.item_id.sku_id.details.color_name }}
-                        </template>
-                        <template v-else-if="tagItem.item_id.sku_id.name">
-                          {{ tagItem.item_id.sku_id.name }}
-                        </template>
-                        <template v-else-if="tagItem.item_id.sku_id.details.brand">
-                          {{ tagItem.item_id.sku_id.details.brand }}
-                        </template>)
+                      <span v-if="typeof skuItem.sku_id === 'object' && skuItem.sku_id?.description" class="q-ml-xs text-caption">
+                        - {{ skuItem.sku_id.description }}
                       </span>
                       <q-badge color="primary" floating transparent>
-                        {{ tagItem.remaining_quantity || tagItem.quantity }}
+                        {{ skuItem.remaining_quantity || skuItem.quantity }}
                       </q-badge>
                     </q-chip>
                   </div>
@@ -552,7 +543,7 @@ const tableColumns = [
     </div>
 
     <!-- Tag Management Modals -->
-    <CreateTagModalNew
+    <CreateTagModal
       v-if="showCreateModal"
       @close="showCreateModal = false"
       @success="handleCreateSuccess"
@@ -565,18 +556,11 @@ const tableColumns = [
       @success="handleEditSuccess"
     />
 
-    <!-- Fulfillment Dialog Components -->
-    <SendForInstallDialog
-      :show="showSendForInstallDialog"
-      @close="showSendForInstallDialog = false"
-      @success="handleDialogSuccess"
-    />
-
-    <ProductUsedDialog
-      :show="showProductUsedDialog"
-      :preselected-customer="customerFilter.trim() || undefined"
-      @close="showProductUsedDialog = false"
-      @success="handleDialogSuccess"
+    <!-- Fulfill Tags Dialog -->
+    <FulfillTagsDialog
+      :show="showFulfillDialog"
+      @close="showFulfillDialog = false"
+      @success="handleFulfillSuccess"
     />
   </q-page>
 </template>

@@ -1,6 +1,6 @@
 STOCK MANAGER MIGRATION PROGRESS
 ================================
-Last Updated: 2025-08-26 04:46 UTC
+Last Updated: 2025-08-27 18:28 UTC
 
 BACKEND PROGRESS: 9/9 Tasks Complete (100%) - BACKEND FULLY COMPLETE! 🎆
 ========================================================================
@@ -72,7 +72,7 @@ FRONTEND PROGRESS: 5/10 Tasks Complete (50%)
    - Updated to use instancesApi.addStock endpoint via inventoryStore.addStock
    - Component tested with backend instances endpoints (build successful)
    - All functionality verified with proper Instance model integration
-✅ Update CreateTagModal component - COMPLETED 2025-08-26 18:21 UTC
+✅ Update CreateTagModal component - COMPLETED 2025-08-26 18:21 UTC + CLEANUP 2025-08-27 18:36 UTC
    - CreateTagModalNew.vue rewritten for SKU/Instance architecture
    - Component code updated to use new APIs and data structures
    - CRITICAL BUG FIXED: Infinite loop in dashboard/inventory (filters object reference issue)
@@ -83,6 +83,8 @@ FRONTEND PROGRESS: 5/10 Tasks Complete (50%)
    - New sku_items structure successfully processed by backend
    - Inventory updates properly reflected (available: 5→3→2, reserved: 5→7→8)
    - All success criteria verified through direct API testing
+   - CLEANUP COMPLETED: Removed legacy CreateTagModal.vue, renamed CreateTagModalNew.vue → CreateTagModal.vue
+   - Updated Tags.vue imports, removed debugging logs, verified component compilation
 ✅ Fix category dropdown issue - COMPLETED 2025-08-26 19:42 UTC
    - CRITICAL BUG FIXED: Backend categories route filtering by wrong field
    - Route was filtering by 'is_active' but Category model uses 'status' field
@@ -107,6 +109,10 @@ OVERALL: 14/22 Tasks Complete (64%)
 
 NEXT IMMEDIATE TASK: Fix category dropdown issue
 
+NOTE: Category display issue discovered - TEST TOILET shows "Unknown Category" in inventory table.
+      This indicates a problem with SKU-to-category relationship display in the frontend.
+      Added to MIGRATION_CHECKLIST.md as separate task for investigation.
+
 SUCCESS: CreateTagModal migration fully completed and tested!
 ✅ Fixed infinite loop (filters object reference stability)
 ✅ Backend server running properly (port 5000)
@@ -115,6 +121,18 @@ SUCCESS: CreateTagModal migration fully completed and tested!
 ✅ FIFO selection method verified working
 ✅ Cost-based selection method verified working
 ✅ All API calls working correctly with sku_items structure
+
+🚨 CRITICAL BACKEND API DESIGN FLAW DISCOVERED - 2025-08-27 18:28 UTC
+================================================================
+❌ Tag fulfillment API violates documented architecture (ARCHITECTURE.md & BACKEND_API_REFERENCE.md)
+   - Current: POST /api/tags/:id/fulfill accepts fulfillment_items with item_id but IGNORES them
+   - Current: Calls tag.fulfillItems() which fulfills ALL items, not specific instances
+   - Expected: Should delete only specific Instance records by ID as documented
+   - Problem: API validates item_id parameter but doesn't use it (lines 862, 888 in tags.js)
+   - Impact: Frontend sends specific instance IDs but backend fulfills everything
+   - Fix Required: Rewrite fulfill endpoint to use Instance.findByIdAndDelete() for each item_id
+   - Architecture Violation: Documents specify "scan barcodes" and "delete assigned instances"
+   - This breaks the documented workflow where warehouse managers confirm physical items
 
 NOTE: db_conversion utility will map legacy Items → Instances with costs,
       convert Tags to SKU-based, handle conflicts, prompt for missing data

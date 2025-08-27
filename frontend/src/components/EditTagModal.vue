@@ -26,7 +26,7 @@ const formData = ref<UpdateTagRequest>({
   status: 'active',
   due_date: '',
   project_name: '',
-  items: []
+  sku_items: []
 })
 
 // Component state
@@ -78,62 +78,45 @@ const tagTypeDescription = computed(() => {
   }
 })
 
-const totalTaggedItems = computed(() => props.tag.items?.length || 0)
+const totalTaggedItems = computed(() => props.tag.sku_items?.length || 0)
 const totalTaggedQuantity = computed(() => 
-  props.tag.items?.reduce((sum, item) => sum + (item.remaining_quantity || item.quantity || 0), 0) || 0
+  props.tag.sku_items?.reduce((sum, item) => sum + (item.remaining_quantity || item.quantity || 0), 0) || 0
 )
 
-const getItemDisplayName = (item: any) => {
-  // Handle null or undefined items
-  if (!item) {
+const getSkuDisplayName = (skuItem: any) => {
+  // Handle null or undefined sku items
+  if (!skuItem) {
     return 'Unknown Item'
   }
   
-  // Handle string item_id (not populated)
-  if (typeof item === 'string') {
-    return `Item ID: ${item}`
+  // Handle string sku_id (not populated)
+  if (typeof skuItem.sku_id === 'string') {
+    return `SKU ID: ${skuItem.sku_id}`
   }
   
-  // Handle populated item from tag
-  if (typeof item === 'object' && item.sku_id) {
-    const sku = typeof item.sku_id === 'object' ? item.sku_id : null
-    if (sku) {
-      let displayName = sku.sku_code || 'Unknown SKU'
-      if (sku.details) {
-        const details = sku.details
-        if (details.product_line && details.color_name) {
-          displayName += ` (${details.product_line} - ${details.color_name})`
-        } else if (details.name) {
-          displayName += ` (${details.name})`
-        } else if (details.brand) {
-          displayName += ` (${details.brand})`
-        }
-      }
-      return displayName
+  // Handle populated SKU from sku_items
+  if (typeof skuItem.sku_id === 'object' && skuItem.sku_id) {
+    const sku = skuItem.sku_id
+    let displayName = sku.sku_code || 'Unknown SKU'
+    
+    // Add description if available
+    if (sku.description && sku.description.trim()) {
+      displayName = `${sku.sku_code} - ${sku.description}`
+    } else if (sku.name) {
+      displayName = `${sku.sku_code} - ${sku.name}`
     }
-  }
-  
-  // Handle direct item object with product_details (old structure)
-  if (typeof item === 'object' && item.product_details) {
-    const details = item.product_details
-    if (item.product_type === 'wall') {
-      return `${details.product_line || 'Unknown'} - ${details.color_name || 'Unknown'} (${details.dimensions || 'Unknown'})`
-    } else {
-      let name = details.name || 'Unnamed Item'
-      if (details.brand) name = `${details.brand} ${name}`
-      if (details.model) name = `${name} (${details.model})`
-      return name
-    }
+    
+    return displayName
   }
   
   // Fallback: try to show any identifying information
-  if (typeof item === 'object') {
-    if (item.name) return item.name
-    if (item.title) return item.title
-    if (item._id) return `Item ID: ${item._id}`
+  if (typeof skuItem === 'object') {
+    if (skuItem.sku_code) return skuItem.sku_code
+    if (skuItem.name) return skuItem.name
+    if (skuItem._id) return `SKU ID: ${skuItem._id}`
   }
   
-  return 'Unknown Item'
+  return 'Unknown SKU'
 }
 
 const getTagTypeColor = (tagType: string) => {
@@ -158,11 +141,11 @@ const initializeForm = () => {
     status: props.tag.status,
     due_date: props.tag.due_date ? new Date(props.tag.due_date).toISOString().split('T')[0] : '',
     project_name: props.tag.project_name || '',
-    items: props.tag.items?.map(item => ({
-      item_id: item.item_id && typeof item.item_id === 'object' ? item.item_id._id : (item.item_id || 'unknown'),
-      quantity: item.quantity || 0,
-      remaining_quantity: item.remaining_quantity || 0,
-      notes: item.notes || ''
+    sku_items: props.tag.sku_items?.map(skuItem => ({
+      sku_id: skuItem.sku_id && typeof skuItem.sku_id === 'object' ? skuItem.sku_id._id : (skuItem.sku_id || 'unknown'),
+      quantity: skuItem.quantity || 0,
+      remaining_quantity: skuItem.remaining_quantity || 0,
+      notes: skuItem.notes || ''
     })) || []
   }
 }
@@ -209,7 +192,7 @@ const handleSubmit = async () => {
       status: formData.value.status,
       due_date: formData.value.due_date || undefined,
       project_name: formData.value.project_name?.trim() || undefined,
-      items: formData.value.items
+      sku_items: formData.value.sku_items
     }
     
     await tagApi.updateTag(props.tag._id, submitData)
@@ -263,26 +246,26 @@ onMounted(() => {
                   <div class="spinner"></div>
                   Loading item details...
                 </div>
-                <div v-else-if="props.tag.items && props.tag.items.length > 0" class="items-list">
-                  <div v-for="(tagItem, index) in props.tag.items" :key="`item-${index}`" class="item-card">
+                <div v-else-if="props.tag.sku_items && props.tag.sku_items.length > 0" class="items-list">
+                  <div v-for="(skuItem, index) in props.tag.sku_items" :key="`sku-item-${index}`" class="item-card">
                     <div class="item-info">
                       <div class="item-name">
-                        {{ getItemDisplayName(tagItem?.item_id) }}
+                        {{ getSkuDisplayName(skuItem) }}
                       </div>
                       <div class="item-details">
-                        <span v-if="tagItem?.item_id && typeof tagItem.item_id === 'object' && tagItem.item_id.sku_id">
-                          SKU: {{ tagItem.item_id.sku_id.sku_code || 'Unknown' }}
+                        <span v-if="skuItem?.sku_id && typeof skuItem.sku_id === 'object'">
+                          SKU: {{ skuItem.sku_id.sku_code || 'Unknown' }}
                         </span>
-                        <span v-if="tagItem?.item_id && typeof tagItem.item_id === 'object' && tagItem.item_id.location">
-                          | Location: {{ tagItem.item_id.location }}
+                        <span v-if="!skuItem?.sku_id || typeof skuItem.sku_id === 'string'">
+                          SKU ID: {{ skuItem?.sku_id || 'Unknown' }}
                         </span>
-                        <span v-if="!tagItem?.item_id || typeof tagItem.item_id === 'string'">
-                          Item ID: {{ tagItem?.item_id || 'Unknown' }}
+                        <span v-if="skuItem?.notes">
+                          | Notes: {{ skuItem.notes }}
                         </span>
                       </div>
                     </div>
                     <div class="item-quantity">
-                      <span class="quantity-badge">{{ tagItem?.remaining_quantity || tagItem?.quantity || 0 }}</span>
+                      <span class="quantity-badge">{{ skuItem?.remaining_quantity || skuItem?.quantity || 0 }}</span>
                     </div>
                   </div>
                 </div>

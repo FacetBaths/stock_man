@@ -105,7 +105,7 @@
   - [x] All legacy API calls removed from components
   - [x] **Status:** COMPLETE ✅
 
-### ⏳ Phase 7: Component Migration (IN PROGRESS)
+### ✅ Phase 7: Component Migration (3/6 COMPLETE)
 - [x] **Update InventoryTable.vue** - COMPLETED 2025-08-26 17:16 UTC
   - [x] Show SKU-based data instead of items
   - [x] Add Instance cost information
@@ -121,15 +121,24 @@
   - [x] Remove legacy item fields
   - [x] **Status:** COMPLETE ✅
 
-- [ ] **Update CreateTagModal.vue**
-  - [ ] Show available instances for selection
-  - [ ] Implement FIFO vs cost-based selection
-  - [ ] Update to work with new tag structure
-  - [ ] **Status:** NOT STARTED ❌
+- [x] **Update CreateTagModal.vue** - COMPLETED 2025-08-26 18:21 UTC + CLEANUP 2025-08-27 18:36 UTC
+  - [x] Show available instances for selection
+  - [x] Implement FIFO vs cost-based selection
+  - [x] Update to work with new tag structure
+  - [x] Removed legacy CreateTagModal.vue, renamed CreateTagModalNew.vue
+  - [x] Updated imports in Tags.vue, removed debugging logs
+  - [x] **Status:** COMPLETE ✅
 
 - [ ] **Fix frontend category dropdown issue**
   - [ ] Ensure categories API serves proper data
   - [ ] Test dashboard category filtering
+  - [ ] **Status:** NOT STARTED ❌
+
+- [ ] **Fix category display in inventory items**
+  - [ ] Investigate why TEST TOILET shows "Unknown Category" in inventory table
+  - [ ] Verify SKU-to-category relationship in database and API responses
+  - [ ] Fix category population in inventory table display
+  - [ ] Test that all inventory items show correct category names
   - [ ] **Status:** NOT STARTED ❌
 
 ### ❌ Phase 8: Frontend Polish (NOT STARTED)
@@ -176,7 +185,7 @@
 
 ## 📊 Progress Summary
 
-**Overall Progress:** 13/22 Major Tasks Complete (59%)
+**Overall Progress:** 14/22 Major Tasks Complete (64%)
 
 ### Backend: 9/9 Complete (100%) + 1 Deferred
 - ✅ Model Architecture: 2/2 complete
@@ -185,9 +194,9 @@
 - ✅ Integration: 3/3 complete
 - ✅ Polish: 2/2 complete (1 deferred - performance optimization)
 
-### Frontend: 4/10 Complete (40%)
+### Frontend: 5/10 Complete (50%)
 - ✅ Architecture: 2/2 complete
-- ⏳ Components: 2/6 complete
+- ⏳ Components: 3/6 complete
 - ❌ Polish: 0/2 complete
 
 ### Database Conversion: 0/1 Complete (0%)

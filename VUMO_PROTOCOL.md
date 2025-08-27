@@ -7,10 +7,11 @@
 
 ## 📋 VUMO STEPS WITH EVIDENCE REQUIREMENTS
 
-### PRE-STEP: Ensure all Node Servers are killed from testing.
+## PRE-STEP: Ensure all Node Servers are killed from testing.
 This prevents wasted time trying to start a dev server and getting an Adress In Use Error.
 backend is localhost:5000/ frontend is supposed to be localhost:3000/
 
+**Review WORKFLOW_DISCIPLINE.md , ACCOUNTABILITY.md , dev/documents/BACKEND_API_REFERENCE.md, and  dev/documents/ARCHITECTURE.md**
 
 ### 1. ✅ Show evidence all current success criteria are met
 **MANDATORY EVIDENCE:**

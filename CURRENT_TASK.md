@@ -2,11 +2,11 @@
 
 **CRITICAL:** Update this file for EVERY task and follow the process exactly.
 
-## 📋 CURRENT TASK: Update CreateTagModal component
+## 📋 CURRENT TASK: Fix Critical Tag Fulfillment API Design Flaw
 
-**Status:** READY TO START 🚀
-**Previous Task:** Update AddItemModal → AddStockModal - COMPLETED ✅ 2025-08-26 18:01 UTC
-**Estimated Time:** 3-4 hours
+**Status:** 🚨 CRITICAL ISSUE DISCOVERED
+**Previous Task:** Update CreateTagModal component - COMPLETED ✅ 2025-08-26 18:21 UTC
+**Discovered:** 2025-08-27 18:28 UTC
 
 **BACKEND STATUS:** 🎆 FULLY COMPLETE AND TESTED!
 - ✅ All API endpoints working with authentication
@@ -14,15 +14,22 @@
 - ✅ Security logging working properly  
 - ✅ Backend ready for frontend integration
 
+### CRITICAL ISSUE DETAILS:
+**Tag fulfillment API violates documented architecture:**
+- Current: POST /api/tags/:id/fulfill accepts fulfillment_items with item_id but IGNORES them
+- Current: Calls tag.fulfillItems() which fulfills ALL items, not specific instances
+- Expected: Should delete only specific Instance records by ID as documented
+- Problem: API validates item_id parameter but doesn't use it (lines 862, 888 in tags.js)
+- Impact: Frontend sends specific instance IDs but backend fulfills everything
+
 ### SUCCESS CRITERIA:
-- [ ] 📝 Read current CreateTagModal.vue component structure
-- [ ] 💯 Show available instances for selection instead of legacy items
-- [ ] 🎯 Implement FIFO vs cost-based instance selection logic
-- [ ] 🏗️ Update to work with new SKU/Instance-based tag structure
-- [ ] 📡 Update to use new tag API endpoints (POST /api/tags)
-- [ ] 🗿️ Remove legacy item-based tag creation fields
-- [ ] 🚀 Test component works with backend tag/instance endpoints
-- [ ] ✅ Verify tag creation works with real SKU and Instance data
+- [ ] 🔍 Analyze current fulfill endpoint implementation in tags.js
+- [ ] 📝 Identify specific code changes needed
+- [ ] 🔧 Rewrite fulfill endpoint to use specific Instance IDs
+- [ ] 🗑️ Implement Instance.findByIdAndDelete() for each item_id
+- [ ] ⚡ Update inventory quantities properly after specific deletions
+- [ ] 🧪 Test fulfillment with specific instance selection
+- [ ] ✅ Verify frontend/backend integration works correctly
 
 ### DEPENDENCIES VERIFIED:
 - [x] ✅ Backend server running and healthy
@@ -46,21 +53,21 @@
 
 ### WORK LOG:
 ```
-[18:01] - AddItemModal → AddStockModal task COMPLETED - MOVED ON to CreateTagModal
-           - VUMO Protocol completed with proper documentation
-           - Task was actually complete all along (component already updated)
-           - PROGRESS.txt updated to show completion
-           - MIGRATION_CHECKLIST.md updated to show completion
-           - Ready to start CreateTagModal component migration
-[TIME] - Read current CreateTagModal.vue component structure
-[TIME] - Analyze current tag creation logic and data structures
-[TIME] - Update to show available instances instead of legacy items
-[TIME] - Implement FIFO vs cost-based instance selection
-[TIME] - Update to use new SKU/Instance-based tag structure
-[TIME] - Update to use new tag API endpoints
-[TIME] - Remove legacy item-based tag creation
-[TIME] - Test with backend tag/instance endpoints
-[TIME] - Verify tag creation with real data
+[18:01] - AddItemModal → AddStockModal task COMPLETED
+[18:21] - CreateTagModal component COMPLETED
+           - All success criteria met and verified
+           - Backend integration tested with real data
+           - FIFO and cost-based selection working
+           - Tag creation API verified with TOILET-751131
+[18:28] - CRITICAL API DESIGN FLAW DISCOVERED during FulfillTagsDialog work
+           - Tag fulfillment endpoint ignores specific instance IDs
+           - Violates ARCHITECTURE.md and BACKEND_API_REFERENCE.md specs
+           - Added to PROGRESS.txt as critical issue
+           - Frontend sends instance IDs but backend fulfills everything
+[TIME] - Analyze current fulfill endpoint (POST /api/tags/:id/fulfill)
+[TIME] - Implement instance-specific deletion logic
+[TIME] - Test fulfillment with selected instances
+[TIME] - Verify proper inventory quantity updates
 ```
 
 ### CREATE TAG MODAL CHECKLIST:
