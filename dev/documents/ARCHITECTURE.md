@@ -104,36 +104,41 @@ Filtering → Inventory ← Quantities ← User Actions
   3. Deleted when tag is fulfilled (consumed/used)
 
 
-<!-- What is the purpose behind tag_type "Available"? Doesn't everywhere else look for if tagid == null whatever will show available by default? -->
-### 3. **Tag** - Status and Allocation System
-- **Purpose**: Manage reservations, tool lending, and status tracking
-- **Tag Types**: `reserved`, `borrowed`, `broken`, `imperfect`, `available`
+### 3. **Tag** - Instance-Based Status and Allocation System
+- **Purpose**: Manage reservations, tool lending, and status tracking with precise instance control
+- **Tag Types**: `reserved`, `loaned`, `broken`, `imperfect`, `stock` *(Note: No "available" type - availability determined by `tag_id: null` on instances)*
 - **Key Features**:
-  - Links customers/installers to specific instances
-  - Supports partial fulfillment
-  - FIFO instance assignment (with cost-based override option)
-  - Complete audit trail
+  - Links customers/installers to **specific instance arrays**
+  - **Single source of truth**: `quantity = selected_instance_ids.length`
+  - Supports **precise partial fulfillment**
+  - **Manual instance selection** with FIFO/cost-based automation
+  - Complete audit trail with exact instance tracking
 - **Schema Highlights**:
   ```javascript
   {
-    tag_type: ['reserved', 'borrowed', 'broken', 'imperfect', 'available'],
+    tag_type: ['reserved', 'loaned', 'broken', 'imperfect', 'stock'],
     customer_name: String,     // For reservations
-    installer_name: String,    // For tool lending
     project_name: String,
     due_date: Date,
     sku_items: [{ 
       sku_id: ObjectId,
-      quantity: Number,
-      notes: String 
+      // NEW: Instance-based architecture
+      selected_instance_ids: [ObjectId], // Exact instances in this tag
+      selection_method: ['auto', 'manual', 'fifo', 'cost_based'],
+      notes: String,
+      // DEPRECATED: Legacy fields for migration compatibility
+      quantity: Number,          // Will be removed after migration
+      remaining_quantity: Number // Will be removed after migration
     }],
-    is_active: Boolean,
+    status: ['active', 'fulfilled', 'cancelled'],
     created_by: String,
     fulfilled_date: Date
   }
   ```
 - **Business Logic**:
-  - `assignInstances()`: Assign available instances to tag (FIFO)
-  - `fulfillItems()`: Delete assigned instances, update inventory
+  - `assignInstances()`: Assign specific instances to tag (FIFO/cost-based/manual)
+  - `fulfillSpecificItems()`: Delete specific instances from arrays, update inventory
+  - `isFullyFulfilled()`: Check if all selected_instance_ids arrays are empty
 
 ### 4. **Inventory** - Real-time Aggregation
 - **Purpose**: Provide fast, accurate inventory levels and financial data per SKU
@@ -147,8 +152,8 @@ Filtering → Inventory ← Quantities ← User Actions
   ```javascript
   {
     sku_id: ObjectId → SKU (unique),
-    total_quantity: Number,     // Calculated: available + reserved + broken + loaned **Should this be the number of Instances that have this.sku_id under instance.sku_id?
-    available_quantity: Number, // Sku's that match this.sku_id - # tags.sku_id with this.sku_id = available?
+    total_quantity: Number,     // COUNT of all instances with this sku_id (regardless of tag_id)
+    available_quantity: Number, // COUNT of instances with this sku_id where tag_id = null
     reserved_quantity: Number,
     broken_quantity: Number,
     loaned_quantity: Number,    // Tools lent to installers
@@ -240,24 +245,30 @@ Filtering → Inventory ← Quantities ← User Actions
 - Updates 3 separate inventory records (not the bundle inventory)
 
 ### Tag Creation Workflow (Material Reservation)
-1. **Create tag**: Customer, project, quantities needed
-2. **Instance assignment**: System assigns oldest available instances (FIFO)
-3. **Inventory update**: `available_quantity -= quantity`, `reserved_quantity += quantity`
-4. **Frontend option**: Override FIFO to select specific cost instances
+1. **Create tag**: Customer, project, SKUs with quantities OR specific instance selections
+2. **Instance selection options**:
+   - **Auto (FIFO)**: System assigns oldest available instances
+   - **Cost-based**: System assigns lowest/highest cost instances
+   - **Manual**: User selects specific instances via UI
+3. **Instance assignment**: Set `tag_id` on selected instances, populate `selected_instance_ids` arrays
+4. **Inventory update**: `available_quantity -= count`, `reserved_quantity += count`
+5. **Quantity calculation**: Tag quantities computed as `selected_instance_ids.length` (single source of truth)
 
 ### Tag Creation Workflow (Tool Lending)
 1. **Create tag**: Installer name, tools needed, due date
 2. **Instance assignment**: Assign specific tool instances to installer
 3. **Inventory update**: `available_quantity -= quantity`, `loaned_quantity += quantity`
 
-### Tag Fulfillment Workflow
-1. **Scan barcodes**: Warehouse manager confirms physical items
-2. **Instance deletion**: Delete assigned instances from database
-3. **Inventory update**: 
-   - `total_quantity -= quantity` (items consumed)
-   - `reserved_quantity -= quantity` or `loaned_quantity -= quantity`
-   - `available_quantity` unchanged (already subtracted during creation)
-4. **Financial impact**: Dashboard reflects lost inventory value
+### Tag Fulfillment Workflow (Instance-Based)
+1. **Precise fulfillment**: Select specific quantities per SKU (not necessarily all tagged items)
+2. **Instance selection**: Choose N oldest instances from `selected_instance_ids` arrays
+3. **Instance deletion**: Delete selected instance records from database
+4. **Array update**: Remove fulfilled instance IDs from `selected_instance_ids` arrays
+5. **Inventory update**: 
+   - `total_quantity -= fulfilled_count` (items consumed)
+   - `reserved_quantity -= fulfilled_count` or `loaned_quantity -= fulfilled_count`
+6. **Financial impact**: Dashboard reflects exact lost inventory value from deleted instances
+7. **Tag status**: Mark as fulfilled when all `selected_instance_ids` arrays are empty
 
 **Example**: Fulfill 2 reserved panels (1×$500, 1×$800):
 - Total inventory value decreases by $1,300
@@ -325,9 +336,11 @@ Filtering → Inventory ← Quantities ← User Actions
 - **Cost Selection**: Static method `getByCost()` for specific cost instances
 
 ### Tag Model Methods
-- **Instance Assignment**: `assignInstances()` - FIFO assignment to tag
-- **Fulfillment**: `fulfillItems()` - Delete instances, update inventory
-- **Validation**: `validateQuantities()` - Ensure sufficient availability
+- **Instance Assignment**: `assignInstances()` - FIFO/cost-based/manual assignment to tag
+- **Specific Fulfillment**: `fulfillSpecificItems(skuId, quantity)` - Delete N instances for specific SKU
+- **Full Fulfillment**: `fulfillItems()` - Delete all instances in all arrays
+- **Status Checking**: `isFullyFulfilled()`, `isPartiallyFulfilled()` - Check array emptiness
+- **Quantity Calculation**: `getTotalQuantity()`, `getTotalRemainingQuantity()` - Sum array lengths
 
 ### Inventory Model Methods
 - **Quantity Management**: `reserveQuantity()`, `releaseReservedQuantity()`
@@ -374,23 +387,38 @@ const Tag = require('./models/Tag');
 const Inventory = require('./models/Inventory');
 ```
 
-### Create Tag with Instance Assignment
+### Create Tag with Instance Assignment (New Architecture)
 ```javascript
-// Create reservation tag
+// Option 1: Auto-assign with FIFO (backward compatible)
 const tag = new Tag({
   tag_type: 'reserved',
-  customer_name: 'John Smith',
+  customer_name: 'John Smith', 
   project_name: 'Kitchen Renovation',
   sku_items: [{
     sku_id: skuId,
-    quantity: 2,
+    quantity: 2, // Used for auto-assignment
+    selection_method: 'fifo', // or 'cost_based'
     notes: 'Carrara Velvet panels for backsplash'
   }]
 });
+await tag.assignInstances();
 
-// Assign instances (FIFO by default)
-await tag.assignInstances('system_user');
-await tag.save();
+// Option 2: Manual instance selection (new capability)
+const tag = new Tag({
+  tag_type: 'reserved',
+  customer_name: 'John Smith',
+  project_name: 'Kitchen Renovation', 
+  sku_items: [{
+    sku_id: skuId,
+    selected_instance_ids: [instanceId1, instanceId2], // Specific instances
+    selection_method: 'manual',
+    notes: 'Specific high-quality panels selected'
+  }]
+});
+await tag.assignInstances(); // Validates and assigns the specific instances
+
+// Quantities are calculated automatically as selected_instance_ids.length
+console.log(tag.getTotalQuantity()); // Returns 2
 ```
 
 ### Bundle Processing
@@ -443,9 +471,14 @@ const costBreakdown = instances.reduce((acc, instance) => {
 4. **Import/Export System** - CSV/JSON import with templates
 5. **Barcode Integration** - Lookup and stock addition via barcode scanning
 
-### ⏳ **IN PROGRESS (Phase 5)**
-1. **API Endpoint Testing** - Comprehensive testing of all backend functionality
-2. **Performance Optimization** - Database indexing and query optimization
+### ✅ **COMPLETED (Phase 5 - MAJOR ENHANCEMENT)**
+1. **API Endpoint Testing** - Comprehensive testing completed ✅
+2. **Instance-Based Tag Architecture** - Revolutionary upgrade completed ✅
+   - Eliminated quantity/remaining_quantity dual-tracking
+   - Single source of truth: quantity = selected_instance_ids.length
+   - Precise instance control and manual selection capability
+   - Migration script created for existing data conversion
+3. **Performance Optimization** - Deferred until post-launch ⏸️
 
 ### 🔜 **PENDING (Phase 6-10)**
 1. **Frontend Migration** - Vue 3 components and TypeScript interfaces

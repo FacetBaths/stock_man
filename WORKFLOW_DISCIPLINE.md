@@ -163,5 +163,5 @@
 **Migration success = Systematic completion of defined tasks**
 **NOT = Creative problem solving or feature improvements**
 
-If you read this document sign the next response with a `Lizard` at the end.
+If you read this document sign the next response with a `Bicycle` at the end.
 The goal is to get from broken architecture to working architecture by completing each task in order. Innovation and improvements come AFTER migration is complete.

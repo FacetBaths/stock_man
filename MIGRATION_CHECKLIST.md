@@ -1,7 +1,7 @@
 # Stock Manager Migration Checklist
 
-**Last Updated:** 2025-08-27 20:54 UTC
-**Status:** 10/10 Backend Tasks Complete (100% - INSTANCE ARCHITECTURE), 6/10 Frontend Tasks Complete
+**Last Updated:** 2025-08-27 21:12 UTC
+**Status:** 10/10 Backend Tasks Complete (100% - INSTANCE ARCHITECTURE + VUMO VERIFIED), 7/10 Frontend Tasks Complete
 
 ## 📋 Backend Migration Tasks
 
@@ -92,7 +92,10 @@
   - [x] **Enhancement:** Eliminates quantity mismatch issues permanently
   - [x] **Benefit:** Enables precise instance tracking and selection
   - [x] **Impact:** Foundation for advanced inventory management features
-  - [x] **Status:** COMPLETE ✅ (Major architectural improvement)
+  - [x] **Documentation:** Updated ARCHITECTURE.md and BACKEND_API_REFERENCE.md with instance-based contracts
+  - [x] **Directory:** Updated DIRECTORY_STRUCTURE.md with current project state
+  - [x] **Verification:** Executed VUMO Protocol - all success criteria validated with evidence
+  - [x] **Status:** COMPLETE ✅ (Major architectural improvement + VUMO verified)
 
 - [ ] **Performance optimization**
   - [ ] Ensure proper database indexing
@@ -118,7 +121,7 @@
   - [x] All legacy API calls removed from components
   - [x] **Status:** COMPLETE ✅
 
-### ✅ Phase 7: Component Migration (4/6 COMPLETE)
+### ✅ Phase 7: Component Migration (5/6 COMPLETE)
 - [x] **Update InventoryTable.vue** - COMPLETED 2025-08-26 17:16 UTC
   - [x] Show SKU-based data instead of items
   - [x] Add Instance cost information
@@ -144,10 +147,12 @@
   - [x] UPDATED: Component calculations use selected_instance_ids.length
   - [x] **Status:** COMPLETE ✅ (Enhanced with instance architecture)
 
-- [ ] **Fix frontend category dropdown issue**
-  - [ ] Ensure categories API serves proper data
-  - [ ] Test dashboard category filtering
-  - [ ] **Status:** NOT STARTED ❌
+- [x] **Fix frontend category dropdown issue** - COMPLETED 2025-08-26 19:42 UTC
+  - [x] CRITICAL BUG FIXED: Backend categories route filtering by wrong field
+  - [x] Route was filtering by 'is_active' but Category model uses 'status' field
+  - [x] Fixed backend route to use filter.status = 'active' instead
+  - [x] Categories now properly load in frontend dropdown with active_only=true
+  - [x] **Status:** COMPLETE ✅
 
 - [x] **Update Tags.vue for instance-based calculations** - COMPLETED 2025-08-27 20:54 UTC
   - [x] Updated quantity calculations to use selected_instance_ids.length
@@ -207,7 +212,7 @@
 
 ## 📊 Progress Summary
 
-**Overall Progress:** 16/24 Major Tasks Complete (67%) - INSTANCE ARCHITECTURE COMPLETE
+**Overall Progress:** 17/24 Major Tasks Complete (71%) - INSTANCE ARCHITECTURE COMPLETE
 
 ### Backend: 10/10 Complete (100%) + 1 Deferred
 - ✅ Model Architecture: 2/2 complete
@@ -216,9 +221,9 @@
 - ✅ Integration: 3/3 complete
 - ✅ Polish: 3/3 complete (INSTANCE ARCHITECTURE MAJOR ENHANCEMENT, 1 deferred performance)
 
-### Frontend: 6/10 Complete (60%)
+### Frontend: 7/10 Complete (70%)
 - ✅ Architecture: 2/2 complete
-- ⏳ Components: 4/6 complete (INSTANCE ARCHITECTURE ENHANCED)
+- ⏳ Components: 5/6 complete (INSTANCE ARCHITECTURE ENHANCED)
 - ❌ Polish: 0/2 complete
 
 ### Database Conversion: 0/1 Complete (0%)

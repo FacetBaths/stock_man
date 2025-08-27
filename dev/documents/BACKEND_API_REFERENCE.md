@@ -4,8 +4,8 @@
 **CRITICAL:** This backend is TESTED and WORKING. Do NOT modify backend to fit frontend preferences.
 Frontend must adapt to these EXACT structures and endpoints.
 
-**Last Updated:** 2025-08-26 04:00 UTC
-**Backend Status:** STABLE AND TESTED ✅
+**Last Updated:** 2025-08-27 20:54 UTC
+**Backend Status:** ENHANCED WITH INSTANCE ARCHITECTURE 🏗️
 
 ---
 
@@ -76,7 +76,7 @@ Frontend must adapt to these EXACT structures and endpoints.
 }
 ```
 
-### **Tag Model** (Status/Allocation System)
+### **Tag Model** (Instance-Based Status/Allocation System)
 ```javascript
 {
   "_id": "ObjectId",
@@ -86,9 +86,13 @@ Frontend must adapt to these EXACT structures and endpoints.
   "sku_items": [
     {
       "sku_id": "ObjectId (ref to SKU)",
-      "quantity": "Number",
+      // NEW: Instance-based architecture (single source of truth)
+      "selected_instance_ids": ["ObjectId (refs to Instance)"],
+      "selection_method": "String (auto/manual/fifo/cost_based)",
       "notes": "String",
-      "remaining_quantity": "Number"
+      // DEPRECATED: Legacy fields for migration compatibility
+      "quantity": "Number (calculated as selected_instance_ids.length)",
+      "remaining_quantity": "Number (calculated as selected_instance_ids.length)"
     }
   ],
   "project_name": "String",
@@ -250,8 +254,12 @@ Frontend must adapt to these EXACT structures and endpoints.
             "sku_code": "TOILET-12345",
             "description": "Premium Toilet"
           },
-          "quantity": 2,
+          // NEW: Instance-based tracking
+          "selected_instance_ids": ["instanceId1", "instanceId2"],
+          "selection_method": "fifo",
           "notes": "Special requirements",
+          // CALCULATED: From selected_instance_ids.length
+          "quantity": 2,
           "remaining_quantity": 2
         }
       ],
@@ -282,46 +290,61 @@ Frontend must adapt to these EXACT structures and endpoints.
 
 ## 🔄 CRITICAL BUSINESS LOGIC
 
-### **Tag Creation Process**
+### **Tag Creation Process (Instance-Based)**
 1. Validates SKU availability in inventory
-2. Uses FIFO (First-In-First-Out) for instance selection
-3. Moves instances from available → reserved/broken/loaned
-4. Updates inventory quantities automatically
-5. Assigns tag_id to selected instances
+2. **Instance selection options**:
+   - **Auto (FIFO)**: System selects oldest available instances
+   - **Cost-based**: System selects lowest/highest cost instances  
+   - **Manual**: Frontend provides specific `selected_instance_ids`
+3. Populates `selected_instance_ids` arrays in `sku_items`
+4. Assigns `tag_id` to selected instances
+5. Updates inventory quantities: moves instances from available → reserved/broken/loaned
+6. **Quantity calculation**: `quantity = selected_instance_ids.length` (computed, not stored)
 
-### **Tag Fulfillment Process**
-1. Deletes assigned instances from database
-2. Updates inventory: decreases total_quantity and reserved_quantity
-3. Marks tag as fulfilled
-4. Records fulfillment date and user
+### **Tag Fulfillment Process (Instance-Based)**
+1. **Precise fulfillment**: Specify exact quantities per SKU to fulfill
+2. **Instance selection**: Choose N oldest instances from `selected_instance_ids` arrays
+3. **Instance deletion**: Delete selected instance records from database
+4. **Array update**: Remove fulfilled instance IDs from `selected_instance_ids` arrays
+5. **Inventory update**: Decreases `total_quantity` and appropriate status quantity
+6. **Status check**: Mark tag as fulfilled when all `selected_instance_ids` arrays are empty
+7. **Audit trail**: Records fulfillment date, user, and exact instances consumed
 
-### **Inventory Aggregation**
-- **total_quantity**: Count of all instances for SKU
-- **available_quantity**: Instances where tag_id is null
-- **reserved_quantity**: Instances tagged as 'reserved'
-- **broken_quantity**: Instances tagged as 'broken'  
-- **loaned_quantity**: Instances tagged as 'loaned'
+### **Inventory Aggregation (Instance-Based)**
+- **total_quantity**: COUNT of all instances with this `sku_id` (regardless of `tag_id`)
+- **available_quantity**: COUNT of instances with this `sku_id` where `tag_id = null`
+- **reserved_quantity**: COUNT of instances with this `sku_id` where tag has `tag_type = 'reserved'`
+- **broken_quantity**: COUNT of instances with this `sku_id` where tag has `tag_type = 'broken'`  
+- **loaned_quantity**: COUNT of instances with this `sku_id` where tag has `tag_type = 'loaned'`
+- **Data integrity**: All counts derived from actual Instance records, ensuring accuracy
 
 ---
 
 ## 🚨 FRONTEND REQUIREMENTS
 
-### **Data Display Requirements**
+### **Data Display Requirements (Instance-Based)**
 - Use `sku_code` for SKU identification (not legacy item codes)
-- Show `remaining_quantity` for active tags
+- **Quantity calculation**: Use `selected_instance_ids.length` for current quantities
+- Show `remaining_quantity` for active tags (computed from array lengths)
 - Display cost information from `acquisition_cost` in instances
 - Use `tag_summary` for inventory status indicators
+- **Manual selection support**: Display instance details when `selection_method = 'manual'`
 
-### **Form Requirements**
+### **Form Requirements (Instance-Based)**
 - SKU selection must validate against `/api/skus`
 - Stock additions use `/api/instances/add-stock` endpoint
-- Tag creation requires `sku_items` array format (not legacy item format)
+- **Tag creation supports two formats**:
+  - **Auto**: `{ sku_id, quantity, selection_method: 'fifo'/'cost_based' }`
+  - **Manual**: `{ sku_id, selected_instance_ids: [...], selection_method: 'manual' }`
+- **Fulfillment**: Send `{ item_id: sku_id, quantity_fulfilled }` to fulfill specific quantities
 
-### **State Management Requirements**
+### **State Management Requirements (Instance-Based)**
 - Store SKU data separately from inventory data
 - Instance data is nested under SKU context
-- Tags reference SKUs, not individual instances in UI
+- **Tags reference specific instances**: `selected_instance_ids` arrays contain exact instances
+- **Quantity calculations**: Frontend computes quantities as `selected_instance_ids.length`
 - Inventory is aggregated view, not raw data
+- **Migration compatibility**: Support both old quantity fields and new arrays during transition
 
 ---
 
@@ -354,9 +377,11 @@ Frontend must adapt to these EXACT structures and endpoints.
 - ✅ Inventory aggregation
 - ✅ Export/import functionality
 - ✅ Barcode operations
-- ✅ **CRITICAL BUG FIXED**: Tag fulfillment properly clears reserved inventory
+- ✅ **MAJOR ENHANCEMENT**: Instance-based tag architecture implemented
+- ✅ **PRECISION CONTROL**: Exact instance tracking and selection
+- ✅ **MIGRATION READY**: Backward compatibility and conversion script
 
-**Backend is STABLE and PRODUCTION-READY for frontend integration.**
+**Backend is ENHANCED and PRODUCTION-READY with next-generation instance architecture.**
 
 ---
 

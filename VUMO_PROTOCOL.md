@@ -47,8 +47,8 @@ backend is localhost:5000/ frontend is supposed to be localhost:3000/
 
 ### 5. ✅ Review WORKFLOW_DISCIPLINE.md & dev/documents/BACKEND_API_REFERENCE.md
 **MANDATORY EVIDENCE:**
-- WORKFLOW_DISCIPLINE.md: Must include signature `1234` 
-- ACCOUNTABILITY.md: Must include signature `54Accountable`
+- WORKFLOW_DISCIPLINE.md: Proof instructions found in the document
+- ACCOUNTABILITY.md: Proof instructions found in the document
 - BACKEND_API_REFERENCE.md: Must reference specific API endpoints relevant to current task
 - Show understanding of key rules (e.g., "Never modify backend during frontend work")
 
