@@ -1,7 +1,7 @@
 # Stock Manager Migration Checklist
 
-**Last Updated:** 2025-08-26 05:23 UTC
-**Status:** 9/9 Backend Tasks Complete (100% DONE!), 4/10 Frontend Tasks Complete
+**Last Updated:** 2025-08-27 18:47 UTC
+**Status:** 9/10 Backend Tasks Complete (90% - 1 CRITICAL BUG), 5/10 Frontend Tasks Complete
 
 ## 📋 Backend Migration Tasks
 
@@ -80,6 +80,18 @@
   - [x] CRITICAL BUG FIXED: Security logging now works properly
   - [x] CRITICAL BUG FIXED: Tag fulfillment now properly clears reserved inventory
   - [x] **Status:** COMPLETE ✅ (Completed 2025-08-26 05:20 UTC)
+
+- [ ] **🚨 CRITICAL: Fix Tag Fulfillment API Design Flaw** - DISCOVERED 2025-08-27
+  - [ ] Analyze current POST /api/tags/:id/fulfill endpoint implementation
+  - [ ] Rewrite fulfill logic to use specific Instance IDs from fulfillment_items
+  - [ ] Replace tag.fulfillItems() call with Instance.findByIdAndDelete() for each item_id
+  - [ ] Update inventory quantities properly after specific instance deletions
+  - [ ] Test fulfillment with selected instances (not all instances)
+  - [ ] Verify frontend FulfillTagsDialog works with corrected backend
+  - [ ] **Issue:** API accepts item_id parameters but ignores them - violates ARCHITECTURE.md spec
+  - [ ] **Impact:** Frontend sends specific instance IDs, backend fulfills everything
+  - [ ] **Location:** /backend/src/routes/tags.js lines 862, 888
+  - [ ] **Status:** IN PROGRESS ⏳ (Blocking fulfillment workflows)
 
 - [ ] **Performance optimization**
   - [ ] Ensure proper database indexing
@@ -185,14 +197,14 @@
 
 ## 📊 Progress Summary
 
-**Overall Progress:** 14/22 Major Tasks Complete (64%)
+**Overall Progress:** 14/23 Major Tasks Complete (61%) - 1 CRITICAL BACKEND BUG ADDED
 
-### Backend: 9/9 Complete (100%) + 1 Deferred
+### Backend: 9/10 Complete (90%) + 1 Deferred
 - ✅ Model Architecture: 2/2 complete
 - ✅ Tag System: 1/1 complete  
 - ✅ Route Architecture: 4/4 complete
 - ✅ Integration: 3/3 complete
-- ✅ Polish: 2/2 complete (1 deferred - performance optimization)
+- ⏳ Polish: 2/3 complete (1 CRITICAL BUG, 1 deferred performance)
 
 ### Frontend: 5/10 Complete (50%)
 - ✅ Architecture: 2/2 complete

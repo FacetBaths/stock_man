@@ -64,6 +64,11 @@
            - Violates ARCHITECTURE.md and BACKEND_API_REFERENCE.md specs
            - Added to PROGRESS.txt as critical issue
            - Frontend sends instance IDs but backend fulfills everything
+[18:47] - FORMAL TASK ADDED to MIGRATION_CHECKLIST.md
+           - Added as "CRITICAL: Fix Tag Fulfillment API Design Flaw"
+           - Properly tracked in Phase 5: Backend Polish section
+           - Updated progress counters: Backend 90% (1 critical bug)
+           - Issue location documented: tags.js lines 862, 888
 [TIME] - Analyze current fulfill endpoint (POST /api/tags/:id/fulfill)
 [TIME] - Implement instance-specific deletion logic
 [TIME] - Test fulfillment with selected instances
