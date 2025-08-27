@@ -27,7 +27,7 @@ const validateTag = [
     .trim()
     .isLength({ max: 200 })
     .withMessage('Project name cannot exceed 200 characters'),
-  // SKU items only - no legacy support
+  // SKU items with instance-based structure
   body('sku_items')
     .isArray({ min: 1 })
     .withMessage('SKU items array is required and must contain at least one item'),
@@ -36,9 +36,23 @@ const validateTag = [
     .withMessage('SKU ID is required')
     .isMongoId()
     .withMessage('SKU ID must be a valid MongoDB ID'),
+  // Support both old quantity field (for migration) and new instance-based structure
   body('sku_items.*.quantity')
+    .optional()
     .isInt({ min: 1 })
     .withMessage('SKU quantity must be a positive integer'),
+  body('sku_items.*.selected_instance_ids')
+    .optional()
+    .isArray()
+    .withMessage('Selected instance IDs must be an array'),
+  body('sku_items.*.selected_instance_ids.*')
+    .optional()
+    .isMongoId()
+    .withMessage('Each selected instance ID must be a valid MongoDB ID'),
+  body('sku_items.*.selection_method')
+    .optional()
+    .isIn(['auto', 'manual', 'fifo', 'cost_based'])
+    .withMessage('Selection method must be auto, manual, fifo, or cost_based'),
   body('sku_items.*.notes')
     .optional()
     .trim()
@@ -667,12 +681,28 @@ router.post('/',
         });
       }
 
-      // Create tag data directly from SKU items
-      const processedItems = skuItemsToProcess.map(item => ({
-        sku_id: item.sku_id,
-        quantity: item.quantity,
-        notes: item.notes || ''
-      }));
+      // Create tag data with instance-based structure
+      const processedItems = skuItemsToProcess.map(item => {
+        const tagItem = {
+          sku_id: item.sku_id,
+          notes: item.notes || '',
+          selection_method: item.selection_method || 'auto'
+        };
+        
+        // Handle both old and new formats during migration
+        if (item.selected_instance_ids && item.selected_instance_ids.length > 0) {
+          // New instance-based format
+          tagItem.selected_instance_ids = item.selected_instance_ids;
+          tagItem.selection_method = 'manual';
+        } else if (item.quantity) {
+          // Old quantity-based format (for compatibility)
+          tagItem.quantity = item.quantity;
+        } else {
+          throw new Error(`Either quantity or selected_instance_ids must be provided for SKU ${item.sku_id}`);
+        }
+        
+        return tagItem;
+      });
       
       const tagData = {
         customer_name: req.body.customer_name,
@@ -859,7 +889,7 @@ router.post('/:id/fulfill',
   [
     param('id').isMongoId().withMessage('Invalid tag ID'),
     body('fulfillment_items').isArray({ min: 1 }).withMessage('Fulfillment items required'),
-    body('fulfillment_items.*.item_id').isMongoId().withMessage('Invalid item ID'),
+    body('fulfillment_items.*.item_id').isMongoId().withMessage('Invalid SKU ID'),
     body('fulfillment_items.*.quantity_fulfilled').isInt({ min: 1 }).withMessage('Quantity must be positive')
   ],
   async (req, res) => {
@@ -881,24 +911,26 @@ router.post('/:id/fulfill',
         return res.status(400).json({ message: 'Can only fulfill active tags' });
       }
 
-      // NEW: Use the updated fulfillItems() method that deletes Instances
+      // FIXED: Use fulfillSpecificItems() method to fulfill only requested SKUs
       const fulfillmentResults = [];
-      try {
-        // Call the new fulfillItems() method (no parameters - fulfills all items)
-        await tag.fulfillItems();
-        
-        // Mark all requested items as successfully fulfilled
-        for (const fulfillmentItem of req.body.fulfillment_items) {
+      
+      // Process each fulfillment item individually
+      for (const fulfillmentItem of req.body.fulfillment_items) {
+        try {
+          // Call fulfillSpecificItems for this specific SKU with quantity
+          await tag.fulfillSpecificItems({
+            sku_id: fulfillmentItem.item_id, // item_id is actually sku_id from frontend
+            quantity_fulfilled: fulfillmentItem.quantity_fulfilled
+          }, req.user.username);
+          
           fulfillmentResults.push({
             item_id: fulfillmentItem.item_id,
             quantity_fulfilled: fulfillmentItem.quantity_fulfilled,
             success: true,
-            note: 'Instances deleted from database'
+            note: `${fulfillmentItem.quantity_fulfilled} instances deleted for SKU`
           });
-        }
-      } catch (fulfillError) {
-        // If fulfillment fails, mark all items as failed
-        for (const fulfillmentItem of req.body.fulfillment_items) {
+          
+        } catch (fulfillError) {
           fulfillmentResults.push({
             item_id: fulfillmentItem.item_id,
             quantity_fulfilled: fulfillmentItem.quantity_fulfilled,
@@ -910,16 +942,8 @@ router.post('/:id/fulfill',
 
       await tag.save();
 
-      // Update inventory for fulfilled items
-      const successfulFulfillments = fulfillmentResults.filter(r => r.success);
-      if (successfulFulfillments.length > 0) {
-        // Use the original tag's sku_items structure for inventory updates
-        await updateInventoryForTag(
-          tag.sku_items,
-          tag.tag_type,
-          'fulfill'
-        );
-      }
+      // Note: Inventory updates are handled within fulfillSpecificItems() method
+      // No additional inventory updates needed here
 
       await tag.populate({
         path: 'sku_items.sku_id',

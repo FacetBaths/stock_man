@@ -321,23 +321,28 @@ export interface UpdateCategoryRequest {
   sort_order?: number
 }
 
-// ✅ Tag model - matches BACKEND_API_REFERENCE.md EXACTLY
+// ✅ Tag model - Instance-based structure (new architecture)
 export interface Tag {
   _id: string
   customer_name: string
   tag_type: 'reserved' | 'broken' | 'imperfect' | 'loaned' | 'stock'
   status: 'active' | 'fulfilled' | 'cancelled'
   
-  // ✅ CRITICAL: Backend uses sku_items, NOT items
+  // ✅ NEW: Instance-based structure
   sku_items: Array<{
     sku_id: string | {
       _id: string
       sku_code: string
       description: string
     }
-    quantity: number
+    // Single source of truth: quantity = selected_instance_ids.length
+    selected_instance_ids: string[]
+    selection_method: 'auto' | 'manual' | 'fifo' | 'cost_based'
     notes: string
-    remaining_quantity: number
+    
+    // Legacy fields for migration compatibility (will be removed)
+    quantity?: number
+    remaining_quantity?: number
   }>
   
   project_name: string
@@ -362,13 +367,17 @@ export interface Tag {
   fulfillment_progress?: number
 }
 
-// ✅ Create tag request - matches backend sku_items structure
+// ✅ Create tag request - Instance-based structure
 export interface CreateTagRequest {
   customer_name: string
   tag_type?: 'reserved' | 'broken' | 'imperfect' | 'loaned' | 'stock'
   sku_items: Array<{
     sku_id: string
-    quantity: number
+    // NEW: Support both formats during migration
+    selected_instance_ids?: string[]
+    selection_method?: 'auto' | 'manual' | 'fifo' | 'cost_based'
+    // Legacy support during migration
+    quantity?: number
     notes?: string
   }>
   notes?: string
@@ -376,15 +385,18 @@ export interface CreateTagRequest {
   project_name?: string
 }
 
-// ✅ Update tag request - matches backend sku_items structure
+// ✅ Update tag request - Instance-based structure
 export interface UpdateTagRequest {
   customer_name?: string
   tag_type?: 'reserved' | 'broken' | 'imperfect' | 'loaned' | 'stock'
   sku_items?: Array<{
     sku_id: string
-    quantity: number
-    remaining_quantity?: number
+    selected_instance_ids: string[]
+    selection_method: 'auto' | 'manual' | 'fifo' | 'cost_based'
     notes?: string
+    // Legacy fields for migration
+    quantity?: number
+    remaining_quantity?: number
   }>
   notes?: string
   status?: 'active' | 'fulfilled' | 'cancelled'

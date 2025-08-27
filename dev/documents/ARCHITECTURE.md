@@ -103,6 +103,8 @@ Filtering → Inventory ← Quantities ← User Actions
   2. Assigned to tags when allocated (set tag_id)
   3. Deleted when tag is fulfilled (consumed/used)
 
+
+<!-- What is the purpose behind tag_type "Available"? Doesn't everywhere else look for if tagid == null whatever will show available by default? -->
 ### 3. **Tag** - Status and Allocation System
 - **Purpose**: Manage reservations, tool lending, and status tracking
 - **Tag Types**: `reserved`, `borrowed`, `broken`, `imperfect`, `available`
@@ -145,8 +147,8 @@ Filtering → Inventory ← Quantities ← User Actions
   ```javascript
   {
     sku_id: ObjectId → SKU (unique),
-    total_quantity: Number,     // Calculated: available + reserved + broken + loaned
-    available_quantity: Number,
+    total_quantity: Number,     // Calculated: available + reserved + broken + loaned **Should this be the number of Instances that have this.sku_id under instance.sku_id?
+    available_quantity: Number, // Sku's that match this.sku_id - # tags.sku_id with this.sku_id = available?
     reserved_quantity: Number,
     broken_quantity: Number,
     loaned_quantity: Number,    // Tools lent to installers

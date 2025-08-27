@@ -182,7 +182,11 @@ const getItemsDisplay = (skuItems: any[]) => {
     
     // NEW STRUCTURE: Handle sku_items with direct sku_id reference or populated SKU data
     const sku = tagItem.sku_details || tagItem.sku_id || null
-    const quantity = tagItem.remaining_quantity || tagItem.quantity || 0
+    
+    // NEW: Get quantity from selected_instance_ids.length (primary) or fallback to legacy quantity
+    const quantity = tagItem.selected_instance_ids 
+      ? tagItem.selected_instance_ids.length 
+      : (tagItem.remaining_quantity || tagItem.quantity || 0)
     
     if (!sku) {
       console.log('⚠️ [Tags] No SKU data found for item')
@@ -206,7 +210,13 @@ const getItemsDisplay = (skuItems: any[]) => {
 
 const getTotalQuantity = (items: any[]) => {
   if (!items) return 0
-  return items.reduce((sum, item) => sum + (item.remaining_quantity || item.quantity), 0)
+  return items.reduce((sum, item) => {
+    // NEW: Get quantity from selected_instance_ids.length (primary) or fallback to legacy
+    const quantity = item.selected_instance_ids 
+      ? item.selected_instance_ids.length 
+      : (item.remaining_quantity || item.quantity || 0)
+    return sum + quantity
+  }, 0)
 }
 
 onMounted(async () => {
@@ -463,7 +473,7 @@ const tableColumns = [
                         - {{ skuItem.sku_id.description }}
                       </span>
                       <q-badge color="primary" floating transparent>
-                        {{ skuItem.remaining_quantity || skuItem.quantity }}
+                        {{ skuItem.selected_instance_ids ? skuItem.selected_instance_ids.length : (skuItem.remaining_quantity || skuItem.quantity) }}
                       </q-badge>
                     </q-chip>
                   </div>

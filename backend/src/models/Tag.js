@@ -25,26 +25,41 @@ const tagSchema = new mongoose.Schema({
     index: true
   },
   
-  // SKU items in this tag (references to SKUs with quantities)
+  // SKU items in this tag (references to specific Instance records)
   sku_items: [{
     sku_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'SKU',
       required: true
     },
-    quantity: {
-      type: Number,
-      required: true,
-      min: 1
-    },
-    remaining_quantity: {
-      type: Number,
-      min: 0
+    // Single source of truth: quantity = selected_instance_ids.length
+    selected_instance_ids: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Instance',
+      required: true
+    }],
+    selection_method: {
+      type: String,
+      enum: ['auto', 'manual', 'fifo', 'cost_based'],
+      default: 'auto'
     },
     notes: {
       type: String,
       trim: true,
       default: ''
+    },
+    // Temporary fields for migration compatibility
+    quantity: {
+      type: Number,
+      min: 1,
+      // Make optional during transition
+      required: false
+    },
+    remaining_quantity: {
+      type: Number,
+      min: 0,
+      // Make optional during transition
+      required: false
     }
   }],
   
@@ -92,12 +107,23 @@ const tagSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Pre-save middleware to initialize remaining_quantity and update last_updated_by
+// Pre-save middleware to sync quantity fields and update last_updated_by
 tagSchema.pre('save', function(next) {
-  // Initialize remaining_quantity to match quantity for new items
+  // Sync quantity fields with selected_instance_ids during migration period
   this.sku_items.forEach(item => {
-    if (item.remaining_quantity === undefined || item.remaining_quantity === null) {
-      item.remaining_quantity = item.quantity;
+    const instanceCount = item.selected_instance_ids ? item.selected_instance_ids.length : 0;
+    
+    // If we have selected_instance_ids, use that as the source of truth
+    if (item.selected_instance_ids && item.selected_instance_ids.length > 0) {
+      item.quantity = instanceCount;
+      item.remaining_quantity = instanceCount;
+    }
+    // If we have old quantity but no selected_instance_ids (during migration)
+    else if (item.quantity && (!item.selected_instance_ids || item.selected_instance_ids.length === 0)) {
+      // Keep existing quantity/remaining_quantity for now (migration will fix this)
+      if (item.remaining_quantity === undefined || item.remaining_quantity === null) {
+        item.remaining_quantity = item.quantity;
+      }
     }
   });
   
@@ -111,48 +137,101 @@ tagSchema.pre('save', function(next) {
 
 // Method to check if tag is partially fulfilled
 tagSchema.methods.isPartiallyFulfilled = function() {
-  return this.sku_items.some(item => item.remaining_quantity < item.quantity && item.remaining_quantity > 0);
+  return this.sku_items.some(item => {
+    const currentCount = item.selected_instance_ids ? item.selected_instance_ids.length : 0;
+    const originalCount = item.quantity || currentCount; // Use quantity as original count during migration
+    return currentCount < originalCount && currentCount > 0;
+  });
 };
 
 // Method to check if tag is fully fulfilled
 tagSchema.methods.isFullyFulfilled = function() {
-  return this.sku_items.every(item => item.remaining_quantity === 0);
+  return this.sku_items.every(item => {
+    const instanceCount = item.selected_instance_ids ? item.selected_instance_ids.length : 0;
+    return instanceCount === 0;
+  });
 };
 
 // Method to get remaining items for fulfillment
 tagSchema.methods.getRemainingItems = function() {
-  return this.sku_items.filter(item => item.remaining_quantity > 0);
+  return this.sku_items.filter(item => {
+    const instanceCount = item.selected_instance_ids ? item.selected_instance_ids.length : 0;
+    return instanceCount > 0;
+  });
 };
 
 // Method to get total quantity across all items
 tagSchema.methods.getTotalQuantity = function() {
-  return this.sku_items.reduce((total, item) => total + item.quantity, 0);
+  return this.sku_items.reduce((total, item) => {
+    // Use selected_instance_ids.length as primary source, fallback to quantity during migration
+    const instanceCount = item.selected_instance_ids ? item.selected_instance_ids.length : (item.quantity || 0);
+    return total + instanceCount;
+  }, 0);
 };
 
 // Method to get total remaining quantity across all items
 tagSchema.methods.getTotalRemainingQuantity = function() {
-  return this.sku_items.reduce((total, item) => total + (item.remaining_quantity || 0), 0);
+  return this.sku_items.reduce((total, item) => {
+    // Remaining quantity = current selected_instance_ids.length
+    const instanceCount = item.selected_instance_ids ? item.selected_instance_ids.length : (item.remaining_quantity || 0);
+    return total + instanceCount;
+  }, 0);
 };
 
-// Method to assign instances automatically based on sku_items (simplified version - no parameters)
+// Method to assign instances automatically based on sku_items
 tagSchema.methods.assignInstances = async function() {
   const Instance = mongoose.model('Instance');
   
   for (const item of this.sku_items) {
-    // Find available instances for this SKU (FIFO - oldest first)
-    const availableInstances = await Instance.find({ 
-      sku_id: item.sku_id, 
-      tag_id: null 
-    })
-    .sort({ acquisition_date: 1 })
-    .limit(item.quantity);
+    let instancesToAssign;
     
-    if (availableInstances.length < item.quantity) {
-      throw new Error(`Not enough available instances for SKU ${item.sku_id}. Need ${item.quantity}, found ${availableInstances.length}`);
+    // Determine how many instances we need
+    const requestedQuantity = item.quantity || (item.selected_instance_ids ? item.selected_instance_ids.length : 0);
+    
+    if (item.selection_method === 'manual' && item.selected_instance_ids && item.selected_instance_ids.length > 0) {
+      // Manual selection - validate provided instances are available
+      instancesToAssign = await Instance.find({ 
+        _id: { $in: item.selected_instance_ids },
+        sku_id: item.sku_id,
+        tag_id: null 
+      });
+      
+      if (instancesToAssign.length !== item.selected_instance_ids.length) {
+        throw new Error(`Some manually selected instances are not available for SKU ${item.sku_id}`);
+      }
+    } else {
+      // Auto selection based on method
+      let sortCriteria;
+      switch (item.selection_method) {
+        case 'cost_based':
+          sortCriteria = { acquisition_cost: 1, acquisition_date: 1 }; // Lowest cost first
+          break;
+        case 'fifo':
+        case 'auto':
+        default:
+          sortCriteria = { acquisition_date: 1 }; // FIFO - oldest first
+          break;
+      }
+      
+      const availableInstances = await Instance.find({ 
+        sku_id: item.sku_id, 
+        tag_id: null 
+      })
+      .sort(sortCriteria)
+      .limit(requestedQuantity);
+      
+      if (availableInstances.length < requestedQuantity) {
+        throw new Error(`Not enough available instances for SKU ${item.sku_id}. Need ${requestedQuantity}, found ${availableInstances.length}`);
+      }
+      
+      instancesToAssign = availableInstances;
+      
+      // Update the selected_instance_ids with auto-selected instances
+      item.selected_instance_ids = instancesToAssign.map(inst => inst._id);
     }
     
     // Assign the instances to this tag
-    const instanceIds = availableInstances.map(instance => instance._id);
+    const instanceIds = instancesToAssign.map(instance => instance._id);
     await Instance.updateMany(
       { _id: { $in: instanceIds } },
       { tag_id: this._id }
@@ -167,22 +246,16 @@ tagSchema.methods.fulfillItems = async function() {
   const Instance = mongoose.model('Instance');
   
   for (const item of this.sku_items) {
-    if (item.remaining_quantity > 0) {
-      // Find instances assigned to this tag for this SKU (FIFO - oldest first)
-      const instancesToDelete = await Instance.find({ 
-        tag_id: this._id, 
-        sku_id: item.sku_id 
-      })
-      .sort({ acquisition_date: 1 })
-      .limit(item.remaining_quantity);
-      
+    const remainingInstances = item.selected_instance_ids || [];
+    
+    if (remainingInstances.length > 0) {
       // Delete the Instance records from database
-      const instanceIds = instancesToDelete.map(instance => instance._id);
-      if (instanceIds.length > 0) {
-        await Instance.deleteMany({ _id: { $in: instanceIds } });
-      }
+      await Instance.deleteMany({ _id: { $in: remainingInstances } });
       
-      // Update tag remaining quantity to 0
+      // Clear the selected instances array
+      item.selected_instance_ids = [];
+      
+      // Update legacy fields for compatibility
       item.remaining_quantity = 0;
     }
   }
@@ -206,25 +279,34 @@ tagSchema.methods.fulfillSpecificItems = async function(fulfillmentData, fulfill
     throw new Error(`SKU ${sku_id} not found in this tag`);
   }
   
-  if (quantity_fulfilled > item.remaining_quantity) {
-    throw new Error(`Cannot fulfill ${quantity_fulfilled} items. Only ${item.remaining_quantity} remaining.`);
+  const currentInstanceCount = item.selected_instance_ids ? item.selected_instance_ids.length : 0;
+  if (quantity_fulfilled > currentInstanceCount) {
+    throw new Error(`Cannot fulfill ${quantity_fulfilled} items. Only ${currentInstanceCount} remaining.`);
   }
   
-  // Find specific instances assigned to this tag for this SKU (FIFO - oldest first)
-  const instancesToDelete = await Instance.find({ 
-    tag_id: this._id, 
-    sku_id: sku_id 
+  // Get instances to fulfill from the selected_instance_ids (FIFO - oldest first)
+  const instancesToFulfill = await Instance.find({ 
+    _id: { $in: item.selected_instance_ids }
   })
   .sort({ acquisition_date: 1 })
   .limit(quantity_fulfilled);
   
-  if (instancesToDelete.length !== quantity_fulfilled) {
-    throw new Error(`Expected ${quantity_fulfilled} instances but found ${instancesToDelete.length}`);
+  if (instancesToFulfill.length !== quantity_fulfilled) {
+    throw new Error(`Expected ${quantity_fulfilled} instances but found ${instancesToFulfill.length}`);
   }
   
+  const instanceIdsToDelete = instancesToFulfill.map(inst => inst._id);
+  
   // Delete the Instance records from database
-  const instanceIds = instancesToDelete.map(instance => instance._id);
-  await Instance.deleteMany({ _id: { $in: instanceIds } });
+  await Instance.deleteMany({ _id: { $in: instanceIdsToDelete } });
+  
+  // Remove fulfilled instances from the selected_instance_ids array
+  item.selected_instance_ids = item.selected_instance_ids.filter(
+    id => !instanceIdsToDelete.some(deleteId => deleteId.toString() === id.toString())
+  );
+  
+  // Update legacy remaining_quantity field for compatibility
+  item.remaining_quantity = item.selected_instance_ids.length;
   
   // Update inventory quantities to reflect the deleted instances
   const inventory = await Inventory.findOne({ sku_id: sku_id });
@@ -251,8 +333,6 @@ tagSchema.methods.fulfillSpecificItems = async function(fulfillmentData, fulfill
     await inventory.save();
   }
   
-  // Update tag remaining quantity
-  item.remaining_quantity -= quantity_fulfilled;
   this.last_updated_by = fulfilledBy;
   
   // Check if tag is fully fulfilled and update status

@@ -681,17 +681,32 @@ onMounted(() => {
                             <q-icon name="add" size="12px" />
                           </button>
                         </div>
+                        
+                        <!-- Instance Selection Button (NEW) -->
+                        <div v-if="taggedSKU.quantity > 1" class="instance-selection">
+                          <button 
+                            type="button" 
+                            class="instance-btn"
+                            @click="showInstancePicker(index)"
+                            :class="{ 'selected': taggedSKU.selected_instance_ids && taggedSKU.selected_instance_ids.length > 0 }"
+                          >
+                            <q-icon name="precision_manufacturing" size="14px" />
+                            {{ taggedSKU.selected_instance_ids?.length ? 'Edit' : 'Select' }} Instances
+                          </button>
+                        </div>
 
                         <!-- Selection Method -->
                         <div class="selection-method">
                           <select 
                             :value="taggedSKU.selection_method"
-                            @change="updateSelectionMethod(index, ($event.target as HTMLSelectElement).value as 'fifo' | 'cost_based')"
+                            @change="updateSelectionMethod(index, ($event.target as HTMLSelectElement).value as 'auto' | 'fifo' | 'cost_based' | 'manual')"
                             class="method-select"
                             title="Instance selection method"
                           >
+                            <option value="auto">Auto (FIFO)</option>
                             <option value="fifo">FIFO</option>
                             <option value="cost_based">Cost-based</option>
+                            <option value="manual" :disabled="!taggedSKU.selected_instance_ids || taggedSKU.selected_instance_ids.length === 0">Manual</option>
                           </select>
                         </div>
 
