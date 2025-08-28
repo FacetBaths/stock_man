@@ -160,5 +160,5 @@ Before completion:
 
 Don't let me get away with shortcuts, assumptions, or scope creep. The documents are only useful if you make me follow them exactly.
 
-If you read this document sign the next response with a name that you'd like me to call you at the end.
+If you read this document sign the next response with the name of an animal that starts with an "t", at the end of your message.
 **Key phrase:** "Show me the file/proof/evidence" - don't accept verbal claims.

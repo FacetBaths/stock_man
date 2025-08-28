@@ -129,7 +129,7 @@ export const useInventoryStore = defineStore('inventory', () => {
         // Map common fields for component compatibility
         _id: item._id,
         quantity: item.total_quantity || 0,
-        product_type: item.category?.name?.toLowerCase() || 'unknown',
+        product_type: item.category?.name?.toLowerCase().replace(/\s+/g, '_') || 'miscellaneous',
         location: item.primary_location || 'Unknown',
         notes: '', // inventory records don't have notes
         updatedAt: item.updatedAt,
@@ -148,7 +148,28 @@ export const useInventoryStore = defineStore('inventory', () => {
           imperfect: 0,
           totalTagged: 0
         },
-        // Add product details for display
+        // CRITICAL FIX: Preserve original SKU data structure for EditItemModal
+        // The EditItemModal expects populated SKU data in item.sku
+        sku: item.sku ? {
+          _id: item.sku._id,
+          sku_code: item.sku.sku_code || '',
+          name: item.sku.name || 'Unknown Product',
+          description: item.sku.description || '',
+          brand: item.sku.brand || '',
+          model: item.sku.model || '',
+          color: item.sku.color || '',
+          dimensions: item.sku.dimensions || '',
+          finish: item.sku.finish || '',
+          unit_cost: item.sku.unit_cost || 0,
+          barcode: item.sku.barcode || '',
+          notes: item.sku.notes || '',
+          category_id: item.sku.category_id || item.category?._id || '',
+          status: item.sku.status || 'active',
+          current_cost: item.sku.unit_cost || item.average_cost || 0
+        } : null,
+        // Also preserve sku_id for fallback
+        sku_id: item.sku_id,
+        // Add product details for display (legacy compatibility)
         product_details: {
           name: item.sku?.name || 'Unknown Product',
           description: item.sku?.description || '',
@@ -157,7 +178,7 @@ export const useInventoryStore = defineStore('inventory', () => {
         },
         // Map cost fields
         cost: item.average_cost || 0,
-        // Map SKU fields
+        // Map SKU fields for backward compatibility
         sku_code: item.sku?.sku_code || '',
         barcode: item.sku?.barcode || ''
       }))

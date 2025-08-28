@@ -210,8 +210,19 @@ Frontend must adapt to these EXACT structures and endpoints.
       "sku": {
         "_id": "ObjectId",
         "sku_code": "TOILET-12345",
-        "description": "Premium Toilet",
-        "current_cost": 250.00
+        "name": "Premium Toilet Model X",
+        "description": "High-efficiency premium toilet with dual flush",
+        "brand": "AcmePlumbing",
+        "model": "PT-X100",
+        "unit_cost": 250.00,
+        "barcode": "123456789012",
+        "category_id": "ObjectId",
+        "status": "active"
+      },
+      "category": {
+        "_id": "ObjectId",
+        "name": "Toilets",
+        "description": "Bathroom toilet fixtures"
       },
       "needs_reorder": false,
       "utilization_rate": 50.0,
@@ -221,7 +232,16 @@ Frontend must adapt to these EXACT structures and endpoints.
         "broken": 1,
         "loaned": 1,
         "totalTagged": 5
-      }
+      },
+      "is_low_stock": false,
+      "is_out_of_stock": false,
+      "is_overstock": false,
+      "minimum_stock_level": 5,
+      "reorder_point": 3,
+      "maximum_stock_level": 50,
+      "last_movement_date": "2025-08-27T12:00:00.000Z",
+      "last_updated_by": "admin",
+      "updatedAt": "2025-08-27T12:00:00.000Z"
     }
   ],
   "pagination": {
@@ -231,6 +251,8 @@ Frontend must adapt to these EXACT structures and endpoints.
     "items_per_page": 50
   },
   "filters": {
+    "category_id": null,
+    "search": null,
     "status": "all",
     "sort_by": "sku_code",
     "sort_order": "asc"

@@ -171,8 +171,9 @@ const getPrimaryTagStatus = (item: any) => {
     return { text: 'None Available', color: 'negative', clickable: false }
   }
   
-  // Check if we have tag data
-  if (!item.tagSummary || item.tagSummary.totalTagged === 0) {
+  // Check if we have tag data - use tag_summary from API response
+  const tagSummary = item.tag_summary
+  if (!tagSummary || tagSummary.totalTagged === 0) {
     return { text: 'Available', color: 'positive', clickable: false }
   }
   
@@ -181,30 +182,30 @@ const getPrimaryTagStatus = (item: any) => {
   
   if (availableQty === 0) {
     // All items are tagged - no "Partially" prefix
-    if (item.tagSummary.broken > 0) {
+    if (tagSummary.broken > 0) {
       return { text: 'Broken', color: 'negative', clickable: true }
     }
-    if (item.tagSummary.imperfect > 0) {
+    if (tagSummary.imperfect > 0) {
       return { text: 'Imperfect', color: 'warning', clickable: true }
     }
-    if (item.tagSummary.reserved > 0) {
+    if (tagSummary.reserved > 0) {
       return { text: 'Reserved', color: 'info', clickable: true }
     }
-    if (item.tagSummary.loaned > 0) {
+    if (tagSummary.loaned > 0) {
       return { text: 'Loaned', color: 'purple', clickable: true }
     }
   } else {
     // Some items available, some tagged - show "Partially"
-    if (item.tagSummary.broken > 0) {
+    if (tagSummary.broken > 0) {
       return { text: 'Partially Broken', color: 'negative', clickable: true }
     }
-    if (item.tagSummary.imperfect > 0) {
+    if (tagSummary.imperfect > 0) {
       return { text: 'Partially Imperfect', color: 'warning', clickable: true }
     }
-    if (item.tagSummary.reserved > 0) {
+    if (tagSummary.reserved > 0) {
       return { text: 'Partially Reserved', color: 'info', clickable: true }
     }
-    if (item.tagSummary.loaned > 0) {
+    if (tagSummary.loaned > 0) {
       return { text: 'Partially Loaned', color: 'purple', clickable: true }
     }
   }
@@ -215,29 +216,65 @@ const getPrimaryTagStatus = (item: any) => {
 
 // Helper function to get product type from the inventory data structure
 const getProductType = (item: any) => {
-  // Handle new inventory API structure (has nested sku and category)
-  if (item.sku && item.category) {
-    // Map category names to product types for styling consistency
+  // First, try to use the category data that's actually provided by the backend
+  // The backend DOES populate category information via the aggregation pipeline
+  if (item.category && item.category.name) {
     const categoryName = item.category.name.toLowerCase()
+    // Map category names to product types for styling consistency
     const categoryToTypeMap: { [key: string]: string } = {
       'walls': 'wall',
       'accessories': 'accessory',
       'toilets': 'toilet',
-      'bases': 'base',
+      'bases': 'base', 
       'tubs': 'tub',
       'vanities': 'vanity',
       'shower doors': 'shower_door',
       'raw materials': 'raw_material',
-      'miscellaneous': 'miscellaneous'
+      'miscellaneous': 'miscellaneous',
+      'tools': 'accessory'
     }
-    return categoryToTypeMap[categoryName] || categoryName
+    const mappedType = categoryToTypeMap[categoryName] || categoryName.replace(/s$/, '') // remove plural 's'
+    if (mappedType !== categoryName) return mappedType
   }
+  
+  // Fallback to SKU code analysis if category isn't available or mapped
+  if (item.sku && item.sku.sku_code) {
+    const skuCode = item.sku.sku_code.toLowerCase()
+    // Extract product type from SKU code patterns
+    if (skuCode.includes('toilet')) return 'toilet'
+    if (skuCode.includes('wall')) return 'wall'
+    if (skuCode.includes('base')) return 'base'
+    if (skuCode.includes('tub')) return 'tub'
+    if (skuCode.includes('vanity')) return 'vanity'
+    if (skuCode.includes('shower')) return 'shower_door'
+    if (skuCode.includes('door')) return 'shower_door'
+    if (skuCode.includes('access')) return 'accessory'
+    if (skuCode.includes('raw')) return 'raw_material'
+    if (skuCode.includes('material')) return 'raw_material'
+  }
+  
+  // Check description if available
+  if (item.sku && item.sku.description) {
+    const desc = item.sku.description.toLowerCase()
+    if (desc.includes('toilet')) return 'toilet'
+    if (desc.includes('wall')) return 'wall'
+    if (desc.includes('base')) return 'base'
+    if (desc.includes('tub')) return 'tub'
+    if (desc.includes('vanity')) return 'vanity'
+    if (desc.includes('shower')) return 'shower_door'
+    if (desc.includes('door')) return 'shower_door'
+    if (desc.includes('access')) return 'accessory'
+    if (desc.includes('raw')) return 'raw_material'
+    if (desc.includes('material')) return 'raw_material'
+  }
+  
   // Handle legacy item structure
   if (item.product_type) {
     return item.product_type
   }
+  
   // Fallback
-  return 'unknown'
+  return 'miscellaneous'
 }
 
 // Helper to get SKU code from either structure
@@ -262,15 +299,23 @@ const getBarcode = (item: any) => {
   return null
 }
 
-// Helper to format product details for new structure
+// Helper to format product details for new inventory API structure
 const formatProductDetailsNew = (item: any) => {
   if (item.sku) {
+    // The backend actually provides full SKU data including name, description, and brand
+    const productName = item.sku.name || item.sku.description || 'Unknown Product'
+    const brandPrefix = item.sku.brand ? `${item.sku.brand} ` : ''
+    const modelSuffix = item.sku.model ? ` ${item.sku.model}` : ''
+    
     return {
-      primary: item.sku.name || 'Unknown Product',
-      secondary: item.sku.description || ''
+      primary: `${brandPrefix}${productName}${modelSuffix}`,
+      secondary: item.sku.sku_code || ''
     }
   }
-  return formatProductDetails(item)
+  return {
+    primary: 'Unknown Product',
+    secondary: ''
+  }
 }
 
 // Helper to get quantity from new structure
@@ -294,16 +339,18 @@ const getAvailableQuantityNew = (item: any) => {
   return getQuantity(item)
 }
 
-// Helper to get cost from either structure
+// Helper to get cost from inventory API response structure
 const getCost = (item: any) => {
-  if (item.sku && item.sku.unit_cost !== undefined) {
-    return item.sku.unit_cost
-  }
-  if (item.average_cost !== undefined) {
+  // The inventory response has:
+  // - average_cost at the inventory level (actual cost basis for inventory)
+  // - unit_cost in the nested sku object (current SKU cost from SKU model)
+  // Prefer average_cost for inventory display as it represents the actual cost basis
+  if (item.average_cost !== undefined && item.average_cost !== null) {
     return item.average_cost
   }
-  if (item.cost !== undefined) {
-    return item.cost
+  // Fallback to unit_cost from SKU if average not available
+  if (item.sku && item.sku.unit_cost !== undefined) {
+    return item.sku.unit_cost
   }
   return 0
 }
@@ -465,9 +512,9 @@ const handleTagStatusClick = (item: Inventory) => {
                 />
                 
                 <!-- Reserved/Available Breakdown -->
-                <div v-if="item.tagSummary && item.tagSummary.totalTagged > 0" class="quantity-breakdown">
+                <div v-if="item.tag_summary && item.tag_summary.totalTagged > 0" class="quantity-breakdown">
                   <div class="breakdown-text">
-                    {{ item.tagSummary.totalTagged }} reserved / {{ getAvailableQuantity(item) }} free
+                    {{ item.tag_summary.totalTagged }} tagged / {{ getAvailableQuantity(item) }} free
                   </div>
                 </div>
               </div>

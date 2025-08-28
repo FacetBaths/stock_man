@@ -779,7 +779,7 @@ router.get('/reports/movement', auth, async (req, res) => {
       { $match: matchStage },
       {
         $lookup: {
-          from: 'skunews',
+          from: 'skus',
           localField: 'sku_id',
           foreignField: '_id',
           as: 'sku'

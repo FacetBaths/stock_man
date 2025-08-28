@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { barcodeApi, inventoryApi, instancesApi, skuApi } from '@/utils/api'
-import type { SKU, Item } from '@/types'
+import type { SKU } from '@/types'
 
 const emit = defineEmits<{
   close: []

@@ -736,16 +736,39 @@ const onSubmit = async () => {
     saving.value = true
     
     if (isEditing.value && props.sku) {
-      // Update existing SKU
+      // Update existing SKU - only send fields backend expects
       const updates: UpdateSKURequest = {
-        sku_code: form.value.sku_code,
-        manufacturer_model: form.value.manufacturer_model,
-        barcode: form.value.barcode,
-        stock_thresholds: form.value.stock_thresholds,
+        name: props.sku.name || 'SKU Product', // Use existing name (required field)
         description: form.value.description,
+        barcode: form.value.barcode,
         notes: form.value.notes,
-        status: form.value.status
+        status: form.value.status,
+        unit_cost: form.value.current_cost
       }
+      
+      // Extract category_id - this is required by backend validation
+      let categoryId = null
+      if (props.sku.category_id) {
+        if (typeof props.sku.category_id === 'object' && props.sku.category_id._id) {
+          categoryId = props.sku.category_id._id
+        } else if (typeof props.sku.category_id === 'string') {
+          categoryId = props.sku.category_id
+        }
+      }
+      
+      // Debug logging to understand the category_id issue
+      console.log('Frontend: props.sku.category_id:', props.sku.category_id)
+      console.log('Frontend: extracted categoryId:', categoryId)
+      console.log('Frontend: categoryId type:', typeof categoryId)
+      
+      if (categoryId) {
+        updates.category_id = categoryId
+      } else {
+        console.error('Frontend: No valid category_id found in SKU object')
+        throw new Error('Category ID is required but missing from SKU')
+      }
+      
+      console.log('Frontend: About to update SKU with data:', JSON.stringify(updates, null, 2))
       await skuStore.updateSKU(props.sku._id, updates)
       
       // Add cost if changed

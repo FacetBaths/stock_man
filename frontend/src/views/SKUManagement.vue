@@ -468,7 +468,7 @@ import { useSKUStore } from '@/stores/sku'
 import { useCategoryStore } from '@/stores/category'
 import { useInventoryStore } from '@/stores/inventory'
 import { inventoryApi } from '@/utils/api'
-import { PRODUCT_TYPES, type SKU, type Item } from '@/types'
+import { PRODUCT_TYPES, type SKU } from '@/types'
 import StockStatusChip from '@/components/StockStatusChip.vue'
 import SKUFormDialog from '@/components/SKUFormDialog.vue'
 import AddCostDialog from '@/components/AddCostDialog.vue'
@@ -490,10 +490,10 @@ const showBatchScanDialog = ref(false)
 const showExportDialog = ref(false)
 
 // Products without SKUs state
-const productsWithoutSKUs = ref<Item[]>([])
-const selectedProductsWithoutSKUs = ref<Item[]>([])
+const productsWithoutSKUs = ref<any[]>([])
+const selectedProductsWithoutSKUs = ref<any[]>([])
 const loadingProductsWithoutSKUs = ref(false)
-const productForSKUCreation = ref<Item | null>(null)
+const productForSKUCreation = ref<any | null>(null)
 
 // Table configuration
 const columns = [
@@ -853,7 +853,7 @@ const loadProductsWithoutSKUs = async () => {
   }
 }
 
-const getProductDisplayName = (item: Item) => {
+const getProductDisplayName = (item: any) => {
   const details = item.product_details as any
   if (details.name) {
     return details.name
@@ -867,7 +867,7 @@ const getProductDisplayName = (item: Item) => {
   return `${formatProductType(item.product_type)} Product`
 }
 
-const openCreateSKUForProduct = (item: Item) => {
+const openCreateSKUForProduct = (item: any) => {
   productForSKUCreation.value = item
   selectedSKU.value = null
   showFormDialog.value = true

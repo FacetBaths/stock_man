@@ -38,9 +38,10 @@ const canEditCost = computed(() => authStore.user?.role === 'admin' || authStore
 const currentSkuId = ref('')
 
 const initializeForm = () => {
-  console.log('Initializing form with item:', props.item)
-  console.log('SKU data available at item.sku:', props.item.sku)
-  console.log('SKU data available at item.sku_id:', props.item.sku_id)
+  console.log('🔍 EditItemModal: Initializing form with item:', props.item)
+  console.log('🔍 EditItemModal: SKU data at item.sku:', props.item.sku)
+  console.log('🔍 EditItemModal: SKU data at item.sku_id:', props.item.sku_id)
+  console.log('🔍 EditItemModal: Item keys:', Object.keys(props.item))
   
   let skuData = {}
   let skuId = ''
@@ -50,15 +51,19 @@ const initializeForm = () => {
     // SKU is populated in the sku field
     skuData = props.item.sku
     skuId = props.item.sku._id
-    console.log('Using populated SKU data from item.sku:', skuData)
+    console.log('✅ EditItemModal: Using populated SKU data from item.sku:', skuData)
+    console.log('✅ EditItemModal: SKU ID:', skuId)
   } else if (typeof props.item.sku_id === 'object' && props.item.sku_id !== null) {
     // SKU is populated in the sku_id field
     skuData = props.item.sku_id
     skuId = props.item.sku_id._id
-    console.log('Using populated SKU data from item.sku_id:', skuData)
+    console.log('✅ EditItemModal: Using populated SKU data from item.sku_id:', skuData)
+    console.log('✅ EditItemModal: SKU ID:', skuId)
   } else {
     // No populated SKU data found
-    console.error('No populated SKU data found in item')
+    console.error('❌ EditItemModal: No populated SKU data found in item')
+    console.log('❌ EditItemModal: item.sku type:', typeof props.item.sku)
+    console.log('❌ EditItemModal: item.sku_id type:', typeof props.item.sku_id)
     error.value = 'No SKU data available for editing'
     return
   }
@@ -74,6 +79,14 @@ const initializeForm = () => {
   } else if (skuData.category) {
     // Fallback to category field for backward compatibility
     categoryId = typeof skuData.category === 'string' ? skuData.category : skuData.category._id || ''
+  } else if (props.item.category) {
+    // Check if category is available at item level
+    categoryId = typeof props.item.category === 'string' ? props.item.category : props.item.category._id || ''
+  }
+  
+  // If we still don't have a category_id, try to find it in the SKU's details object
+  if (!categoryId && skuData.details && skuData.details.category_id) {
+    categoryId = typeof skuData.details.category_id === 'string' ? skuData.details.category_id : skuData.details.category_id._id || ''
   }
   
   console.log('Category ID resolution:', {
@@ -82,19 +95,20 @@ const initializeForm = () => {
     resolved_category_id: categoryId
   })
   
-  // Initialize form with SKU data
+  // Initialize form with SKU data, extracting from details object if needed
   formData.value = {
-    name: skuData.name || '',
-    description: skuData.description || '',
-    brand: skuData.brand || '',
-    model: skuData.model || '',
-    color: skuData.color || '',
-    dimensions: skuData.dimensions || '',
-    finish: skuData.finish || '',
+    name: skuData.name || skuData.details?.name || 'SKU Product',
+    description: skuData.description || skuData.details?.description || '',
+    brand: skuData.brand || skuData.details?.brand || '',
+    model: skuData.model || skuData.details?.model || '',
+    color: skuData.color || skuData.details?.color || skuData.details?.color_name || '',
+    dimensions: skuData.dimensions || skuData.details?.dimensions || '',
+    finish: skuData.finish || skuData.details?.finish || '',
     unit_cost: skuData.unit_cost || props.item.average_cost || 0,
     barcode: skuData.barcode || '',
     notes: skuData.notes || '',
-    category_id: categoryId
+    // Only include category_id if it's valid, otherwise exclude it to avoid validation error
+    ...(categoryId && categoryId !== '' ? { category_id: categoryId } : {})
   }
   
   console.log('Initialized form data:', formData.value)
