@@ -152,14 +152,10 @@ export const useInventoryStore = defineStore('inventory', () => {
         if ('category_id' in params && (params.category_id === undefined || params.category_id === '' || params.category_id === null)) {
           const { category_id, ...restFilters } = updatedFilters
           inventoryFilters.value = restFilters
-          console.log('🧹 [Store] Removed category_id from filters, new filters:', inventoryFilters.value)
+          // console.log('🧹 [Store] Removed category_id from filters, new filters:', inventoryFilters.value)
         } else {
           inventoryFilters.value = updatedFilters
-          if ('category_id' in params && params.category_id) {
-            console.log('🔄 [Store] Updated filters with category_id:', params.category_id)
-          } else {
-            console.log('🔄 [Store] Updated filters (no category changes)')
-          }
+          // console.log('🔄 [Store] Updated filters with category_id:', params.category_id || 'no change')
         }
       }
 

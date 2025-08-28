@@ -19,21 +19,21 @@ const selectedCategory = ref("");
 const searchQuery = ref("");
 const showLowStockOnly = ref(false);
 
-// Debug reactive changes
-watch(
-  selectedCategory,
-  (newVal, oldVal) => {
-    console.log(
-      "🔄 [Dashboard] selectedCategory changed from:",
-      oldVal,
-      "to:",
-      newVal
-    );
-    console.trace("selectedCategory change stack trace:");
-    console.log({ selectedCategory: selectedCategory.value });
-  },
-  { immediate: true }
-);
+// Debug reactive changes (uncomment for debugging)
+// watch(
+//   selectedCategory,
+//   (newVal, oldVal) => {
+//     console.log(
+//       "🔄 [Dashboard] selectedCategory changed from:",
+//       oldVal,
+//       "to:",
+//       newVal
+//     );
+//     console.trace("selectedCategory change stack trace:");
+//     console.log({ selectedCategory: selectedCategory.value });
+//   },
+//   { immediate: true }
+// );
 const showAddModal = ref(false);
 const showEditModal = ref(false);
 const showQuickScanModal = ref(false);
@@ -57,35 +57,21 @@ const toTitleCase = (str: string): string => {
 
 // Available categories for filtering
 const availableCategories = computed(() => {
-  console.log("🎯 [Dashboard] availableCategories computed triggered");
-  console.log(
-    "📋 [Dashboard] categoryStore.categories:",
-    categoryStore.categories
-  );
-  console.log(
-    "📊 [Dashboard] categoryStore.categories.length:",
-    categoryStore.categories?.length || 0
-  );
-
+  // Uncomment for debugging category loading:
+  // console.log("🎯 [Dashboard] availableCategories computed triggered");
+  
   const categories = [{ _id: "", name: "All Categories" }];
   if (categoryStore.categories && categoryStore.categories.length > 0) {
-    console.log("✅ [Dashboard] Categories found, mapping...");
     // Handle both old and new category structures with title case formatting
     const mappedCategories = categoryStore.categories.map((cat) => {
-      console.log("🔄 [Dashboard] Mapping category:", cat);
       const rawName = cat.name || cat.displayName || "Unnamed Category";
       return {
         _id: cat._id || cat.id,
         name: toTitleCase(rawName),
       };
     });
-    console.log("🔄 [Dashboard] Mapped categories:", mappedCategories);
     categories.push(...mappedCategories);
-  } else {
-    console.log("❌ [Dashboard] No categories found or empty array");
   }
-
-  console.log("📦 [Dashboard] Final availableCategories:", categories);
   return categories;
 });
 
@@ -121,16 +107,8 @@ const getCurrentFilters = () => {
 
   // Apply category filter - explicitly set to undefined when clearing
   if (selectedCategory.value && selectedCategory.value !== "") {
-    console.log(
-      "🎯 [Dashboard] Adding category filter:",
-      selectedCategory.value
-    );
     filters.category_id = selectedCategory.value;
   } else {
-    console.log(
-      "🎯 [Dashboard] Clearing category filter - selectedCategory.value:",
-      selectedCategory.value
-    );
     // Explicitly set to undefined to signal the store to remove this filter
     filters.category_id = undefined;
   }
@@ -161,12 +139,10 @@ const handleFilterClick = (filter: string) => {
 const handleSearch = () => {
   // Add a small delay to ensure all reactive updates are complete
   setTimeout(() => {
-    console.log(
-      "🔍 [Dashboard] handleSearch executing, selectedCategory.value:",
-      selectedCategory.value
-    );
+    // Uncomment for debugging search/filter behavior:
+    // console.log("🔍 [Dashboard] handleSearch executing, selectedCategory.value:", selectedCategory.value);
     const filters = getCurrentFilters();
-    console.log("🔍 [Dashboard] handleSearch filters:", filters);
+    // console.log("🔍 [Dashboard] handleSearch filters:", filters);
     inventoryTableRef.value?.refreshInventory(filters);
   }, 10);
 };
@@ -287,29 +263,15 @@ const canViewCost = computed(
 );
 
 onMounted(async () => {
-  console.log("🚀 [Dashboard] onMounted called");
+  // Uncomment for debugging component lifecycle:
+  // console.log("🚀 [Dashboard] onMounted called");
 
   try {
-    console.log("🔄 [Dashboard] Starting fetchCategories...");
     await categoryStore.fetchCategories();
-    console.log("✅ [Dashboard] fetchCategories completed");
-    console.log(
-      "📋 [Dashboard] categoryStore.categories after fetch:",
-      categoryStore.categories
-    );
-    console.log(
-      "📊 [Dashboard] Categories length after fetch:",
-      categoryStore.categories?.length || 0
-    );
-
+    
     if (!categoryStore.categories || categoryStore.categories.length === 0) {
       console.warn(
         "⚠️ [Dashboard] No categories found in database. Categories may need to be seeded."
-      );
-    } else {
-      console.log(
-        "✅ [Dashboard] Categories loaded successfully:",
-        categoryStore.categories.length
       );
     }
   } catch (error) {
@@ -322,7 +284,6 @@ onMounted(async () => {
   // Auto-load initial inventory data (but safely)
   setTimeout(() => {
     if (inventoryTableRef.value && inventoryStore.inventory.length === 0) {
-      console.log("Dashboard: Auto-loading initial inventory data");
       inventoryTableRef.value.refreshInventory(getCurrentFilters());
     }
   }, 100);
