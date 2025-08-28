@@ -223,9 +223,9 @@ export const authApi = {
   }
 }
 
-// New architecture: Inventory API for aggregated inventory data
+// New architecture: Inventory API for aggregated inventory data (matches BACKEND_API_REFERENCE.md EXACTLY)
 export const inventoryApi = {
-  // Get inventory overview with filtering and pagination
+  // Get inventory overview with filtering and pagination - GET /api/inventory
   getInventory: async (params?: {
     category_id?: string
     search?: string
@@ -235,6 +235,8 @@ export const inventoryApi = {
     sort_by?: string
     sort_order?: 'asc' | 'desc'
   }) => {
+    console.log('🔍 [Frontend API] inventoryApi.getInventory called with params:', params)
+    console.log('📊 [Frontend API] category_id type and value:', typeof params?.category_id, params?.category_id)
     const response = await api.get('/inventory', { params })
     return response.data
   },
@@ -280,19 +282,25 @@ export const inventoryApi = {
     }
   },
 
-  // Get inventory statistics for dashboard
+  // Get inventory statistics for dashboard - GET /api/inventory/stats
   getStats: async (): Promise<InventoryStats> => {
     const response = await api.get('/inventory/stats')
     return response.data
   },
 
-  // Get detailed inventory for specific SKU
+  // Get low stock items - GET /api/inventory/low-stock
+  getLowStock: async () => {
+    const response = await api.get('/inventory/low-stock')
+    return response.data
+  },
+
+  // Get detailed inventory for specific SKU - GET /api/inventory/:sku_id
   getSKUInventory: async (skuId: string) => {
     const response = await api.get(`/inventory/${skuId}`)
     return response.data
   },
 
-  // Update inventory settings/thresholds
+  // Update inventory settings/thresholds - PUT /api/inventory/:sku_id
   updateInventorySettings: async (skuId: string, updates: {
     available?: number
     reserved?: number
@@ -309,7 +317,7 @@ export const inventoryApi = {
     return response.data
   },
 
-  // Receive new stock
+  // Receive new stock - POST /api/inventory/:sku_id/receive
   receiveStock: async (skuId: string, data: {
     quantity: number
     cost?: number
@@ -320,7 +328,7 @@ export const inventoryApi = {
     return response.data
   },
 
-  // Move inventory between statuses
+  // Move inventory between statuses - POST /api/inventory/:sku_id/move
   moveStock: async (skuId: string, data: {
     quantity: number
     from_status: string
@@ -332,7 +340,7 @@ export const inventoryApi = {
     return response.data
   },
 
-  // Remove inventory (damage, theft, etc.)
+  // Remove inventory (damage, theft, etc.) - POST /api/inventory/:sku_id/remove
   removeStock: async (skuId: string, data: {
     quantity: number
     from_status: string
@@ -343,23 +351,25 @@ export const inventoryApi = {
     return response.data
   },
 
-  // Get alerts
+  // Get low stock alerts - GET /api/inventory/alerts/low-stock
   getLowStockAlerts: async () => {
     const response = await api.get('/inventory/alerts/low-stock')
     return response.data
   },
 
+  // Get out of stock alerts - GET /api/inventory/alerts/out-of-stock
   getOutOfStockAlerts: async () => {
     const response = await api.get('/inventory/alerts/out-of-stock')
     return response.data
   },
 
+  // Get reorder alerts - GET /api/inventory/alerts/reorder
   getReorderAlerts: async () => {
     const response = await api.get('/inventory/alerts/reorder')
     return response.data
   },
 
-  // Reports
+  // Get valuation report - GET /api/inventory/reports/valuation
   getValuationReport: async (categoryId?: string) => {
     const response = await api.get('/inventory/reports/valuation', {
       params: categoryId ? { category_id: categoryId } : undefined
@@ -367,6 +377,7 @@ export const inventoryApi = {
     return response.data
   },
 
+  // Get movement report - GET /api/inventory/reports/movement
   getMovementReport: async (params?: {
     days?: number
     category_id?: string
@@ -376,7 +387,7 @@ export const inventoryApi = {
     return response.data
   },
 
-  // Sync inventory from existing data
+  // Sync inventory from existing data - POST /api/inventory/sync
   syncInventory: async (forceRebuild = false) => {
     const response = await api.post('/inventory/sync', { force_rebuild: forceRebuild })
     return response.data

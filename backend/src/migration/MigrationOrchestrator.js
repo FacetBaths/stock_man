@@ -33,6 +33,7 @@ class MigrationOrchestrator {
       skus: { processed: 0, created: 0, errors: 0 },
       instances: { processed: 0, created: 0, errors: 0 },
       inventory: { processed: 0, created: 0, errors: 0 },
+      users: { processed: 0, created: 0, errors: 0 },
       totalErrors: 0,
       totalWarnings: 0
     };
@@ -274,10 +275,11 @@ class MigrationOrchestrator {
     // Calculate inventory from instances
     await this.calculateInventory();
 
-    // Transform users (optional)
-    if (legacyData.users && legacyData.users.length > 0) {
-      this.transformedData.users = legacyData.users.filter(user => user.username && user.email);
-    }
+    // Transform users (optional but recommended)
+    await this.transformUsers(legacyData.users || []);
+    
+    // Ensure at least one admin user exists
+    await this.ensureAdminUser();
 
     console.log('🔄 Transformation Summary:');
     console.log(`  Categories: ${this.transformedData.categories.length}`);
@@ -839,7 +841,7 @@ class MigrationOrchestrator {
       console.log('🗄️  Clearing existing collections...');
       
       // Clear existing collections
-      const collections = ['categories', 'skus', 'instances', 'inventory'];
+      const collections = ['categories', 'skus', 'instances', 'inventory', 'users'];
       for (const collectionName of collections) {
         try {
           await db.collection(collectionName).deleteMany({});
@@ -939,7 +941,8 @@ class MigrationOrchestrator {
         categories: await db.collection('categories').countDocuments(),
         skus: await db.collection('skus').countDocuments(),
         instances: await db.collection('instances').countDocuments(),
-        inventory: await db.collection('inventory').countDocuments()
+        inventory: await db.collection('inventory').countDocuments(),
+        users: await db.collection('users').countDocuments()
       };
 
       console.log('📊 Post-migration collection counts:');
@@ -1035,6 +1038,147 @@ class MigrationOrchestrator {
     console.log(`Total Warnings: ${this.stats.totalWarnings}`);
     console.log(`Overall Status: ${this.stats.totalErrors === 0 ? '✅ SUCCESS' : '❌ COMPLETED WITH ERRORS'}`);
     console.log('===================');
+  }
+
+  /**
+   * Transform legacy users to new User model format
+   */
+  async transformUsers(legacyUsers) {
+    console.log('👥 Transforming users...');
+
+    if (!legacyUsers || legacyUsers.length === 0) {
+      console.log('ℹ️  No legacy users found to migrate');
+      return;
+    }
+
+    for (const user of legacyUsers) {
+      try {
+        // Skip users without essential fields
+        if (!user.username || !user.email) {
+          console.warn(`Skipping user ${user._id}: missing username or email`);
+          this.stats.users.errors++;
+          continue;
+        }
+
+        // Transform user to new format
+        const transformedUser = {
+          username: user.username,
+          email: user.email.toLowerCase(),
+          password: user.password, // Keep existing hashed password
+          firstName: user.firstName || user.first_name || 'User',
+          lastName: user.lastName || user.last_name || 'Name',
+          role: this.mapUserRole(user.role),
+          isActive: user.isActive !== false, // Default to true if not specified
+          isEmailVerified: user.isEmailVerified || false,
+          lastLogin: user.lastLogin || null,
+          loginAttempts: user.loginAttempts || 0,
+          lockUntil: user.lockUntil || null,
+          passwordChangedAt: user.passwordChangedAt || user.createdAt || new Date(),
+          refreshTokens: [], // Clear refresh tokens during migration
+          passwordResetToken: null, // Clear password reset tokens during migration
+          passwordResetExpires: null,
+          preferences: {
+            theme: user.preferences?.theme || 'light',
+            language: user.preferences?.language || 'en',
+            notifications: {
+              email: user.preferences?.notifications?.email !== false,
+              lowStock: user.preferences?.notifications?.lowStock !== false,
+              systemAlerts: user.preferences?.notifications?.systemAlerts !== false
+            }
+          },
+          createdAt: user.createdAt || new Date(),
+          updatedAt: user.updatedAt || new Date()
+        };
+
+        this.transformedData.users.push(transformedUser);
+        this.stats.users.processed++;
+        console.log(`  ✅ Migrated user: ${user.username} (${transformedUser.role})`);
+
+      } catch (error) {
+        console.error(`Error transforming user ${user._id}:`, error.message);
+        this.stats.users.errors++;
+      }
+    }
+
+    this.stats.users.created = this.transformedData.users.length;
+    console.log(`✅ Users transformed: ${this.stats.users.created}/${this.stats.users.processed}`);
+  }
+
+  /**
+   * Map legacy user roles to new role system
+   */
+  mapUserRole(legacyRole) {
+    if (!legacyRole) return 'viewer';
+    
+    const roleMap = {
+      'administrator': 'admin',
+      'admin': 'admin',
+      'manager': 'warehouse_manager',
+      'warehouse_manager': 'warehouse_manager',
+      'warehouse': 'warehouse_manager',
+      'sales': 'sales_rep',
+      'sales_rep': 'sales_rep',
+      'salesrep': 'sales_rep',
+      'user': 'viewer',
+      'viewer': 'viewer',
+      'readonly': 'viewer'
+    };
+
+    return roleMap[legacyRole.toLowerCase()] || 'viewer';
+  }
+
+  /**
+   * Ensure at least one admin user exists, create default if needed
+   */
+  async ensureAdminUser() {
+    const hasAdminUser = this.transformedData.users.some(user => user.role === 'admin');
+    
+    if (!hasAdminUser) {
+      console.log('👑 No admin user found, creating default admin user...');
+      
+      const bcrypt = require('bcryptjs');
+      const hashedPassword = await bcrypt.hash('admin123', 12);
+      
+      const defaultAdmin = {
+        username: 'admin',
+        email: 'admin@stockmanager.com',
+        password: hashedPassword,
+        firstName: 'System',
+        lastName: 'Administrator',
+        role: 'admin',
+        isActive: true,
+        isEmailVerified: true,
+        lastLogin: null,
+        loginAttempts: 0,
+        lockUntil: null,
+        passwordChangedAt: new Date(),
+        refreshTokens: [],
+        passwordResetToken: null,
+        passwordResetExpires: null,
+        preferences: {
+          theme: 'light',
+          language: 'en',
+          notifications: {
+            email: true,
+            lowStock: true,
+            systemAlerts: true
+          }
+        },
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      this.transformedData.users.push(defaultAdmin);
+      this.stats.users.created++;
+      
+      console.log('  ✅ Default admin user created:');
+      console.log('     Username: admin');
+      console.log('     Password: admin123');
+      console.log('     Email: admin@stockmanager.com');
+      console.log('     Role: admin');
+    } else {
+      console.log('✅ Admin user already exists, skipping default creation');
+    }
   }
 }
 

@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { 
+import type {
   Instance,
-  InventoryStats, 
+  InventoryStats,
   AddStockRequest,
   UpdateInstanceRequest,
   Inventory,
@@ -15,11 +15,11 @@ export const useInventoryStore = defineStore('inventory', () => {
   const inventory = ref<any[]>([])
   const stats = ref<InventoryStats | null>(null)
   const currentSKUInventory = ref<any | null>(null)
-  
+
   // Individual instances for stock management
   const instances = ref<Instance[]>([])
   const currentInstance = ref<Instance | null>(null)
-  
+
   // Loading states
   const isLoading = ref(false)
   const isCreating = ref(false)
@@ -30,7 +30,7 @@ export const useInventoryStore = defineStore('inventory', () => {
   const isRemoving = ref(false)
   const isSyncing = ref(false)
   const error = ref<string | null>(null)
-  
+
   // Pagination
   const pagination = ref({
     total_items: 0,
@@ -38,7 +38,7 @@ export const useInventoryStore = defineStore('inventory', () => {
     current_page: 1,
     items_per_page: 50
   })
-  
+
   // Current filters for inventory
   const inventoryFilters = ref({
     category_id: '',
@@ -47,7 +47,7 @@ export const useInventoryStore = defineStore('inventory', () => {
     sort_by: 'sku_code',
     sort_order: 'asc' as 'asc' | 'desc'
   })
-  
+
   // Current filters for instances
   const instanceFilters = ref({
     sku_id: '',
@@ -64,25 +64,55 @@ export const useInventoryStore = defineStore('inventory', () => {
       overstock: [] as any[],
       adequate: [] as any[]
     }
-    
+
     inventory.value.forEach(item => {
       if (item.is_low_stock) result.low_stock.push(item)
       else if (item.is_out_of_stock) result.out_of_stock.push(item)
       else if (item.is_overstock) result.overstock.push(item)
       else result.adequate.push(item)
     })
-    
+
     return result
   })
 
   const inventoryStats = computed(() => {
+    // If we have backend stats, use those (more accurate)
+    if (stats.value?.summary) {
+      const summary = stats.value.summary
+      return {
+        totalSKUs: summary.total_skus || 0,
+        totalItems: summary.total_quantity || 0,
+        inStock: summary.available_quantity || 0,
+        totalValue: summary.total_value || 0,
+        lowStock: summary.low_stock_count || 0,
+        outOfStock: summary.out_of_stock_count || 0,
+        needReorder: summary.needs_reorder_count || 0,
+        overstock: summary.overstock_count || 0,
+        totalQuantity: summary.total_quantity || 0,
+        availableQuantity: summary.available_quantity || 0,
+        reservedQuantity: summary.reserved_quantity || 0,
+        brokenQuantity: summary.broken_quantity || 0,
+        loanedQuantity: summary.loaned_quantity || 0
+      }
+    }
+
+    // Fallback to computed from inventory list (less accurate but better than nothing)
     return {
       totalSKUs: inventory.value.length,
+      totalItems: inventory.value.reduce((sum, item) => sum + (item.total_quantity || 0), 0),
+      inStock: inventory.value.reduce((sum, item) => sum + (item.available_quantity || 0), 0),
+      totalValue: inventory.value.reduce((sum, item) => sum + (item.total_value || 0), 0),
       lowStock: inventoryByStatus.value.low_stock.length,
       outOfStock: inventoryByStatus.value.out_of_stock.length,
+      needReorder: inventory.value.filter(item =>
+        item.available_quantity <= item.reorder_point
+      ).length,
       overstock: inventoryByStatus.value.overstock.length,
-      totalValue: inventory.value.reduce((sum, item) => sum + (item.total_value || 0), 0),
-      totalQuantity: inventory.value.reduce((sum, item) => sum + (item.total_quantity || 0), 0)
+      totalQuantity: inventory.value.reduce((sum, item) => sum + (item.total_quantity || 0), 0),
+      availableQuantity: inventory.value.reduce((sum, item) => sum + (item.available_quantity || 0), 0),
+      reservedQuantity: inventory.value.reduce((sum, item) => sum + (item.reserved_quantity || 0), 0),
+      brokenQuantity: inventory.value.reduce((sum, item) => sum + (item.broken_quantity || 0), 0),
+      loanedQuantity: inventory.value.reduce((sum, item) => sum + (item.loaned_quantity || 0), 0)
     }
   })
 
@@ -100,28 +130,55 @@ export const useInventoryStore = defineStore('inventory', () => {
 
   // Actions for inventory management
   const fetchInventory = async (params?: {
-    category_id?: string
-    search?: string
-    status?: 'all' | 'low_stock' | 'out_of_stock' | 'overstock' | 'needs_reorder'
-    page?: number
-    limit?: number
-    sort_by?: string
+    category_id?: string,
+    search?: string,
+    status?: 'all' | 'low_stock' | 'out_of_stock' | 'overstock' | 'needs_reorder',
+    page?: number,
+    limit?: number,
+    sort_by?: string,
     sort_order?: 'asc' | 'desc'
   }) => {
+    // console.clear()
+    // console.log('Fetching inventory...')
     try {
       isLoading.value = true
       error.value = null
-      
-      // Update filters
+
+      // Update filters - handle clearing category_id when not provided or set to undefined
       if (params) {
-        inventoryFilters.value = { ...inventoryFilters.value, ...params }
+        const updatedFilters = { ...inventoryFilters.value, ...params }
+        
+        // If category_id was explicitly passed as undefined/empty, remove it from filters
+        if ('category_id' in params && (params.category_id === undefined || params.category_id === '' || params.category_id === null)) {
+          const { category_id, ...restFilters } = updatedFilters
+          inventoryFilters.value = restFilters
+          console.log('🧹 [Store] Removed category_id from filters, new filters:', inventoryFilters.value)
+        } else {
+          inventoryFilters.value = updatedFilters
+          if ('category_id' in params && params.category_id) {
+            console.log('🔄 [Store] Updated filters with category_id:', params.category_id)
+          } else {
+            console.log('🔄 [Store] Updated filters (no category changes)')
+          }
+        }
       }
 
-      const response = await inventoryApi.getInventory({
+      // Build API parameters and remove empty category_id if present
+      let apiParams = {
         ...inventoryFilters.value,
-        page: params?.page || inventoryFilters.value.current_page
-      })
+        page: params?.page || pagination.value.current_page,
+        limit: params?.limit || pagination.value.items_per_page
+      }
       
+      // Remove empty category_id to avoid sending it to backend
+      if (apiParams.category_id === '' || apiParams.category_id === null || apiParams.category_id === undefined) {
+        const { category_id, ...restParams } = apiParams
+        apiParams = restParams
+      }
+      
+      console.log('📊 [Store] Final API params being sent:', apiParams)
+      const response = await inventoryApi.getInventory(apiParams)
+
       // Transform backend inventory data to match frontend expectations
       inventory.value = response.inventory.map((item: any) => ({
         // Keep all original inventory properties
@@ -188,7 +245,7 @@ export const useInventoryStore = defineStore('inventory', () => {
         current_page: response.pagination.current_page,
         items_per_page: response.pagination.items_per_page
       }
-      
+
       return response
     } catch (err: any) {
       error.value = err.response?.data?.message || 'Failed to fetch inventory'
@@ -213,10 +270,10 @@ export const useInventoryStore = defineStore('inventory', () => {
     try {
       isLoading.value = true
       error.value = null
-      
+
       const response = await inventoryApi.getSKUInventory(skuId)
       currentSKUInventory.value = response
-      
+
       return response
     } catch (err: any) {
       error.value = err.response?.data?.message || 'Failed to fetch SKU inventory'
@@ -240,15 +297,15 @@ export const useInventoryStore = defineStore('inventory', () => {
     try {
       isUpdating.value = true
       error.value = null
-      
+
       const response = await inventoryApi.updateInventorySettings(skuId, updates)
-      
+
       // Update in inventory list if exists
       const index = inventory.value.findIndex(item => item.sku_id === skuId)
       if (index !== -1) {
         inventory.value[index] = { ...inventory.value[index], ...response.inventory }
       }
-      
+
       return response
     } catch (err: any) {
       error.value = err.response?.data?.message || 'Failed to update inventory settings'
@@ -267,13 +324,13 @@ export const useInventoryStore = defineStore('inventory', () => {
     try {
       isReceiving.value = true
       error.value = null
-      
+
       const response = await inventoryApi.receiveStock(skuId, data)
-      
+
       // Refresh inventory data
       await fetchInventory()
       await fetchStats()
-      
+
       return response
     } catch (err: any) {
       error.value = err.response?.data?.message || 'Failed to receive stock'
@@ -293,13 +350,13 @@ export const useInventoryStore = defineStore('inventory', () => {
     try {
       isMoving.value = true
       error.value = null
-      
+
       const response = await inventoryApi.moveStock(skuId, data)
-      
+
       // Refresh inventory data
       await fetchInventory()
       await fetchStats()
-      
+
       return response
     } catch (err: any) {
       error.value = err.response?.data?.message || 'Failed to move stock'
@@ -318,13 +375,13 @@ export const useInventoryStore = defineStore('inventory', () => {
     try {
       isRemoving.value = true
       error.value = null
-      
+
       const response = await inventoryApi.removeStock(skuId, data)
-      
+
       // Refresh inventory data
       await fetchInventory()
       await fetchStats()
-      
+
       return response
     } catch (err: any) {
       error.value = err.response?.data?.message || 'Failed to remove stock'
@@ -342,10 +399,10 @@ export const useInventoryStore = defineStore('inventory', () => {
     try {
       isLoading.value = true
       error.value = null
-      
+
       const response = await instancesApi.getInstances(skuId, params)
       instances.value = response.instances || []
-      
+
       return response
     } catch (err: any) {
       error.value = err.response?.data?.message || 'Failed to fetch instances'
@@ -359,13 +416,13 @@ export const useInventoryStore = defineStore('inventory', () => {
     try {
       isCreating.value = true
       error.value = null
-      
+
       const response = await instancesApi.addStock(data)
-      
+
       // Refresh inventory data
       await fetchInventory()
       await fetchStats()
-      
+
       return response
     } catch (err: any) {
       error.value = err.response?.data?.message || 'Failed to add stock'
@@ -379,20 +436,20 @@ export const useInventoryStore = defineStore('inventory', () => {
     try {
       isUpdating.value = true
       error.value = null
-      
+
       const response = await instancesApi.updateInstance(id, updates)
-      
+
       // Update in local instances if present
       const index = instances.value.findIndex(instance => instance._id === id)
       if (index !== -1) {
         instances.value[index] = { ...instances.value[index], ...response.instance }
       }
-      
+
       // Update current instance if it's the same
       if (currentInstance.value?._id === id) {
         currentInstance.value = { ...currentInstance.value, ...response.instance }
       }
-      
+
       return response
     } catch (err: any) {
       error.value = err.response?.data?.message || 'Failed to update instance'
@@ -467,13 +524,13 @@ export const useInventoryStore = defineStore('inventory', () => {
     try {
       isSyncing.value = true
       error.value = null
-      
+
       const response = await inventoryApi.syncInventory(forceRebuild)
-      
+
       // Refresh all data after sync
       await fetchInventory()
       await fetchStats()
-      
+
       return response
     } catch (err: any) {
       error.value = err.response?.data?.message || 'Failed to sync inventory'
@@ -574,10 +631,10 @@ export const useInventoryStore = defineStore('inventory', () => {
   }
 
   // Backward compatibility methods
-  const loadItems = async (params?: { 
+  const loadItems = async (params?: {
     in_stock_only?: boolean
     product_type?: string
-    search?: string 
+    search?: string
     page?: number
   }) => {
     // Map to fetchInventory for backward compatibility
@@ -610,16 +667,16 @@ export const useInventoryStore = defineStore('inventory', () => {
     inventory,
     currentSKUInventory,
     inventoryFilters,
-    
+
     // State - Instances
     instances,
     currentInstance,
     instanceFilters,
-    
+
     // State - General
     stats,
     pagination,
-    
+
     // Loading states
     isLoading,
     isCreating,
@@ -630,13 +687,13 @@ export const useInventoryStore = defineStore('inventory', () => {
     isRemoving,
     isSyncing,
     error,
-    
+
     // Computed
     inventoryByStatus,
     inventoryStats,
     instancesByLocation,
     itemsByType, // Backward compatibility
-    
+
     // Actions - Inventory
     fetchInventory,
     fetchStats,
@@ -645,31 +702,31 @@ export const useInventoryStore = defineStore('inventory', () => {
     receiveStock,
     moveStock,
     removeStock,
-    
+
     // Actions - Instances
     fetchInstances,
     addStock,
     updateInstance,
     getCostBreakdown,
-    
+
     // Actions - Alerts & Reports
     fetchLowStockAlerts,
     fetchOutOfStockAlerts,
     fetchReorderAlerts,
     fetchValuationReport,
     fetchMovementReport,
-    
+
     // Actions - Sync
     syncInventory,
-    
+
     // Helpers
     clearError,
     updateInventoryFilters,
     clearInventoryFilters,
-    
+
     // Item creation (full workflow)
     createItem,
-    
+
     // Backward compatibility methods
     loadItems,
     loadStats

@@ -96,11 +96,21 @@ router.get('/', auth, async (req, res) => {
       { $unwind: { path: '$category', preserveNullAndEmptyArrays: true } }
     ];
 
-    // Category filtering
-    if (category_id && category_id !== 'all') {
+    // Category filtering - only apply if we have a valid non-empty category ID
+    if (category_id && category_id !== 'all' && typeof category_id === 'string' && category_id.trim() !== '') {
+      // Validate ObjectId format
+      const mongoose = require('mongoose');
+      if (!mongoose.Types.ObjectId.isValid(category_id)) {
+        console.error('Invalid category_id format:', category_id);
+        return res.status(400).json({ message: 'Invalid category ID format' });
+      }
+      
+      console.log('Applying category filter:', category_id);
       pipeline.push({
-        $match: { 'sku.category_id': new require('mongoose').Types.ObjectId(category_id) }
+        $match: { 'sku.category_id': new mongoose.Types.ObjectId(category_id) }
       });
+    } else {
+      console.log('No category filter applied. category_id value:', category_id);
     }
 
     // Search filtering
@@ -680,8 +690,9 @@ router.get('/reports/valuation', auth, async (req, res) => {
 
     // Category filtering
     if (category_id && category_id !== 'all') {
+      const mongoose = require('mongoose');
       pipeline.push({
-        $match: { 'sku.category_id': require('mongoose').Types.ObjectId(category_id) }
+        $match: { 'sku.category_id': new mongoose.Types.ObjectId(category_id) }
       });
     }
 
@@ -772,7 +783,8 @@ router.get('/reports/movement', auth, async (req, res) => {
 
     // SKU-specific filter
     if (sku_id) {
-      matchStage.sku_id = require('mongoose').Types.ObjectId(sku_id);
+      const mongoose = require('mongoose');
+      matchStage.sku_id = new mongoose.Types.ObjectId(sku_id);
     }
 
     let pipeline = [
@@ -799,8 +811,9 @@ router.get('/reports/movement', auth, async (req, res) => {
 
     // Category filtering
     if (category_id && category_id !== 'all') {
+      const mongoose = require('mongoose');
       pipeline.push({
-        $match: { 'sku.category_id': require('mongoose').Types.ObjectId(category_id) }
+        $match: { 'sku.category_id': new mongoose.Types.ObjectId(category_id) }
       });
     }
 

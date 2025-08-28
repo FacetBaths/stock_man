@@ -19,6 +19,7 @@ const userOptions = [
 ];
 
 const handleLogin = async () => {
+  console.log(credentials.value);
   try {
     await authStore.login(credentials.value);
     $q.notify({
