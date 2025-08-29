@@ -47,7 +47,7 @@ async function ensureInventoryRecord(skuId, updatedBy = 'System') {
   return inventory;
 }
 
-// GET /api/inventory - Get inventory summary with filtering and pagination
+// GET /api/inventory - Get inventory summary with filtering and pagination (REAL-TIME INSTANCE-BASED)
 router.get('/', auth, async (req, res) => {
   try {
     const {
@@ -60,46 +60,277 @@ router.get('/', auth, async (req, res) => {
       sort_order = 'asc'
     } = req.query;
 
-    let query = { is_active: true };
-    
-    // Status-based filtering
-    if (status === 'low_stock') {
-      query.is_low_stock = true;
-    } else if (status === 'out_of_stock') {
-      query.is_out_of_stock = true;
-    } else if (status === 'overstock') {
-      query.is_overstock = true;
-    } else if (status === 'needs_reorder') {
-      query.$expr = { $lte: ['$available_quantity', '$reorder_point'] };
-    }
+    const mongoose = require('mongoose');
+    console.log('🔄 [Inventory API] Starting real-time instance-based inventory calculation...');
 
-    // Build aggregation pipeline
+    // Build aggregation pipeline starting from SKUs (not stored Inventory records)
     let pipeline = [
-      { $match: query },
+      // Start with active SKUs
       {
-        $lookup: {
-          from: 'skus',
-          localField: 'sku_id',
-          foreignField: '_id',
-          as: 'sku'
+        $match: { 
+          status: 'active' // Only active SKUs
         }
       },
-      { $unwind: '$sku' },
+      
+      // Get category info
       {
         $lookup: {
           from: 'categories',
-          localField: 'sku.category_id',
+          localField: 'category_id',
           foreignField: '_id',
           as: 'category'
         }
       },
-      { $unwind: { path: '$category', preserveNullAndEmptyArrays: true } }
+      { $unwind: { path: '$category', preserveNullAndEmptyArrays: true } },
+      
+      // ✅ REAL-TIME CALCULATION: Count instances for each SKU
+      {
+        $lookup: {
+          from: 'instances',
+          localField: '_id',
+          foreignField: 'sku_id',
+          as: 'all_instances'
+        }
+      },
+      
+      // ✅ REAL-TIME CALCULATION: Get tag info for tagged instances
+      {
+        $lookup: {
+          from: 'instances',
+          let: { skuId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ['$sku_id', '$$skuId'] },
+                tag_id: { $ne: null }
+              }
+            },
+            {
+              $lookup: {
+                from: 'tags',
+                localField: 'tag_id',
+                foreignField: '_id',
+                as: 'tag'
+              }
+            },
+            { $unwind: '$tag' },
+            {
+              $group: {
+                _id: '$tag.tag_type',
+                count: { $sum: 1 }
+              }
+            }
+          ],
+          as: 'tag_breakdown'
+        }
+      },
+      
+      // ✅ CALCULATE REAL-TIME QUANTITIES FROM ACTUAL INSTANCES
+      {
+        $addFields: {
+          sku_id: '$_id', // For compatibility
+          total_quantity: { $size: '$all_instances' },
+          available_quantity: {
+            $size: {
+              $filter: {
+                input: '$all_instances',
+                cond: { $eq: ['$$this.tag_id', null] }
+              }
+            }
+          },
+          reserved_quantity: {
+            $let: {
+              vars: {
+                reserved_breakdown: {
+                  $arrayElemAt: [
+                    {
+                      $filter: {
+                        input: '$tag_breakdown',
+                        cond: { $eq: ['$$this._id', 'reserved'] }
+                      }
+                    },
+                    0
+                  ]
+                }
+              },
+              in: { $ifNull: ['$$reserved_breakdown.count', 0] }
+            }
+          },
+          broken_quantity: {
+            $let: {
+              vars: {
+                broken_breakdown: {
+                  $arrayElemAt: [
+                    {
+                      $filter: {
+                        input: '$tag_breakdown',
+                        cond: { $in: ['$$this._id', ['broken', 'imperfect']] }
+                      }
+                    },
+                    0
+                  ]
+                }
+              },
+              in: { $ifNull: ['$$broken_breakdown.count', 0] }
+            }
+          },
+          loaned_quantity: {
+            $let: {
+              vars: {
+                loaned_breakdown: {
+                  $arrayElemAt: [
+                    {
+                      $filter: {
+                        input: '$tag_breakdown',
+                        cond: { $eq: ['$$this._id', 'loaned'] }
+                      }
+                    },
+                    0
+                  ]
+                }
+              },
+              in: { $ifNull: ['$$loaned_breakdown.count', 0] }
+            }
+          },
+          // Calculate financial data from instances
+          total_value: {
+            $sum: '$all_instances.acquisition_cost'
+          },
+          average_cost: {
+            $cond: {
+              if: { $gt: [{ $size: '$all_instances' }, 0] },
+              then: {
+                $divide: [
+                  { $sum: '$all_instances.acquisition_cost' },
+                  { $size: '$all_instances' }
+                ]
+              },
+              else: 0
+            }
+          }
+        }
+      },
+      
+      // Get inventory settings (thresholds) from stored Inventory records if they exist
+      {
+        $lookup: {
+          from: 'inventory',
+          localField: '_id',
+          foreignField: 'sku_id',
+          as: 'inventory_settings'
+        }
+      },
+      
+      // Add inventory settings and computed flags
+      {
+        $addFields: {
+          minimum_stock_level: {
+            $ifNull: [
+              { $arrayElemAt: ['$inventory_settings.minimum_stock_level', 0] },
+              0
+            ]
+          },
+          reorder_point: {
+            $ifNull: [
+              { $arrayElemAt: ['$inventory_settings.reorder_point', 0] },
+              5
+            ]
+          },
+          maximum_stock_level: {
+            $ifNull: [
+              { $arrayElemAt: ['$inventory_settings.maximum_stock_level', 0] },
+              null
+            ]
+          },
+          last_movement_date: {
+            $ifNull: [
+              { $arrayElemAt: ['$inventory_settings.last_movement_date', 0] },
+              new Date()
+            ]
+          },
+          last_updated_by: {
+            $ifNull: [
+              { $arrayElemAt: ['$inventory_settings.last_updated_by', 0] },
+              'System'
+            ]
+          }
+        }
+      },
+      
+      // Calculate status flags based on real-time quantities
+      {
+        $addFields: {
+          is_out_of_stock: { $eq: ['$available_quantity', 0] },
+          is_low_stock: {
+            $and: [
+              { $gt: ['$available_quantity', 0] },
+              { $lte: ['$available_quantity', '$minimum_stock_level'] }
+            ]
+          },
+          is_overstock: {
+            $and: [
+              { $ne: ['$maximum_stock_level', null] },
+              { $gt: ['$total_quantity', '$maximum_stock_level'] }
+            ]
+          },
+          needs_reorder: { $lte: ['$available_quantity', '$reorder_point'] },
+          utilization_rate: {
+            $cond: {
+              if: { $gt: ['$total_quantity', 0] },
+              then: {
+                $multiply: [
+                  { $divide: [{ $subtract: ['$total_quantity', '$available_quantity'] }, '$total_quantity'] },
+                  100
+                ]
+              },
+              else: 0
+            }
+          },
+          has_tags: {
+            $or: [
+              { $gt: ['$reserved_quantity', 0] },
+              { $gt: ['$broken_quantity', 0] },
+              { $gt: ['$loaned_quantity', 0] }
+            ]
+          },
+          tag_summary: {
+            reserved: '$reserved_quantity',
+            broken: '$broken_quantity', 
+            loaned: '$loaned_quantity',
+            totalTagged: {
+              $add: ['$reserved_quantity', '$broken_quantity', '$loaned_quantity']
+            }
+          }
+        }
+      },
+      
+      // Clean up temporary fields and rename SKU fields for compatibility
+      {
+        $addFields: {
+          sku: {
+            _id: '$_id',
+            sku_code: '$sku_code',
+            name: '$name',
+            description: '$description',
+            brand: '$brand',
+            model: '$model',
+            unit_cost: '$unit_cost',
+            barcode: '$barcode',
+            category_id: '$category_id',
+            status: '$status'
+          }
+        }
+      },
+      
+      // Remove temporary fields
+      {
+        $unset: ['all_instances', 'tag_breakdown', 'inventory_settings']
+      }
     ];
 
     // Category filtering - only apply if we have a valid non-empty category ID
     if (category_id && category_id !== 'all' && typeof category_id === 'string' && category_id.trim() !== '') {
       // Validate ObjectId format
-      const mongoose = require('mongoose');
       if (!mongoose.Types.ObjectId.isValid(category_id)) {
         console.error('Invalid category_id format:', category_id);
         return res.status(400).json({ message: 'Invalid category ID format' });
@@ -107,7 +338,7 @@ router.get('/', auth, async (req, res) => {
       
       console.log('Applying category filter:', category_id);
       pipeline.push({
-        $match: { 'sku.category_id': new mongoose.Types.ObjectId(category_id) }
+        $match: { 'category_id': new mongoose.Types.ObjectId(category_id) }
       });
     } else {
       console.log('No category filter applied. category_id value:', category_id);
@@ -119,57 +350,34 @@ router.get('/', auth, async (req, res) => {
       pipeline.push({
         $match: {
           $or: [
-            { 'sku.sku_code': { $regex: searchTerm, $options: 'i' } },
-            { 'sku.description': { $regex: searchTerm, $options: 'i' } },
-            { 'sku.manufacturer_part_number': { $regex: searchTerm, $options: 'i' } },
+            { 'sku_code': { $regex: searchTerm, $options: 'i' } },
+            { 'description': { $regex: searchTerm, $options: 'i' } },
+            { 'name': { $regex: searchTerm, $options: 'i' } },
             { 'category.name': { $regex: searchTerm, $options: 'i' } }
           ]
         }
       });
     }
 
-    // Add computed fields
-    pipeline.push({
-      $addFields: {
-        needs_reorder: { $lte: ['$available_quantity', '$reorder_point'] },
-        utilization_rate: {
-          $cond: {
-            if: { $gt: ['$total_quantity', 0] },
-            then: {
-              $multiply: [
-                { $divide: [{ $subtract: ['$total_quantity', '$available_quantity'] }, '$total_quantity'] },
-                100
-              ]
-            },
-            else: 0
-          }
-        },
-        has_tags: {
-          $or: [
-            { $gt: ['$reserved_quantity', 0] },
-            { $gt: ['$broken_quantity', 0] },
-            { $gt: ['$loaned_quantity', 0] }
-          ]
-        },
-        tag_summary: {
-          reserved: '$reserved_quantity',
-          broken: '$broken_quantity',
-          loaned: '$loaned_quantity',
-          totalTagged: {
-            $add: ['$reserved_quantity', '$broken_quantity', '$loaned_quantity']
-          }
-        }
-      }
-    });
+    // Status-based filtering (after calculations)
+    if (status === 'low_stock') {
+      pipeline.push({ $match: { is_low_stock: true } });
+    } else if (status === 'out_of_stock') {
+      pipeline.push({ $match: { is_out_of_stock: true } });
+    } else if (status === 'overstock') {
+      pipeline.push({ $match: { is_overstock: true } });
+    } else if (status === 'needs_reorder') {
+      pipeline.push({ $match: { needs_reorder: true } });
+    }
 
     // Sorting
-    const sortField = sort_by === 'sku_code' ? 'sku.sku_code' : sort_by;
+    const sortField = sort_by === 'sku_code' ? 'sku_code' : sort_by;
     const sortDirection = sort_order === 'desc' ? -1 : 1;
     pipeline.push({ $sort: { [sortField]: sortDirection } });
 
     // Get total count for pagination
     const countPipeline = [...pipeline, { $count: 'total' }];
-    const countResult = await Inventory.aggregate(countPipeline);
+    const countResult = await mongoose.model('SKU').aggregate(countPipeline);
     const totalItems = countResult.length > 0 ? countResult[0].total : 0;
 
     // Apply pagination
@@ -178,7 +386,9 @@ router.get('/', auth, async (req, res) => {
       { $limit: parseInt(limit) }
     );
 
-    const inventory = await Inventory.aggregate(pipeline);
+    const inventory = await mongoose.model('SKU').aggregate(pipeline);
+
+    console.log(`✅ [Inventory API] Real-time calculation complete: ${inventory.length} SKUs processed`);
 
     res.json({
       inventory,
@@ -206,14 +416,180 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
-// GET /api/inventory/stats - Get inventory statistics and dashboard data
+// GET /api/inventory/stats - Get inventory statistics and dashboard data (REAL-TIME INSTANCE-BASED)
 router.get('/stats', auth, async (req, res) => {
   try {
-    console.log('Fetching inventory stats...');
+    console.log('🔄 [Inventory Stats] Starting real-time statistics calculation...');
+    const mongoose = require('mongoose');
 
-    // Get summary statistics
-    const summaryStats = await Inventory.aggregate([
-      { $match: { is_active: true } },
+    // ✅ REAL-TIME STATS: Calculate from actual instances and tags
+    const summaryStats = await mongoose.model('SKU').aggregate([
+      // Start with active SKUs
+      { $match: { status: 'active' } },
+      
+      // Get all instances for each SKU
+      {
+        $lookup: {
+          from: 'instances',
+          localField: '_id',
+          foreignField: 'sku_id',
+          as: 'all_instances'
+        }
+      },
+      
+      // Get tag breakdown for tagged instances
+      {
+        $lookup: {
+          from: 'instances',
+          let: { skuId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ['$sku_id', '$$skuId'] },
+                tag_id: { $ne: null }
+              }
+            },
+            {
+              $lookup: {
+                from: 'tags',
+                localField: 'tag_id',
+                foreignField: '_id',
+                as: 'tag'
+              }
+            },
+            { $unwind: '$tag' },
+            {
+              $group: {
+                _id: '$tag.tag_type',
+                count: { $sum: 1 }
+              }
+            }
+          ],
+          as: 'tag_breakdown'
+        }
+      },
+      
+      // Get inventory settings for status flags
+      {
+        $lookup: {
+          from: 'inventory',
+          localField: '_id',
+          foreignField: 'sku_id',
+          as: 'inventory_settings'
+        }
+      },
+      
+      // Calculate real-time quantities and status flags
+      {
+        $addFields: {
+          total_quantity: { $size: '$all_instances' },
+          available_quantity: {
+            $size: {
+              $filter: {
+                input: '$all_instances',
+                cond: { $eq: ['$$this.tag_id', null] }
+              }
+            }
+          },
+          reserved_quantity: {
+            $let: {
+              vars: {
+                reserved_breakdown: {
+                  $arrayElemAt: [
+                    {
+                      $filter: {
+                        input: '$tag_breakdown',
+                        cond: { $eq: ['$$this._id', 'reserved'] }
+                      }
+                    },
+                    0
+                  ]
+                }
+              },
+              in: { $ifNull: ['$$reserved_breakdown.count', 0] }
+            }
+          },
+          broken_quantity: {
+            $let: {
+              vars: {
+                broken_breakdown: {
+                  $arrayElemAt: [
+                    {
+                      $filter: {
+                        input: '$tag_breakdown',
+                        cond: { $in: ['$$this._id', ['broken', 'imperfect']] }
+                      }
+                    },
+                    0
+                  ]
+                }
+              },
+              in: { $ifNull: ['$$broken_breakdown.count', 0] }
+            }
+          },
+          loaned_quantity: {
+            $let: {
+              vars: {
+                loaned_breakdown: {
+                  $arrayElemAt: [
+                    {
+                      $filter: {
+                        input: '$tag_breakdown',
+                        cond: { $eq: ['$$this._id', 'loaned'] }
+                      }
+                    },
+                    0
+                  ]
+                }
+              },
+              in: { $ifNull: ['$$loaned_breakdown.count', 0] }
+            }
+          },
+          total_value: {
+            $sum: '$all_instances.acquisition_cost'
+          },
+          minimum_stock_level: {
+            $ifNull: [
+              { $arrayElemAt: ['$inventory_settings.minimum_stock_level', 0] },
+              0
+            ]
+          },
+          reorder_point: {
+            $ifNull: [
+              { $arrayElemAt: ['$inventory_settings.reorder_point', 0] },
+              5
+            ]
+          },
+          maximum_stock_level: {
+            $ifNull: [
+              { $arrayElemAt: ['$inventory_settings.maximum_stock_level', 0] },
+              null
+            ]
+          }
+        }
+      },
+      
+      // Calculate status flags
+      {
+        $addFields: {
+          is_out_of_stock: { $eq: ['$available_quantity', 0] },
+          is_low_stock: {
+            $and: [
+              { $gt: ['$available_quantity', 0] },
+              { $lte: ['$available_quantity', '$minimum_stock_level'] }
+            ]
+          },
+          is_overstock: {
+            $and: [
+              { $ne: ['$maximum_stock_level', null] },
+              { $gt: ['$total_quantity', '$maximum_stock_level'] }
+            ]
+          },
+          needs_reorder: { $lte: ['$available_quantity', '$reorder_point'] }
+        }
+      },
+      
+      // Group for summary statistics
       {
         $group: {
           _id: null,
@@ -227,40 +603,98 @@ router.get('/stats', auth, async (req, res) => {
           low_stock_count: { $sum: { $cond: ['$is_low_stock', 1, 0] } },
           out_of_stock_count: { $sum: { $cond: ['$is_out_of_stock', 1, 0] } },
           overstock_count: { $sum: { $cond: ['$is_overstock', 1, 0] } },
-          needs_reorder_count: { 
-            $sum: { 
-              $cond: [
-                { $lte: ['$available_quantity', '$reorder_point'] }, 
-                1, 
-                0 
-              ] 
-            } 
-          }
+          needs_reorder_count: { $sum: { $cond: ['$needs_reorder', 1, 0] } }
         }
       }
     ]);
 
-    // Get stats by category
-    const categoryStats = await Inventory.aggregate([
-      { $match: { is_active: true } },
-      {
-        $lookup: {
-          from: 'skus',
-          localField: 'sku_id',
-          foreignField: '_id',
-          as: 'sku'
-        }
-      },
-      { $unwind: '$sku' },
+    // ✅ REAL-TIME CATEGORY STATS
+    const categoryStats = await mongoose.model('SKU').aggregate([
+      { $match: { status: 'active' } },
+      
+      // Get category info
       {
         $lookup: {
           from: 'categories',
-          localField: 'sku.category_id',
+          localField: 'category_id',
           foreignField: '_id',
           as: 'category'
         }
       },
       { $unwind: { path: '$category', preserveNullAndEmptyArrays: true } },
+      
+      // Get instances for real-time calculation
+      {
+        $lookup: {
+          from: 'instances',
+          localField: '_id',
+          foreignField: 'sku_id',
+          as: 'all_instances'
+        }
+      },
+      
+      // Get inventory settings
+      {
+        $lookup: {
+          from: 'inventory',
+          localField: '_id',
+          foreignField: 'sku_id',
+          as: 'inventory_settings'
+        }
+      },
+      
+      // Calculate quantities
+      {
+        $addFields: {
+          total_quantity: { $size: '$all_instances' },
+          available_quantity: {
+            $size: {
+              $filter: {
+                input: '$all_instances',
+                cond: { $eq: ['$$this.tag_id', null] }
+              }
+            }
+          },
+          total_value: { $sum: '$all_instances.acquisition_cost' },
+          minimum_stock_level: {
+            $ifNull: [
+              { $arrayElemAt: ['$inventory_settings.minimum_stock_level', 0] },
+              0
+            ]
+          },
+          is_low_stock: {
+            $and: [
+              { $gt: [{ $size: {
+                $filter: {
+                  input: '$all_instances',
+                  cond: { $eq: ['$$this.tag_id', null] }
+                }
+              }}, 0] },
+              { $lte: [{ $size: {
+                $filter: {
+                  input: '$all_instances',
+                  cond: { $eq: ['$$this.tag_id', null] }
+                }
+              }}, {
+                $ifNull: [
+                  { $arrayElemAt: ['$inventory_settings.minimum_stock_level', 0] },
+                  0
+                ]
+              }] }
+            ]
+          },
+          is_out_of_stock: {
+            $eq: [{ $size: {
+              $filter: {
+                input: '$all_instances',
+                cond: { $eq: ['$$this.tag_id', null] }
+              }
+            }}, 0]
+          }
+        }
+      },
+      
+      // Group by category
       {
         $group: {
           _id: '$category._id',
@@ -276,7 +710,7 @@ router.get('/stats', auth, async (req, res) => {
       { $sort: { category_name: 1 } }
     ]);
 
-    // Get recent activity (last 30 days)
+    // Recent activity and top value items can stay the same for now
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
@@ -289,7 +723,6 @@ router.get('/stats', auth, async (req, res) => {
     .limit(10)
     .lean();
 
-    // Get top value items
     const topValueItems = await Inventory.find({
       is_active: true,
       total_value: { $gt: 0 }
@@ -312,6 +745,8 @@ router.get('/stats', auth, async (req, res) => {
       overstock_count: 0,
       needs_reorder_count: 0
     };
+
+    console.log(`✅ [Inventory Stats] Real-time calculation complete: ${summary.total_skus} SKUs, ${summary.total_quantity} total items`);
 
     res.json({
       summary,

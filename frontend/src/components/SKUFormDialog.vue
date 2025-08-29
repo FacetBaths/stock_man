@@ -367,6 +367,82 @@
               />
             </div>
 
+            <!-- Product Details Section (for editing mode) -->
+            <template v-if="isEditing">
+              <div class="col-12">
+                <q-expansion-item label="Product Details" default-opened>
+                  <div class="row q-col-gutter-md q-pt-md">
+                    <!-- Wall product specific fields -->
+                    <template v-if="form.product_type === 'walls'">
+                      <div class="col-12 col-sm-6">
+                        <q-input
+                          v-model="form.product_line"
+                          label="Product Line"
+                          outlined
+                          dense
+                          placeholder="e.g., Monterey"
+                        />
+                      </div>
+                      <div class="col-12 col-sm-6">
+                        <q-input
+                          v-model="form.color_name"
+                          label="Color Name"
+                          outlined
+                          dense
+                          placeholder="e.g., Carrara"
+                        />
+                      </div>
+                      <div class="col-12 col-sm-6">
+                        <q-input
+                          v-model="form.dimensions"
+                          label="Dimensions"
+                          outlined
+                          dense
+                          placeholder="e.g., 36x96"
+                        />
+                      </div>
+                      <div class="col-12 col-sm-6">
+                        <q-input
+                          v-model="form.finish"
+                          label="Finish"
+                          outlined
+                          dense
+                          placeholder="e.g., Velvet"
+                        />
+                      </div>
+                    </template>
+                    <!-- Generic product fields for other types -->
+                    <template v-else>
+                      <div class="col-12 col-sm-6">
+                        <q-input
+                          v-model="form.color_name"
+                          label="Color"
+                          outlined
+                          dense
+                        />
+                      </div>
+                      <div class="col-12 col-sm-6">
+                        <q-input
+                          v-model="form.finish"
+                          label="Finish"
+                          outlined
+                          dense
+                        />
+                      </div>
+                      <div class="col-12">
+                        <q-input
+                          v-model="form.dimensions"
+                          label="Dimensions"
+                          outlined
+                          dense
+                        />
+                      </div>
+                    </template>
+                  </div>
+                </q-expansion-item>
+              </div>
+            </template>
+
             <!-- Supplier SKU (instead of manufacturer_model which doesn't exist in backend) -->
             <div class="col-12 col-sm-6">
               <q-input
@@ -528,13 +604,21 @@ const productMode = ref<'existing' | 'new'>('existing')
 const bundleItemProductOptions = ref<any[][]>([])
 const bundleItemLoading = ref<boolean[]>([])
 
+// Form bundle item interface for the form (different from backend SKU.bundle_items)
+interface FormBundleItem {
+  product_type: string
+  product_details: string
+  quantity: number
+  description: string
+}
+
 // Form data
 const defaultForm = {
   sku_code: '',
   product_type: '',
   product_details: '',
   is_bundle: false,
-  bundle_items: [],
+  bundle_items: [] as FormBundleItem[],
   new_product: {
     // Wall specific fields
     product_line: '',
@@ -561,7 +645,12 @@ const defaultForm = {
   },
   description: '',
   notes: '',
-  status: 'active'
+  status: 'active',
+  // Product detail fields (from details object)
+  product_line: '',
+  color_name: '',
+  dimensions: '',
+  finish: ''
 }
 
 const form = ref({ ...defaultForm })
@@ -573,9 +662,9 @@ const productTypeOptions = PRODUCT_TYPES.map(type => ({
 }))
 
 const statusOptions = [
-  { label: 'Active', value: 'active' },
-  { label: 'Inactive', value: 'inactive' },
-  { label: 'Discontinued', value: 'discontinued' }
+  { label: 'Active', value: 'active' as const },
+  { label: 'Pending', value: 'pending' as const },
+  { label: 'Discontinued', value: 'discontinued' as const }
 ]
 
 const productModeOptions = [
@@ -815,7 +904,7 @@ const onSubmit = async () => {
         brand: form.value.brand,
         model: form.value.model,
         barcode: form.value.barcode,
-        status: form.value.status,
+        status: form.value.status as 'active' | 'discontinued' | 'pending',
         unit_cost: form.value.current_cost,
         currency: 'USD', // Default currency
         
@@ -829,16 +918,15 @@ const onSubmit = async () => {
             supplier_sku: form.value.supplier_sku 
           }),
           
-          // Extract and preserve product_details fields in details object
-          ...(props.sku.product_details && typeof props.sku.product_details === 'object' ? {
-            product_line: (props.sku.product_details as any)?.product_line || props.sku.details?.product_line,
-            color_name: (props.sku.product_details as any)?.color_name || props.sku.details?.color_name,
-            dimensions: (props.sku.product_details as any)?.dimensions || props.sku.details?.dimensions,
-            finish: (props.sku.product_details as any)?.finish || props.sku.details?.finish,
-            // Include any other product detail fields
-            weight: (props.sku.product_details as any)?.weight || props.sku.details?.weight,
-            specifications: (props.sku.product_details as any)?.specifications || props.sku.details?.specifications
-          } : {})
+          // Update product detail fields from form
+          product_line: form.value.product_line || props.sku.details?.product_line || '',
+          color_name: form.value.color_name || props.sku.details?.color_name || '',
+          dimensions: form.value.dimensions || props.sku.details?.dimensions || '',
+          finish: form.value.finish || props.sku.details?.finish || '',
+          
+          // Preserve other existing detail fields
+          weight: props.sku.details?.weight,
+          specifications: props.sku.details?.specifications
         },
         
         // Stock thresholds
@@ -1026,7 +1114,12 @@ watch(() => props.modelValue, (newValue) => {
         },
         description: props.sku.description || '',
         notes: props.sku.notes || '',
-        status: props.sku.status
+        status: props.sku.status,
+        // Product detail fields from details object
+        product_line: props.sku.details?.product_line || '',
+        color_name: props.sku.details?.color_name || '',
+        dimensions: props.sku.details?.dimensions || '',
+        finish: props.sku.details?.finish || ''
       }
       
       // If editing a bundle, initialize bundle item options
@@ -1046,13 +1139,13 @@ watch(() => props.modelValue, (newValue) => {
       
       productMode.value = 'existing'
       
-      // First, add the current product to options if it's populated
-      if (props.sku.product_details && typeof props.sku.product_details === 'object') {
-        console.log('Current product details:', props.sku.product_details)
+      // First, add the current product details from the details field
+      if (props.sku.details && typeof props.sku.details === 'object') {
+        console.log('Current SKU details:', props.sku.details)
         
-        // Generate a human-readable name for the product
+        // Generate a human-readable name from details
         let productName = ''
-        const details = props.sku.product_details
+        const details = props.sku.details
         
         if (details.name) {
           productName = details.name
@@ -1077,15 +1170,20 @@ watch(() => props.modelValue, (newValue) => {
         
         console.log('Generated product name:', productName)
         
-        const currentProduct = {
-          _id: props.sku.product_details._id,
-          name: productName,
-          ...props.sku.product_details
+        // Only create currentProduct if product_details exists and has an _id
+        if (props.sku.product_details && typeof props.sku.product_details === 'object' && props.sku.product_details._id) {
+          const currentProduct = {
+            _id: props.sku.product_details._id,
+            name: productName,
+            ...props.sku.product_details
+          }
+          console.log('Created current product option:', currentProduct)
+          
+          // Add current product to options immediately
+          productDetailsOptions.value = [currentProduct]
+        } else {
+          console.log('No valid product_details found, skipping current product creation')
         }
-        console.log('Created current product option:', currentProduct)
-        
-        // Add current product to options immediately
-        productDetailsOptions.value = [currentProduct]
       }
       
       // Then load additional products

@@ -201,6 +201,9 @@ const handleAddSuccess = () => {
 const handleEditSuccess = () => {
   showEditModal.value = false;
   itemToEdit.value = null;
+    // Reload inventory data after batch processing using manual refresh
+  inventoryTableRef.value?.refreshInventory(getCurrentFilters());
+  inventoryStore.fetchStats();
 };
 
 const handleQuickScanSuccess = () => {

@@ -2,13 +2,13 @@
 
 **CRITICAL:** Update this file for EVERY task and follow the process exactly.
 
-## 📋 PREVIOUS TASK: Create Database Conversion Utility - COMPLETED ✅
+## 📋 PREVIOUS TASK: Fix SKU Editing Issues in SKUFormDialog.vue - COMPLETED ✅
 
-## 📋 CURRENT TASK: End-to-End Testing with Clean Data
+## 📋 CURRENT TASK: End-to-End Testing and Final Polish
 
 **Status:** 🆕 NOT STARTED
-**Previous Task:** Create Database Conversion Utility - COMPLETED ✅ 2025-08-28 16:33 UTC
-**Started:** 2025-08-28 16:49 UTC
+**Previous Task:** Fix SKU Editing Issues in SKUFormDialog.vue - COMPLETED ✅ 2025-08-29 01:05 UTC
+**Started:** 2025-08-29 01:09 UTC
 **Completed:** [TBD]
 
 ### CURRENT TASK SUCCESS CRITERIA:
@@ -21,16 +21,15 @@
 - [ ] Test tag creation with FIFO and cost-based selection
 - [ ] Document any remaining issues or edge cases
 
-### COMPLETED TASK SUCCESS CRITERIA (Database Conversion Utility):
-- [x] Build script to convert production database to new architecture - COMPLETED (MigrationOrchestrator.js created - 1,041 lines)
-- [x] Map legacy Item records to Instance model with acquisition costs - COMPLETED
-- [x] Convert legacy SKU records to new SKU structure with details object - COMPLETED
-- [x] Migrate Tag records from item-based to SKU/Instance-based structure - COMPLETED
-- [x] Handle data conflicts and validation errors gracefully - COMPLETED
-- [x] Create interactive prompts for missing/ambiguous data - COMPLETED
-- [x] Generate conversion report with statistics and warnings - COMPLETED
-- [x] Create rollback mechanism for safety - COMPLETED
-- [x] Test conversion thoroughly on development data copy - COMPLETED
+### COMPLETED TASK SUCCESS CRITERIA (SKU Editing Issues Fix):
+- [x] Fix SKU code changes not being saved during editing - COMPLETED (Added sku_code to updates object)
+- [x] Fix Supplier SKU field not persisting in supplier_info object - COMPLETED (Backend supplier_info handling added)
+- [x] Frontend: Add missing sku_code to updates object in SKUFormDialog.vue - COMPLETED
+- [x] Backend: Add supplier_info handling in PUT /api/skus/:id endpoint - COMPLETED
+- [x] Verify stock thresholds continue to work correctly - COMPLETED (Working properly)
+- [x] Test that all SKU editing fields save and persist correctly - COMPLETED
+- [x] Maintain backward compatibility for all existing functionality - COMPLETED
+- [x] User verification that both issues are resolved - COMPLETED
 
 ### SIDEQUEST (INJECTED TASK):
 - [x] Dump existing stockman* databases and recreate clean development database using new models - COMPLETED

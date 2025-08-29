@@ -888,9 +888,17 @@ const loadProductsWithoutSKUs = async () => {
     loadingProductsWithoutSKUs.value = true
     // Get all items that don't have SKUs assigned
     const response = await inventoryApi.getItems({ limit: 1000 })
-    productsWithoutSKUs.value = response.items.filter(item => !item.sku_id)
+    // Handle case where response.items might be undefined
+    if (response && response.items && Array.isArray(response.items)) {
+      productsWithoutSKUs.value = response.items.filter(item => !item.sku_id)
+    } else {
+      console.warn('No items found in response or invalid response format')
+      productsWithoutSKUs.value = []
+    }
   } catch (error) {
     console.error('Error loading products without SKUs:', error)
+    // Set empty array on error to prevent UI issues
+    productsWithoutSKUs.value = []
     $q.notify({
       type: 'negative',
       message: 'Failed to load products without SKUs'

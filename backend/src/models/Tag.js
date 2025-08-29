@@ -308,30 +308,10 @@ tagSchema.methods.fulfillSpecificItems = async function(fulfillmentData, fulfill
   // Update legacy remaining_quantity field for compatibility
   item.remaining_quantity = item.selected_instance_ids.length;
   
-  // Update inventory quantities to reflect the deleted instances
-  const inventory = await Inventory.findOne({ sku_id: sku_id });
-  if (inventory) {
-    // Determine which inventory status to reduce based on tag type
-    switch (this.tag_type) {
-      case 'reserved':
-        inventory.reserved_quantity = Math.max(0, inventory.reserved_quantity - quantity_fulfilled);
-        break;
-      case 'broken':
-      case 'imperfect':
-        inventory.broken_quantity = Math.max(0, inventory.broken_quantity - quantity_fulfilled);
-        break;
-      case 'loaned':
-        inventory.loaned_quantity = Math.max(0, inventory.loaned_quantity - quantity_fulfilled);
-        break;
-      case 'stock':
-        inventory.available_quantity = Math.max(0, inventory.available_quantity - quantity_fulfilled);
-        break;
-    }
-    
-    inventory.last_movement_date = new Date();
-    inventory.last_updated_by = fulfilledBy;
-    await inventory.save();
-  }
+  // ✅ REAL-TIME INVENTORY: No manual updates needed!
+  // Inventory quantities are now calculated in real-time from instance counts.
+  // When instances are deleted above, the inventory API automatically reflects the changes.
+  console.log(`✅ Tag fulfillment: ${quantity_fulfilled} instances deleted for SKU ${sku_id}. Inventory will be calculated in real-time.`);
   
   this.last_updated_by = fulfilledBy;
   

@@ -180,13 +180,11 @@ const getItemsDisplay = (skuItems: any[]) => {
   return skuItems.map(tagItem => {
     console.log('🔄 [Tags] Processing tagItem:', tagItem)
     
-    // NEW STRUCTURE: Handle sku_items with direct sku_id reference or populated SKU data
+    // INSTANCE-BASED ARCHITECTURE: Handle sku_items with direct sku_id reference or populated SKU data
     const sku = tagItem.sku_details || tagItem.sku_id || null
     
-    // NEW: Get quantity from selected_instance_ids.length (primary) or fallback to legacy quantity
-    const quantity = tagItem.selected_instance_ids 
-      ? tagItem.selected_instance_ids.length 
-      : (tagItem.remaining_quantity || tagItem.quantity || 0)
+    // Use selected_instance_ids.length as single source of truth
+    const quantity = tagItem.selected_instance_ids ? tagItem.selected_instance_ids.length : 0
     
     if (!sku) {
       console.log('⚠️ [Tags] No SKU data found for item')
@@ -211,10 +209,8 @@ const getItemsDisplay = (skuItems: any[]) => {
 const getTotalQuantity = (items: any[]) => {
   if (!items) return 0
   return items.reduce((sum, item) => {
-    // NEW: Get quantity from selected_instance_ids.length (primary) or fallback to legacy
-    const quantity = item.selected_instance_ids 
-      ? item.selected_instance_ids.length 
-      : (item.remaining_quantity || item.quantity || 0)
+    // INSTANCE-BASED ARCHITECTURE: Use selected_instance_ids.length as single source of truth
+    const quantity = item.selected_instance_ids ? item.selected_instance_ids.length : 0
     return sum + quantity
   }, 0)
 }

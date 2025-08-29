@@ -86,7 +86,7 @@
                         - {{ skuItem.sku_id.description }}
                       </span>
                       <span class="text-primary q-ml-sm">
-                        Qty: {{ skuItem.remaining_quantity || skuItem.quantity }}
+                        Qty: {{ skuItem.selected_instance_ids ? skuItem.selected_instance_ids.length : 0 }}
                       </span>
                     </div>
                   </q-item-label>
@@ -380,8 +380,9 @@ interface Tag {
       sku_code: string
       description?: string
     }
-    quantity: number
-    remaining_quantity?: number
+    selected_instance_ids: string[]
+    selection_method: 'auto' | 'manual' | 'fifo' | 'cost_based'
+    notes?: string
   }>
 }
 
@@ -514,21 +515,30 @@ const initializeFulfillmentItems = () => {
     return
   }
   
+  console.log('🔄 FulfillTagsDialog: Initializing fulfillment items for tag:', selectedTag.value)
+  
   fulfillmentItems.value = selectedTag.value.sku_items.map((skuItem) => {
     // Handle both populated and non-populated sku_id
     const skuId = typeof skuItem.sku_id === 'object' ? skuItem.sku_id._id : skuItem.sku_id
     const skuCode = typeof skuItem.sku_id === 'object' ? skuItem.sku_id.sku_code : 'Unknown'
     const description = typeof skuItem.sku_id === 'object' ? skuItem.sku_id.description : undefined
     
+    // INSTANCE-BASED ARCHITECTURE: Use selected_instance_ids.length as single source of truth
+    const availableQuantity = skuItem.selected_instance_ids ? skuItem.selected_instance_ids.length : 0
+    
+    console.log(`📊 SKU ${skuCode}: selected_instance_ids=${skuItem.selected_instance_ids?.length || 0}, available=${availableQuantity}`)
+    
     return {
       sku_id: skuId,
       sku_code: skuCode,
       description: description,
-      available_quantity: skuItem.remaining_quantity || skuItem.quantity || 0,
-      fulfill_quantity: skuItem.remaining_quantity || skuItem.quantity || 0, // Default to fulfill all
+      available_quantity: availableQuantity,
+      fulfill_quantity: availableQuantity, // Default to fulfill all available
       selected: true // Default to selected
     }
   })
+  
+  console.log('✅ FulfillTagsDialog: Fulfillment items initialized:', fulfillmentItems.value)
 }
 
 const nextStep = () => {
