@@ -506,6 +506,11 @@ router.put('/:id',
       if (req.body.barcode !== undefined) updateData.barcode = req.body.barcode;
       if (req.body.notes !== undefined) updateData.notes = req.body.notes;
       if (req.body.status !== undefined) updateData.status = req.body.status;
+      
+      // Handle stock_thresholds updates
+      if (req.body.stock_thresholds !== undefined) {
+        updateData.stock_thresholds = req.body.stock_thresholds;
+      }
 
       // Handle details object updates (category-specific fields)
       if (req.body.details !== undefined) {
