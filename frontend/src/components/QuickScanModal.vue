@@ -22,7 +22,7 @@ const scannedItems = ref<ScannedItem[]>([])
 const isLoading = ref(false)
 const isProcessing = ref(false)
 const error = ref<string | null>(null)
-const mode = ref<'scan' | 'batch'>('scan') // 'scan' for quick lookup, 'batch' for quantity management
+// Always use batch mode internally, but present as "Quick Scan" to users
 
 // Add Item Modal state for creating SKUs
 const showAddItemModal = ref(false)
@@ -32,7 +32,7 @@ const canScan = computed(() => barcodeInput.value.trim().length > 0)
 const foundItems = computed(() => scannedItems.value.filter(item => item.found))
 const notFoundItems = computed(() => scannedItems.value.filter(item => !item.found))
 const hasScannedItems = computed(() => scannedItems.value.length > 0)
-const canProcess = computed(() => foundItems.value.length > 0 && mode.value === 'batch')
+const canProcess = computed(() => foundItems.value.length > 0)
 
 const handleScan = async () => {
   const barcode = barcodeInput.value.trim()
@@ -41,8 +41,8 @@ const handleScan = async () => {
   // Check if already scanned
   const existingItem = scannedItems.value.find(item => item.barcode === barcode)
   if (existingItem) {
-    // In batch mode, increment quantity instead of showing error
-    if (mode.value === 'batch' && existingItem.found) {
+    // Increment quantity for existing found items
+    if (existingItem.found) {
       existingItem.quantity += 1
       barcodeInput.value = ''
       return
@@ -58,9 +58,8 @@ const handleScan = async () => {
     isLoading.value = true
     error.value = null
     
-    // Use batch scan API to lookup the barcode
+    // Use batch scan API (works for single items too)
     const response = await barcodeApi.batchScan({ barcodes: [barcode] })
-    
     const foundItem = response.found.find(item => item.barcode === barcode)
     
     const newItem: ScannedItem = {
@@ -93,14 +92,6 @@ const handleKeyPress = (event: KeyboardEvent) => {
 const clearHistory = () => {
   scannedItems.value = []
   error.value = null
-}
-
-const switchToScanMode = () => {
-  mode.value = 'scan'
-}
-
-const switchToBatchMode = () => {
-  mode.value = 'batch'
 }
 
 const removeItem = (index: number) => {
@@ -252,22 +243,8 @@ const handleClose = () => {
         <div class="modal-header">
           <h3>
             <q-icon name="qr_code_scanner" class="q-mr-sm" />
-            {{ mode === 'scan' ? 'Quick Scan' : 'Batch Scan' }}
+            Quick Scan
           </h3>
-          <div class="mode-switcher">
-            <button 
-              :class="['mode-btn', { active: mode === 'scan' }]"
-              @click="switchToScanMode"
-            >
-              Quick Scan
-            </button>
-            <button 
-              :class="['mode-btn', { active: mode === 'batch' }]"
-              @click="switchToBatchMode"
-            >
-              Batch Mode
-            </button>
-          </div>
           <button class="close-button" @click="handleClose">&times;</button>
         </div>
 
@@ -303,7 +280,7 @@ const handleClose = () => {
                 </button>
               </div>
               <small class="form-text text-muted">
-                {{ mode === 'scan' ? 'Focus this field and scan with a barcode scanner, or type manually and press Enter' : 'Batch mode: scan multiple items and adjust quantities before processing' }}
+                Scan multiple items, adjust quantities, and process them all at once.
               </small>
             </div>
           </div>
@@ -311,10 +288,10 @@ const handleClose = () => {
           <!-- Scan Results -->
           <div v-if="hasScannedItems" class="results-section">
             <div class="results-header">
-              <h4>{{ mode === 'scan' ? 'Scan Results' : 'Batch Items' }} ({{ scannedItems.length }})</h4>
+              <h4>Scanned Items ({{ scannedItems.length }})</h4>
               <div class="results-actions">
                 <button 
-                  v-if="mode === 'batch' && canProcess"
+                  v-if="canProcess"
                   type="button" 
                   class="btn btn-success btn-sm"
                   @click="processAllItems"
@@ -329,8 +306,8 @@ const handleClose = () => {
               </div>
             </div>
 
-            <!-- Batch Summary -->
-            <div v-if="mode === 'batch'" class="batch-summary">
+            <!-- Summary -->
+            <div class="batch-summary">
               <div class="summary-chips">
                 <span class="summary-chip found">{{ foundItems.length }} found</span>
                 <span class="summary-chip not-found">{{ notFoundItems.length }} not found</span>
@@ -342,8 +319,8 @@ const handleClose = () => {
               <div
                 v-for="(item, index) in scannedItems"
                 :key="index"
-                class="result-item"
-                :class="{ 'found': item.found, 'not-found': !item.found, 'batch-mode': mode === 'batch' }"
+                class="result-item batch-mode"
+                :class="{ 'found': item.found, 'not-found': !item.found }"
               >
                 <div class="result-icon">
                   <q-icon
@@ -360,8 +337,8 @@ const handleClose = () => {
                       <span class="timestamp">{{ item.timestamp.toLocaleTimeString() }}</span>
                     </div>
                     
-                    <!-- Quantity controls for batch mode -->
-                    <div v-if="mode === 'batch' && item.found" class="quantity-controls">
+                    <!-- Quantity controls -->
+                    <div v-if="item.found" class="quantity-controls">
                       <button 
                         type="button" 
                         class="quantity-btn"
@@ -384,8 +361,8 @@ const handleClose = () => {
                       </button>
                     </div>
                     
-                    <!-- Remove button for batch mode -->
-                    <div v-if="mode === 'batch'" class="item-actions">
+                    <!-- Remove button -->
+                    <div class="item-actions">
                       <button 
                         type="button" 
                         class="remove-btn"
@@ -401,12 +378,6 @@ const handleClose = () => {
                     <div class="sku-info">
                       <span class="sku-code">{{ item.sku.sku_code }}</span>
                       <span class="sku-description">{{ formatSKUDescription(item.sku) }}</span>
-                    </div>
-                    <div v-if="mode === 'scan'" class="quantity-info">
-                      <span class="quantity">Ready for scanning</span>
-                      <span class="status-badge status-active">
-                        Available
-                      </span>
                     </div>
                   </div>
                   
@@ -431,16 +402,14 @@ const handleClose = () => {
           <div v-else class="empty-state">
             <div class="empty-icon">
               <q-icon 
-                :name="mode === 'scan' ? 'qr_code_2' : 'playlist_add'"
+                name="qr_code_2"
                 size="64px" 
                 color="grey-5" 
               />
             </div>
-            <h4>{{ mode === 'scan' ? 'Ready to Scan' : 'Ready for Batch Scanning' }}</h4>
+            <h4>Ready to Scan</h4>
             <p>
-              {{ mode === 'scan' 
-                ? 'Focus the input field above and scan barcodes with your scanner, or type them manually.' 
-                : 'Scan multiple items, adjust quantities, and process them all at once.' }}
+              Focus the input field above and scan barcodes with your scanner, or type them manually.
             </p>
           </div>
         </div>

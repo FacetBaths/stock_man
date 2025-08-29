@@ -882,4 +882,99 @@ router.post('/barcode/:barcode/add-stock',
   }
 );
 
+// POST /api/skus/batch-scan - Batch lookup SKUs by barcodes
+router.post('/batch-scan',
+  auth,
+  [
+    body('barcodes')
+      .isArray({ min: 1 })
+      .withMessage('Barcodes must be a non-empty array'),
+    body('barcodes.*')
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage('Each barcode must be a non-empty string')
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          message: 'Validation failed',
+          errors: errors.array()
+        });
+      }
+
+      const { barcodes } = req.body;
+      const found = [];
+      const notFound = [];
+
+      // Process each barcode
+      for (const barcode of barcodes) {
+        try {
+          // Find SKU by barcode
+          const sku = await SKU.findOne({ barcode: barcode.trim() })
+            .populate('category_id', 'name slug');
+
+          if (sku) {
+            // Get inventory data
+            const inventory = await Inventory.findOne({ sku_id: sku._id });
+            
+            const skuObj = sku.toObject();
+            if (inventory) {
+              skuObj.inventory = inventory.getSummary();
+            } else {
+              skuObj.inventory = {
+                total_quantity: 0,
+                available_quantity: 0,
+                reserved_quantity: 0,
+                broken_quantity: 0,
+                loaned_quantity: 0,
+                is_low_stock: false,
+                is_out_of_stock: true,
+                needs_reorder: true
+              };
+            }
+
+            found.push({
+              barcode,
+              sku: skuObj
+            });
+          } else {
+            notFound.push({
+              barcode,
+              reason: 'SKU not found for barcode'
+            });
+          }
+        } catch (error) {
+          console.error(`Error processing barcode ${barcode}:`, error);
+          notFound.push({
+            barcode,
+            reason: 'Error processing barcode',
+            error: error.message
+          });
+        }
+      }
+
+      res.json({
+        message: 'Batch scan completed',
+        summary: {
+          total: barcodes.length,
+          found: found.length,
+          not_found: notFound.length
+        },
+        found,
+        not_found: notFound
+      });
+
+    } catch (error) {
+      console.error('Batch scan error:', error);
+      res.status(500).json({
+        message: 'Failed to process batch scan',
+        error: error.message
+      });
+    }
+  }
+);
+
 module.exports = router;

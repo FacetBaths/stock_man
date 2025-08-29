@@ -880,13 +880,22 @@ const generateSKUCode = async () => {
 const validateSKUCode = async () => {
   if (!form.value.sku_code || isEditing.value) return
   
-  // Check if SKU already exists
-  const existing = skuStore.getSKUByCode(form.value.sku_code)
-  if (existing) {
-    $q.notify({
-      type: 'warning',
-      message: 'SKU code already exists'
-    })
+  try {
+    // For new SKUs, check if SKU code already exists via API
+    const response = await skuApi.lookupSKU(form.value.sku_code)
+    if (response) {
+      $q.notify({
+        type: 'warning', 
+        message: 'SKU code already exists'
+      })
+    }
+  } catch (error: any) {
+    // If 404, SKU doesn't exist (good)
+    if (error.response?.status === 404) {
+      return // SKU code is available
+    }
+    // For other errors, just log and continue
+    console.warn('Error validating SKU code:', error.message)
   }
 }
 
@@ -1014,6 +1023,7 @@ const onSubmit = async () => {
     }
     
     emit('saved')
+    close() // Close modal after successful save
   } catch (error: any) {
     console.error('Frontend: SKU creation error:', error)
     console.error('Frontend: Error response:', error.response?.data)

@@ -669,7 +669,7 @@ export const skuApi = {
 
 export const barcodeApi = {
   batchScan: async (data: BatchScanRequest): Promise<BatchScanResponse> => {
-    const response = await api.post('/barcode/batch-scan', data)
+    const response = await api.post('/skus/batch-scan', data)
     return response.data
   },
 

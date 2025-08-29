@@ -93,10 +93,23 @@ const initializeForm = () => {
 
   // Check for populated sku field first (as used by InventoryTable)
   if (props.item.sku && typeof props.item.sku === 'object') {
-    // SKU is populated in the sku field
-    skuData = props.item.sku
-    skuId = props.item.sku._id
-    console.log('✅ EditItemModal: Using populated SKU data from item.sku:', skuData)
+    // SKU is populated in the sku field, but inventory API flattens some fields
+    // Use the main item data for fields that exist there, fallback to item.sku
+    skuData = {
+      ...props.item.sku,
+      // Override with main item fields that have full data
+      details: props.item.details || props.item.sku.details,
+      category_id: props.item.category_id || props.item.sku.category_id,
+      name: props.item.name || props.item.sku.name,
+      description: props.item.description || props.item.sku.description,
+      brand: props.item.brand || props.item.sku.brand,
+      model: props.item.model || props.item.sku.model,
+      unit_cost: props.item.unit_cost || props.item.sku.unit_cost,
+      barcode: props.item.barcode || props.item.sku.barcode,
+      status: props.item.status || props.item.sku.status
+    }
+    skuId = props.item.sku._id || props.item._id
+    console.log('✅ EditItemModal: Using merged SKU data (item + item.sku):', skuData)
     console.log('✅ EditItemModal: SKU ID:', skuId)
   } else if (typeof props.item.sku_id === 'object' && props.item.sku_id !== null) {
     // SKU is populated in the sku_id field
@@ -104,17 +117,24 @@ const initializeForm = () => {
     skuId = props.item.sku_id._id
     console.log('✅ EditItemModal: Using populated SKU data from item.sku_id:', skuData)
     console.log('✅ EditItemModal: SKU ID:', skuId)
+  } else if (props.item._id && props.item.sku_code) {
+    // Item might be the SKU itself (direct from inventory aggregation)
+    skuData = props.item
+    skuId = props.item._id
+    console.log('✅ EditItemModal: Using item as SKU data directly:', skuData)
+    console.log('✅ EditItemModal: SKU ID:', skuId)
   } else {
     // No populated SKU data found
     console.error('❌ EditItemModal: No populated SKU data found in item')
     console.log('❌ EditItemModal: item.sku type:', typeof props.item.sku)
     console.log('❌ EditItemModal: item.sku_id type:', typeof props.item.sku_id)
+    console.log('❌ EditItemModal: item has _id and sku_code:', !!(props.item._id && props.item.sku_code))
     error.value = 'No SKU data available for editing'
     return
   }
 
-  // Store the SKU ID for submission
-  currentSkuId.value = skuId
+  // Store the SKU ID for submission (ensure it's a string)
+  currentSkuId.value = typeof skuId === 'object' ? skuId.toString() : skuId
 
   // Determine category_id value, handling populated category objects
   let categoryId = ''
@@ -143,6 +163,8 @@ const initializeForm = () => {
   // Initialize form with SKU data - handle both root level and details object fields
   // Based on your SKU structure, some fields are at root level, some are in details
   console.log('Raw SKU details object:', skuData.details)
+  console.log('SKU details object type:', typeof skuData.details)
+  console.log('SKU details object keys:', skuData.details ? Object.keys(skuData.details) : 'N/A')
 
   // Handle unit_cost which might be a MongoDB number object
   let unitCost = 0
@@ -154,33 +176,47 @@ const initializeForm = () => {
     unitCost = props.item.average_cost
   }
 
-  console.clear()
   console.log('🔄 EditItemModal: Initializing form with SKU data:', skuData)
+  console.log('🔄 EditItemModal: SKU ID being used:', skuId)
   formData.value = {
     // Root level fields from SKU
-    name: skuData.name ||'SKU Product',
+    sku_code: skuData.sku_code || '', // Add missing sku_code
+    name: skuData.name || 'SKU Product',
     description: skuData.description || '',
     brand: skuData.brand || '',
     model: skuData.model || '',
 
     // Details object - only category-specific fields (per SKU model schema)
-    details: {
+    details: skuData.details ? {
       // Wall-specific fields
-      product_line: skuData.details?.product_line || '',
-      color_name: skuData.details?.color_name || '',
-      dimensions: skuData.details?.dimensions || '',
-      finish: skuData.details?.finish || '',
+      product_line: skuData.details.product_line || '',
+      color_name: skuData.details.color_name || '',
+      dimensions: skuData.details.dimensions || '',
+      finish: skuData.details.finish || '',
 
       // Tool-specific fields
-      tool_type: skuData.details?.tool_type || '',
-      manufacturer: skuData.details?.manufacturer || '',
-      serial_number: skuData.details?.serial_number || '',
-      voltage: skuData.details?.voltage || '',
-      features: skuData.details?.features || [],
+      tool_type: skuData.details.tool_type || '',
+      manufacturer: skuData.details.manufacturer || '',
+      serial_number: skuData.details.serial_number || '',
+      voltage: skuData.details.voltage || '',
+      features: skuData.details.features || [],
 
       // Common fields
-      weight: skuData.details?.weight || 0,
-      specifications: skuData.details?.specifications || {}
+      weight: skuData.details.weight || 0,
+      specifications: skuData.details.specifications || {}
+    } : {
+      // Default empty details if no details object found
+      product_line: '',
+      color_name: '',
+      dimensions: '',
+      finish: '',
+      tool_type: '',
+      manufacturer: '',
+      serial_number: '',
+      voltage: '',
+      features: [],
+      weight: 0,
+      specifications: {}
     },
 
     unit_cost: unitCost,
