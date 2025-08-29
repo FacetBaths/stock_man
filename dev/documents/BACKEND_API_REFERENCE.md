@@ -27,30 +27,64 @@ Frontend must adapt to these EXACT structures and endpoints.
 
 ## 📋 DATABASE MODELS (CURRENT ARCHITECTURE)
 
-### **SKU Model** (Primary Product Definition)
+### **SKU Model** (Primary Product Definition) - ACTUAL BACKEND
 ```javascript
 {
   "_id": "ObjectId",
   "sku_code": "String (unique)",
-  "product_type": "String (toilet, sink, etc.)",
-  "product_details": "ObjectId (ref to product type collection)",
-  "current_cost": "Number",
+  "category_id": "ObjectId (ref to Category)",
+  "name": "String",
+  "description": "String",
+  "brand": "String",
+  "model": "String",
+  "details": {
+    // For walls:
+    "product_line": "String",
+    "color_name": "String", 
+    "dimensions": "String",
+    "finish": "String",
+    // For tools:
+    "tool_type": "String",
+    "manufacturer": "String",
+    "serial_number": "String",
+    "voltage": "String",
+    "features": ["String"],
+    // Common:
+    "weight": "Number",
+    "specifications": "Mixed"
+  },
+  "unit_cost": "Number",
+  "currency": "String",
   "cost_history": [
     {
       "cost": "Number",
       "effective_date": "Date",
       "updated_by": "String",
-      "notes": "String"
+      "notes": "String",
+      "createdAt": "Date",
+      "updatedAt": "Date"
     }
   ],
+  "status": "String (active/discontinued/pending)",
   "barcode": "String",
-  "description": "String",
-  "notes": "String",
-  "status": "String (active/discontinued)",
+  "supplier_info": {
+    "supplier_name": "String",
+    "supplier_sku": "String",
+    "lead_time_days": "Number"
+  },
+  "images": ["String"],
   "stock_thresholds": {
     "understocked": "Number",
     "overstocked": "Number"
   },
+  "is_bundle": "Boolean",
+  "bundle_items": [
+    {
+      "sku_id": "ObjectId (ref to SKU)",
+      "quantity": "Number",
+      "description": "String"
+    }
+  ],
   "created_by": "String",
   "last_updated_by": "String",
   "createdAt": "Date",
@@ -76,7 +110,7 @@ Frontend must adapt to these EXACT structures and endpoints.
 }
 ```
 
-### **Tag Model** (Instance-Based Status/Allocation System)
+### **Tag Model** (Instance-Based Status/Allocation System) - ACTUAL BACKEND
 ```javascript
 {
   "_id": "ObjectId",
@@ -86,24 +120,43 @@ Frontend must adapt to these EXACT structures and endpoints.
   "sku_items": [
     {
       "sku_id": "ObjectId (ref to SKU)",
-      // NEW: Instance-based architecture (single source of truth)
+      // Single source of truth: quantity = selected_instance_ids.length
       "selected_instance_ids": ["ObjectId (refs to Instance)"],
       "selection_method": "String (auto/manual/fifo/cost_based)",
       "notes": "String",
-      // DEPRECATED: Legacy fields for migration compatibility
-      "quantity": "Number (calculated as selected_instance_ids.length)",
-      "remaining_quantity": "Number (calculated as selected_instance_ids.length)"
+      "_id": "ObjectId"
     }
   ],
-  "project_name": "String",
-  "due_date": "Date",
   "notes": "String",
+  "due_date": "Date",
+  "project_name": "String",
   "created_by": "String",
-  "fulfilled_by": "String",
+  "last_updated_by": "String",
   "fulfilled_date": "Date",
-  "cancelled_by": "String",
-  "cancelled_date": "Date",
-  "cancellation_reason": "String",
+  "fulfilled_by": "String",
+  // Virtual/computed fields:
+  "is_partially_fulfilled": "Boolean (virtual)",
+  "is_fully_fulfilled": "Boolean (virtual)",
+  "is_overdue": "Boolean (virtual)",
+  "total_quantity": "Number (virtual)",
+  "fulfillment_progress": "Number (virtual)",
+  "createdAt": "Date",
+  "updatedAt": "Date"
+}
+```
+
+### **Category Model** (Product/Tool Classification) - ACTUAL BACKEND
+```javascript
+{
+  "_id": "ObjectId",
+  "name": "String (unique, lowercase, trimmed)",
+  "type": "String (product/tool)",
+  "description": "String",
+  "attributes": ["String"],
+  "sort_order": "Number",
+  "status": "String (active/inactive)",
+  // Virtual field:
+  "displayName": "String (virtual - capitalized name)",
   "createdAt": "Date",
   "updatedAt": "Date"
 }
@@ -271,30 +324,34 @@ Frontend must adapt to these EXACT structures and endpoints.
       "status": "active",
       "sku_items": [
         {
+          "_id": "ObjectId",
           "sku_id": {
             "_id": "ObjectId",
             "sku_code": "TOILET-12345",
-            "description": "Premium Toilet"
+            "name": "Premium Toilet Model X",
+            "description": "High-efficiency premium toilet with dual flush"
           },
-          // NEW: Instance-based tracking
+          // Single source of truth: quantity = selected_instance_ids.length
           "selected_instance_ids": ["instanceId1", "instanceId2"],
-          "selection_method": "fifo",
-          "notes": "Special requirements",
-          // CALCULATED: From selected_instance_ids.length
-          "quantity": 2,
-          "remaining_quantity": 2
+          "selection_method": "auto",
+          "notes": "Special requirements"
         }
       ],
-      "project_name": "Project ABC",
-      "due_date": "2025-09-01T00:00:00.000Z",
       "notes": "Customer notes",
+      "due_date": "2025-09-01T00:00:00.000Z",
+      "project_name": "Project ABC",
       "created_by": "admin",
-      "total_quantity": 2,
-      "remaining_quantity": 2,
+      "last_updated_by": "admin",
+      "fulfilled_date": null,
+      "fulfilled_by": null,
+      // Virtual/computed fields
       "is_partially_fulfilled": false,
       "is_fully_fulfilled": false,
       "is_overdue": false,
-      "fulfillment_progress": 0
+      "total_quantity": 2,
+      "fulfillment_progress": 0,
+      "createdAt": "2025-08-27T12:00:00.000Z",
+      "updatedAt": "2025-08-27T12:00:00.000Z"
     }
   ],
   "pagination": {
@@ -366,7 +423,6 @@ Frontend must adapt to these EXACT structures and endpoints.
 - **Tags reference specific instances**: `selected_instance_ids` arrays contain exact instances
 - **Quantity calculations**: Frontend computes quantities as `selected_instance_ids.length`
 - Inventory is aggregated view, not raw data
-- **Migration compatibility**: Support both old quantity fields and new arrays during transition
 
 ---
 

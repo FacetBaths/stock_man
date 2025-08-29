@@ -84,19 +84,22 @@ const validateSKU = [
 // Helper function to generate SKU code based on category and manufacturer model
 async function generateSKUCode(categoryId, manufacturerModel = null) {
   try {
-    // If manufacturer model is provided, use it as SKU code (cleaned up)
+    // If manufacturer model is provided, use it as SKU code (cleaned up with FR- prefix)
     if (manufacturerModel && manufacturerModel.trim()) {
       const cleanedModel = manufacturerModel
         .trim()
         .toUpperCase()
         .replace(/[^A-Z0-9\-_]/g, '') // Remove invalid characters
-        .substring(0, 20); // Limit length
+        .substring(0, 17); // Limit length to allow for "FR-" prefix
       
       if (cleanedModel) {
-        // Check if this model number already exists as SKU
-        const existingSku = await SKU.findOne({ sku_code: cleanedModel });
+        // Add FR- prefix to model number
+        const skuWithPrefix = `FR-${cleanedModel}`;
+        
+        // Check if this SKU already exists
+        const existingSku = await SKU.findOne({ sku_code: skuWithPrefix });
         if (!existingSku) {
-          return cleanedModel;
+          return skuWithPrefix;
         }
         // If it exists, fall back to category-based generation
       }
@@ -109,11 +112,18 @@ async function generateSKUCode(categoryId, manufacturerModel = null) {
     }
 
     const year = new Date().getFullYear().toString().slice(-2);
-    const categoryPrefix = category.slug.substring(0, 3).toUpperCase();
+    // Create prefix from category name since Category model doesn't have slug field
+    const categoryPrefix = category.name
+      .replace(/[^a-z0-9]/gi, '') // Remove non-alphanumeric characters
+      .substring(0, 3)
+      .toUpperCase();
+    
+    // Ensure we have at least 3 characters for the prefix
+    const finalPrefix = categoryPrefix.padEnd(3, 'X');
     
     // Find the next sequence number for this category and year
     const existingSkus = await SKU.find({
-      sku_code: new RegExp(`^${categoryPrefix}-${year}-\\d+$`)
+      sku_code: new RegExp(`^${finalPrefix}-${year}-\\d+$`)
     }).sort({ sku_code: -1 }).limit(1);
     
     let nextNumber = 1;
@@ -123,7 +133,7 @@ async function generateSKUCode(categoryId, manufacturerModel = null) {
       nextNumber = lastNumber + 1;
     }
     
-    return `${categoryPrefix}-${year}-${nextNumber.toString().padStart(4, '0')}`;
+    return `${finalPrefix}-${year}-${nextNumber.toString().padStart(4, '0')}`;
   } catch (error) {
     throw new Error(`Failed to generate SKU code: ${error.message}`);
   }
@@ -335,7 +345,9 @@ router.post('/',
       // Generate SKU code if not provided
       let skuCode = req.body.sku_code;
       if (!skuCode) {
-        skuCode = await generateSKUCode(req.body.category_id, req.body.manufacturer_model);
+        // Use model field for SKU generation (with FR- prefix) if available
+        const modelForSku = req.body.model || req.body.manufacturer_model;
+        skuCode = await generateSKUCode(req.body.category_id, modelForSku);
       } else {
         // Check if SKU code already exists
         const existingSKU = await SKU.findOne({ sku_code: skuCode });
@@ -496,17 +508,34 @@ router.put('/:id',
       if (req.body.status !== undefined) updateData.status = req.body.status;
 
       // Handle details object updates (category-specific fields)
-      if (req.body.dimensions !== undefined || 
-          req.body.finish !== undefined || 
-          req.body.color !== undefined) {
-        // Initialize details object if it doesn't exist
-        if (!updateData.details) {
-          updateData.details = sku.details ? { ...sku.details.toObject() } : {};
-        }
+      if (req.body.details !== undefined) {
+        // Frontend is sending a full details object - merge it properly
+        console.log('Received details object from frontend:', req.body.details);
         
-        if (req.body.dimensions !== undefined) updateData.details.dimensions = req.body.dimensions;
-        if (req.body.finish !== undefined) updateData.details.finish = req.body.finish;
-        if (req.body.color !== undefined) updateData.details.color_name = req.body.color;
+        // Initialize details object if it doesn't exist
+        const currentDetails = sku.details ? sku.details.toObject() : {};
+        
+        // Merge the incoming details with existing details
+        updateData.details = {
+          ...currentDetails,
+          ...req.body.details
+        };
+        
+        console.log('Merged details object:', updateData.details);
+      } else {
+        // Legacy handling for individual detail fields
+        if (req.body.dimensions !== undefined || 
+            req.body.finish !== undefined || 
+            req.body.color !== undefined) {
+          // Initialize details object if it doesn't exist
+          if (!updateData.details) {
+            updateData.details = sku.details ? { ...sku.details.toObject() } : {};
+          }
+          
+          if (req.body.dimensions !== undefined) updateData.details.dimensions = req.body.dimensions;
+          if (req.body.finish !== undefined) updateData.details.finish = req.body.finish;
+          if (req.body.color !== undefined) updateData.details.color_name = req.body.color;
+        }
       }
       
       console.log('Final updateData before database call:', JSON.stringify(updateData, null, 2));

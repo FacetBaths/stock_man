@@ -24,7 +24,6 @@
                     outlined
                     dense
                     :rules="[val => !!val || 'SKU Code is required']"
-                    :disable="isEditing"
                     @blur="validateSKUCode"
                   />
                 </div>
@@ -51,9 +50,7 @@
                 emit-value
                 map-options
                 :rules="[val => !!val || 'Product Type is required']"
-                :disable="isEditing"
                 @update:model-value="onProductTypeChange"
-                :hint="isEditing ? 'Cannot change product type when editing' : ''"
               />
             </div>
 
@@ -86,7 +83,7 @@
             </div>
 
             <!-- Select Existing Product -->
-            <div class="col-12 col-sm-6" v-if="productMode === 'existing'">
+            <div class="col-12 col-sm-6" v-if="!form.is_bundle && !isEditing && productMode === 'existing'">
               <q-select
                 v-model="form.product_details"
                 label="Product Details *"
@@ -97,15 +94,17 @@
                 option-label="name"
                 emit-value
                 map-options
-                :rules="[val => productMode === 'existing' ? (!!val || 'Product Details is required') : true]"
+                :rules="[val => (!form.is_bundle && productMode === 'existing') ? (!!val || 'Product Details is required') : true]"
                 :loading="loadingProducts"
-                :disable="isEditing"
-                :hint="isEditing ? 'Product details cannot be changed when editing' : ''"
+                clearable
+                use-input
+                input-debounce="0"
+                @filter="filterProductDetails"
               />
             </div>
 
             <!-- Inline Product Creation Fields -->
-            <template v-if="productMode === 'new'">
+            <template v-if="!form.is_bundle && productMode === 'new'">
               <!-- Wall Product Fields -->
               <template v-if="form.product_type === 'wall'">
                 <div class="col-12">
@@ -121,7 +120,7 @@
                     label="Product Line *"
                     outlined
                     dense
-                    :rules="[val => productMode === 'new' && form.product_type === 'wall' ? (!!val || 'Product Line is required') : true]"
+                    :rules="[val => (!form.is_bundle && productMode === 'new' && form.product_type === 'wall') ? (!!val || 'Product Line is required') : true]"
                   />
                 </div>
                 
@@ -131,7 +130,7 @@
                     label="Color Name *"
                     outlined
                     dense
-                    :rules="[val => productMode === 'new' && form.product_type === 'wall' ? (!!val || 'Color Name is required') : true]"
+                    :rules="[val => (!form.is_bundle && productMode === 'new' && form.product_type === 'wall') ? (!!val || 'Color Name is required') : true]"
                   />
                 </div>
                 
@@ -142,7 +141,7 @@
                     outlined
                     dense
                     placeholder="e.g., 24x48 inches"
-                    :rules="[val => productMode === 'new' && form.product_type === 'wall' ? (!!val || 'Dimensions is required') : true]"
+                    :rules="[val => (!form.is_bundle && productMode === 'new' && form.product_type === 'wall') ? (!!val || 'Dimensions is required') : true]"
                   />
                 </div>
                 
@@ -152,7 +151,7 @@
                     label="Finish *"
                     outlined
                     dense
-                    :rules="[val => productMode === 'new' && form.product_type === 'wall' ? (!!val || 'Finish is required') : true]"
+                    :rules="[val => (!form.is_bundle && productMode === 'new' && form.product_type === 'wall') ? (!!val || 'Finish is required') : true]"
                   />
                 </div>
               </template>
@@ -172,7 +171,7 @@
                     label="Product Name *"
                     outlined
                     dense
-                    :rules="[val => productMode === 'new' && form.product_type !== 'wall' ? (!!val || 'Product Name is required') : true]"
+                    :rules="[val => (!form.is_bundle && productMode === 'new' && form.product_type !== 'wall') ? (!!val || 'Product Name is required') : true]"
                   />
                 </div>
                 
@@ -368,13 +367,14 @@
               />
             </div>
 
-            <!-- Manufacturer Model -->
+            <!-- Supplier SKU (instead of manufacturer_model which doesn't exist in backend) -->
             <div class="col-12 col-sm-6">
               <q-input
-                v-model="form.manufacturer_model"
-                label="Manufacturer Model"
+                v-model="form.supplier_sku"
+                label="Supplier SKU"
                 outlined
                 dense
+                hint="SKU code used by supplier"
               />
             </div>
 
@@ -552,7 +552,7 @@ const defaultForm = {
   name: '',
   brand: '',
   model: '',
-  manufacturer_model: '',
+  supplier_sku: '', // Replace manufacturer_model with supplier_sku
   barcode: '',
   current_cost: 0,
   stock_thresholds: {
@@ -649,13 +649,25 @@ const loadBundleItemProducts = async (index: number, productType: string) => {
   
   try {
     bundleItemLoading.value[index] = true
-    const response = await skuApi.getProductsForSKU(productType)
-    bundleItemProductOptions.value[index] = response.products
+    // Load existing SKUs of the specified product type for bundle items
+    const response = await skuApi.getSKUs({
+      search: productType,
+      status: 'active',
+      limit: 100
+    })
+    
+    // Format SKUs for dropdown display
+    bundleItemProductOptions.value[index] = response.skus.map(sku => ({
+      _id: sku._id,
+      name: `${sku.sku_code} - ${sku.name}`,
+      sku_code: sku.sku_code,
+      sku_name: sku.name
+    }))
   } catch (error) {
-    console.error('Error loading bundle item products:', error)
+    console.error('Error loading bundle item SKUs:', error)
     $q.notify({
       type: 'negative',
-      message: `Failed to load products for ${productType}`
+      message: `Failed to load SKUs for ${productType}`
     })
   } finally {
     bundleItemLoading.value[index] = false
@@ -685,19 +697,33 @@ const onProductModeChange = (mode: 'existing' | 'new') => {
   }
 }
 
-const loadProductDetails = async (productType: string) => {
+const loadExistingSKUs = async (productType: string) => {
   if (!productType) return
   
   try {
     loadingProducts.value = true
-    // Use the new API endpoint to get available products for SKU creation
-    const response = await skuApi.getProductsForSKU(productType)
-    productDetailsOptions.value = response.products
+    // Load existing SKUs of the same product type to use as bundle components
+    const response = await skuApi.getSKUs({
+      // Filter by category name that matches product type
+      search: productType,
+      status: 'active',
+      limit: 100
+    })
+    
+    // Format SKUs for dropdown display
+    productDetailsOptions.value = response.skus.map(sku => ({
+      _id: sku._id,
+      name: `${sku.sku_code} - ${sku.name}`,
+      sku_code: sku.sku_code,
+      sku_name: sku.name,
+      brand: sku.brand,
+      model: sku.model
+    }))
   } catch (error) {
-    console.error('Error loading product details:', error)
+    console.error('Error loading existing SKUs:', error)
     $q.notify({
       type: 'negative',
-      message: 'Failed to load product details'
+      message: 'Failed to load existing SKUs'
     })
   } finally {
     loadingProducts.value = false
@@ -719,7 +745,7 @@ const onProductTypeChange = (productType: string) => {
     description: ''
   }
   if (productMode.value === 'existing') {
-    loadProductDetails(productType)
+    loadExistingSKUs(productType)
   }
 }
 
@@ -797,9 +823,9 @@ const onSubmit = async () => {
           // Preserve existing details from backend
           ...props.sku.details,
           
-          // Include manufacturer_model in details if provided (not root level)
-          ...(form.value.manufacturer_model && { 
-            manufacturer_model: form.value.manufacturer_model 
+          // Include supplier_sku in details if provided (not root level)
+          ...(form.value.supplier_sku && { 
+            supplier_sku: form.value.supplier_sku 
           }),
           
           // Extract and preserve product_details fields in details object
@@ -815,12 +841,18 @@ const onSubmit = async () => {
         },
         
         // Stock thresholds
-        stock_thresholds: form.value.stock_thresholds,
+        stock_thresholds: {
+          understocked: Number(form.value.stock_thresholds.understocked) || 5,
+          overstocked: Number(form.value.stock_thresholds.overstocked) || 100
+        },
         
-        // Supplier info if available (preserve existing)
-        ...(props.sku.supplier_info && {
-          supplier_info: props.sku.supplier_info
-        }),
+        // Supplier info - merge existing with form updates
+        supplier_info: {
+          // Preserve existing supplier_info
+          ...(props.sku.supplier_info || {}),
+          // Update supplier_sku from form
+          supplier_sku: form.value.supplier_sku || ''
+        },
         
         // Images if available (preserve existing)
         ...(props.sku.images && {
@@ -866,7 +898,7 @@ const onSubmit = async () => {
         sku_code: form.value.sku_code,
         product_type: form.value.product_type,
         is_bundle: form.value.is_bundle,
-        manufacturer_model: form.value.manufacturer_model,
+        supplier_sku: form.value.supplier_sku,
         barcode: form.value.barcode,
         current_cost: form.value.current_cost,
         stock_thresholds: form.value.stock_thresholds,
@@ -916,6 +948,23 @@ const close = () => {
   show.value = false
 }
 
+// Filter method for product details dropdown
+const filterProductDetails = (val: string, update: (fn: () => void) => void) => {
+  if (val === '') {
+    update(() => {
+      // Show all options when no filter
+    })
+    return
+  }
+
+  update(() => {
+    const needle = val.toLowerCase()
+    productDetailsOptions.value = productDetailsOptions.value.filter(v => 
+      v.name.toLowerCase().indexOf(needle) > -1
+    )
+  })
+}
+
 // Watchers
 watch(() => props.modelValue, (newValue) => {
   console.log('SKUFormDialog modelValue changed to:', newValue)
@@ -925,9 +974,28 @@ watch(() => props.modelValue, (newValue) => {
     if (props.sku) {
       // Editing mode
       console.log('SKUFormDialog: Editing mode')
+      // Extract product type from category
+      let productType = ''
+      if (props.sku.category_id) {
+        if (typeof props.sku.category_id === 'object' && props.sku.category_id.name) {
+          productType = props.sku.category_id.name
+        } else if (typeof props.sku.category_id === 'string') {
+          // If it's just a string ID, we may need to look it up, but for now use existing product_type
+          productType = props.sku.product_type || 'wall'
+        }
+      } else {
+        productType = props.sku.product_type || 'wall'
+      }
+
+      // Extract supplier SKU from nested supplier_info object
+      let supplierSku = ''
+      if (props.sku.supplier_info && props.sku.supplier_info.supplier_sku) {
+        supplierSku = props.sku.supplier_info.supplier_sku
+      }
+
       form.value = {
         sku_code: props.sku.sku_code,
-        product_type: props.sku.product_type,
+        product_type: productType,
         product_details: typeof props.sku.product_details === 'string' 
           ? props.sku.product_details 
           : (props.sku.product_details as any)?._id || '',
@@ -948,10 +1016,13 @@ watch(() => props.modelValue, (newValue) => {
         name: props.sku.name || 'SKU Product',
         brand: props.sku.brand || '',
         model: props.sku.model || '',
-        manufacturer_model: props.sku.manufacturer_model || '',
+        supplier_sku: supplierSku,
         barcode: props.sku.barcode || '',
         current_cost: props.sku.unit_cost || 0,
-        stock_thresholds: { ...props.sku.stock_thresholds },
+        stock_thresholds: { 
+          understocked: props.sku.stock_thresholds?.understocked || 5,
+          overstocked: props.sku.stock_thresholds?.overstocked || 100
+        },
         description: props.sku.description || '',
         notes: props.sku.notes || '',
         status: props.sku.status
@@ -1017,7 +1088,7 @@ watch(() => props.modelValue, (newValue) => {
       }
       
       // Then load additional products
-      loadProductDetails(props.sku.product_type).then(() => {
+      loadExistingSKUs(props.sku.product_type).then(() => {
         // Ensure current product is still first in the list after loading
         if (props.sku.product_details && typeof props.sku.product_details === 'object') {
           const currentProductId = props.sku.product_details._id
