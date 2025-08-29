@@ -809,6 +809,7 @@ const onSubmit = async () => {
       // Update existing SKU - match backend API exactly from BACKEND_API_REFERENCE.md
       const updates: UpdateSKURequest = {
         // Core SKU fields from backend model
+        sku_code: form.value.sku_code,
         name: form.value.name || props.sku.name || 'SKU Product',
         description: form.value.description,
         brand: form.value.brand,

@@ -511,6 +511,17 @@ router.put('/:id',
       if (req.body.stock_thresholds !== undefined) {
         updateData.stock_thresholds = req.body.stock_thresholds;
       }
+      
+      // Handle supplier_info updates
+      if (req.body.supplier_info !== undefined) {
+        // Merge supplier_info with existing data
+        const currentSupplierInfo = sku.supplier_info ? sku.supplier_info.toObject() : {};
+        updateData.supplier_info = {
+          ...currentSupplierInfo,
+          ...req.body.supplier_info
+        };
+        console.log('Updated supplier_info:', updateData.supplier_info);
+      }
 
       // Handle details object updates (category-specific fields)
       if (req.body.details !== undefined) {
