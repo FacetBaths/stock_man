@@ -34,6 +34,7 @@
   "license": "ISC",
   "dependencies": {
     "dotenv": "^17.2.1",
-    "mongoose": "^8.17.2"
+    "mongoose": "^8.17.2",
+    "quasar": "^2.18.2"
   }
 }

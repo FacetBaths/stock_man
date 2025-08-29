@@ -435,116 +435,193 @@ const tableColumns = [
         <div class="text-h6 text-dark q-mt-md">Loading tags...</div>
       </div>
 
-      <!-- Tags Table -->
-      <div v-else class="table-container glass-card" data-aos="fade-up" data-aos-delay="300">
-        <q-table
-          :rows="filteredTags"
-          :columns="tableColumns"
-          row-key="_id"
-          flat
-          :rows-per-page-options="[25, 50, 100]"
-          :pagination="{ rowsPerPage: 25 }"
-        >
-          <template v-slot:body-cell-items="props">
-            <q-td :props="props" style="max-width: 400px">
-              <div class="items-display">
-                <div v-if="props.row.sku_items && props.row.sku_items.length > 0" class="q-gutter-xs">
-                  <div v-for="(skuItem, index) in props.row.sku_items" :key="index" class="item-chip">
+      <!-- Tags List -->
+      <div v-else class="tags-list-container glass-card" data-aos="fade-up" data-aos-delay="300">
+        <div v-if="filteredTags.length === 0" class="text-center q-pa-xl">
+          <q-icon name="local_offer" size="48px" class="text-grey-6 q-mb-md" />
+          <div class="text-h6 text-grey-8">No tags found</div>
+          <div class="text-body2 text-grey-6">
+            Create tags to track inventory for customers and projects
+          </div>
+        </div>
+
+        <div v-else>
+          <!-- Column Headers -->
+          <div class="tags-header row items-center q-pa-md">
+            <div class="col-3 text-weight-bold text-body1 text-dark">
+              <q-icon name="person" class="q-mr-xs" size="sm" />
+              Customer
+            </div>
+            <div class="col-2 text-weight-bold text-body1 text-dark text-center">
+              <q-icon name="label" class="q-mr-xs" size="sm" />
+              Type
+            </div>
+            <div class="col-2 text-weight-bold text-body1 text-dark text-center">
+              <q-icon name="inventory_2" class="q-mr-xs" size="sm" />
+              Items
+            </div>
+            <div class="col-2 text-weight-bold text-body1 text-dark text-center">
+              <q-icon name="info" class="q-mr-xs" size="sm" />
+              Status
+            </div>
+            <div class="col-2 text-weight-bold text-body1 text-dark text-center">
+              <q-icon name="schedule" class="q-mr-xs" size="sm" />
+              Created
+            </div>
+            <div class="col-1 text-weight-bold text-body1 text-dark text-center">
+              <q-icon name="settings" class="q-mr-xs" size="sm" />
+              Actions
+            </div>
+          </div>
+
+          <q-separator />
+
+          <q-list separator>
+            <q-expansion-item
+              v-for="tag in filteredTags"
+              :key="tag._id"
+              class="tag-expansion-item"
+              header-class="tag-header"
+              expand-separator
+              :default-opened="false"
+            >
+              <template v-slot:header>
+                <div class="full-width row items-center no-wrap">
+                  <!-- Customer Name -->
+                  <div class="col-3 text-weight-bold text-subtitle1 text-dark ellipsis">
+                    {{ tag.customer_name }}
+                  </div>
+                  
+                  <!-- Tag Type -->
+                  <div class="col-2 text-center">
                     <q-chip 
-                      size="sm" 
-                      color="blue-grey-2" 
-                      text-color="dark"
-                      dense
-                      class="q-mb-xs"
+                      :style="{ backgroundColor: getTagTypeColor(tag.tag_type), color: 'white' }"
+                      size="sm"
+                      class="text-weight-medium text-capitalize"
                     >
-                      <span class="text-weight-medium">
-                        <template v-if="typeof skuItem.sku_id === 'object' && skuItem.sku_id?.sku_code">
-                          {{ skuItem.sku_id.sku_code || 'Unknown SKU' }}
-                        </template>
-                        <template v-else>
-                          SKU {{ skuItem.sku_id }}
-                        </template>
-                      </span>
-                      <span v-if="typeof skuItem.sku_id === 'object' && skuItem.sku_id?.description" class="q-ml-xs text-caption">
-                        - {{ skuItem.sku_id.description }}
-                      </span>
-                      <q-badge color="primary" floating transparent>
-                        {{ skuItem.selected_instance_ids ? skuItem.selected_instance_ids.length : (skuItem.remaining_quantity || skuItem.quantity) }}
-                      </q-badge>
+                      {{ tag.tag_type }}
                     </q-chip>
                   </div>
+                  
+                  <!-- Total Quantity -->
+                  <div class="col-2 text-center">
+                    <q-chip color="info" text-color="white" size="sm">
+                      {{ getTotalQuantity(tag.sku_items) }}
+                    </q-chip>
+                  </div>
+                  
+                  <!-- Status -->
+                  <div class="col-2 text-center">
+                    <q-chip 
+                      :color="getStatusColor(tag.status)"
+                      text-color="white"
+                      size="sm"
+                      class="text-weight-medium text-capitalize"
+                    >
+                      {{ tag.status }}
+                    </q-chip>
+                  </div>
+                  
+                  <!-- Created Date -->
+                  <div class="col-2 text-center text-body2 text-grey-8">
+                    {{ formatDate(tag.createdAt) }}
+                  </div>
+                  
+                  <!-- Actions -->
+                  <div class="col-1 text-center">
+                    <div class="row no-wrap items-center justify-center q-gutter-xs">
+                      <q-btn
+                        v-if="authStore.canWrite"
+                        @click.stop="handleEditTag(tag)"
+                        color="primary"
+                        icon="edit"
+                        size="sm"
+                        round
+                        flat
+                        dense
+                      >
+                        <q-tooltip>Edit Tag</q-tooltip>
+                      </q-btn>
+                      <q-btn
+                        v-if="authStore.canWrite"
+                        @click.stop="handleDeleteTag(tag)"
+                        color="negative"
+                        icon="delete"
+                        size="sm"
+                        round
+                        flat
+                        dense
+                      >
+                        <q-tooltip>Delete Tag</q-tooltip>
+                      </q-btn>
+                    </div>
+                  </div>
                 </div>
-                <div v-else class="text-grey-6 text-caption">
-                  No items
-                </div>
+              </template>
+            
+            <!-- Expanded Content - Items List -->
+            <div class="tag-items-container q-pa-md">
+              <div class="text-h6 text-dark q-mb-md">
+                <q-icon name="inventory_2" class="q-mr-sm" />
+                Tagged Items
               </div>
-            </q-td>
-          </template>
-
-          <template v-slot:body-cell-type="props">
-            <q-td :props="props">
-              <q-chip 
-                :style="{ backgroundColor: getTagTypeColor(props.value), color: 'white' }"
-                size="sm"
-                class="text-weight-medium text-capitalize"
-              >
-                {{ props.value }}
-              </q-chip>
-            </q-td>
-          </template>
-
-          <template v-slot:body-cell-status="props">
-            <q-td :props="props">
-              <q-chip 
-                :color="getStatusColor(props.value)"
-                text-color="white"
-                size="sm"
-                class="text-weight-medium text-capitalize"
-              >
-                {{ props.value }}
-              </q-chip>
-            </q-td>
-          </template>
-
-          <template v-slot:body-cell-actions="props">
-            <q-td :props="props">
-              <div class="row q-gutter-xs justify-center">
-                <q-btn
-                  v-if="authStore.canWrite"
-                  @click="handleEditTag(props.row)"
-                  color="primary"
-                  icon="edit"
-                  size="sm"
-                  round
-                  flat
-                >
-                  <q-tooltip>Edit Tag</q-tooltip>
-                </q-btn>
-                <q-btn
-                  v-if="authStore.canWrite"
-                  @click="handleDeleteTag(props.row)"
-                  color="negative"
-                  icon="delete"
-                  size="sm"
-                  round
-                  flat
-                >
-                  <q-tooltip>Delete Tag</q-tooltip>
-                </q-btn>
+              
+              <div v-if="tag.sku_items && tag.sku_items.length > 0" class="items-scroll-area">
+                <q-list dense separator>
+                  <q-item
+                    v-for="(skuItem, index) in tag.sku_items"
+                    :key="index"
+                    class="item-detail"
+                  >
+                    <q-item-section avatar>
+                      <q-icon name="inventory" color="primary" />
+                    </q-item-section>
+                    
+                    <q-item-section>
+                      <q-item-label class="text-weight-bold">
+                        <span class="sku-code">
+                          <template v-if="typeof skuItem.sku_id === 'object' && skuItem.sku_id?.sku_code">
+                            {{ skuItem.sku_id.sku_code || 'Unknown SKU' }}
+                          </template>
+                          <template v-else>
+                            SKU {{ skuItem.sku_id }}
+                          </template>
+                        </span>
+                        <span 
+                          v-if="typeof skuItem.sku_id === 'object' && skuItem.sku_id?.name" 
+                          class="q-ml-sm text-grey-8 sku-name"
+                        >
+                          | {{ skuItem.sku_id.name }}
+                        </span>
+                      </q-item-label>
+                      <q-item-label 
+                        v-if="typeof skuItem.sku_id === 'object' && skuItem.sku_id?.description" 
+                        caption 
+                        class="text-grey-6 item-description"
+                      >
+                        {{ skuItem.sku_id.description }}
+                      </q-item-label>
+                    </q-item-section>
+                    
+                    <q-item-section side>
+                      <q-badge 
+                        color="primary" 
+                        :label="skuItem.selected_instance_ids ? skuItem.selected_instance_ids.length : (skuItem.remaining_quantity || skuItem.quantity)"
+                        class="quantity-badge"
+                      />
+                    </q-item-section>
+                  </q-item>
+                </q-list>
               </div>
-            </q-td>
-          </template>
-
-          <template v-slot:no-data>
-            <div class="text-center q-pa-lg">
-              <q-icon name="local_offer" size="48px" class="text-grey-6 q-mb-md" />
-              <div class="text-h6 text-grey-8">No tags found</div>
-              <div class="text-body2 text-grey-6">
-                Create tags to track inventory for customers and projects
+              
+              <div v-else class="no-items-message text-center q-pa-md">
+                <q-icon name="inventory_2" size="32px" class="text-grey-5 q-mb-sm" />
+                <div class="text-body2 text-grey-6">No items in this tag</div>
               </div>
             </div>
-          </template>
-        </q-table>
+            </q-expansion-item>
+          </q-list>
+        </div>
       </div>
     </div>
 
@@ -646,61 +723,181 @@ const tableColumns = [
   justify-content: center;
 }
 
-/* Table Container */
-.table-container {
+/* Tags List Container */
+.tags-list-container {
   border-radius: 20px;
   overflow: hidden;
   padding: 0;
 }
 
-.table-container :deep(.q-table) {
-  background: transparent;
-  border-radius: 20px;
-}
-
-.table-container :deep(.q-table thead th) {
+/* Column Headers */
+.tags-header {
   background: rgba(255, 255, 255, 0.15);
-  color: rgba(33, 37, 41, 0.9);
-  font-weight: 600;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+  margin: 0;
+  padding: 16px 20px !important;
 }
 
-.table-container :deep(.q-table tbody td) {
+.tags-header .col-1,
+.tags-header .col-2,
+.tags-header .col-3 {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.tags-header .text-center {
+  justify-content: center;
+}
+
+/* Expansion Items */
+.tag-expansion-item {
+  background: transparent;
+}
+
+.tag-expansion-item :deep(.q-item) {
   background: rgba(255, 255, 255, 0.05);
-  color: rgba(33, 37, 41, 0.85);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.3s ease;
 }
 
-.table-container :deep(.q-table tbody tr:hover) {
+.tag-expansion-item :deep(.q-item:hover) {
   background: rgba(255, 255, 255, 0.1);
+}
+
+.tag-header {
+  padding: 16px 20px !important;
+  min-height: 64px;
+}
+
+.tag-header .col-1,
+.tag-header .col-2,
+.tag-header .col-3 {
+  display: flex;
+  align-items: center;
+}
+
+.tag-header .text-center {
+  justify-content: center;
+}
+
+/* Tag Items Container */
+.tag-items-container {
+  background: rgba(255, 255, 255, 0.03);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.items-scroll-area {
+  max-height: 300px;
+  overflow-y: auto;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 12px;
+  padding: 8px;
+}
+
+.items-scroll-area::-webkit-scrollbar {
+  width: 6px;
+}
+
+.items-scroll-area::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.items-scroll-area::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+}
+
+.items-scroll-area::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+/* Item Details */
+.item-detail {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  margin-bottom: 4px;
+  transition: all 0.2s ease;
+}
+
+.item-detail:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateX(2px);
+}
+
+.item-detail :deep(.q-item__section) {
+  color: rgba(33, 37, 41, 0.9);
+}
+
+.quantity-badge {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* SKU Item Layout */
+.sku-code {
+  color: rgba(33, 37, 41, 0.95);
+  font-weight: 700;
+}
+
+.sku-name {
+  font-weight: 500;
+  font-size: 0.9em;
+}
+
+.item-description {
+  margin-top: 2px;
+  font-size: 0.85em;
+  line-height: 1.3;
+  max-width: 400px;
+  word-wrap: break-word;
+}
+
+.no-items-message {
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.2);
 }
 
 .opacity-80 {
   opacity: 0.8;
 }
 
-/* SKU Items Display */
-.sku-items-display {
-  max-width: 400px;
+/* Responsive Design for Lists */
+@media (max-width: 1024px) {
+  .tags-header,
+  .tag-header {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 8px;
+  }
+  
+  .tags-header > div,
+  .tag-header > div {
+    width: 100% !important;
+    flex: none !important;
+    justify-content: flex-start !important;
+  }
+  
+  .tags-header .text-center,
+  .tag-header .text-center {
+    justify-content: flex-start !important;
+  }
 }
 
-.sku-item-chip {
-  display: inline-block;
-  margin-right: 4px;
-  margin-bottom: 4px;
-}
-
-.sku-item-chip .q-chip {
-  position: relative;
-  padding-right: 24px;
-}
-
-.sku-item-chip .q-badge {
-  font-size: 10px;
-  min-width: 18px;
-  height: 18px;
-  top: -6px;
-  right: -6px;
+@media (max-width: 768px) {
+  .tags-header {
+    display: none;
+  }
+  
+  .items-scroll-area {
+    max-height: 200px;
+  }
+  
+  .tag-header {
+    padding: 12px 16px !important;
+  }
 }
 
 @media (max-width: 768px) {
