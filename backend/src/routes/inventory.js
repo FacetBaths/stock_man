@@ -710,6 +710,12 @@ router.get('/stats', auth, async (req, res) => {
       { $sort: { category_name: 1 } }
     ]);
 
+    // Get most recent update time from instances or inventory records
+    const mostRecentUpdate = await mongoose.model('Instance').findOne()
+      .sort({ updatedAt: -1 })
+      .select('updatedAt')
+      .lean();
+
     // Recent activity and top value items can stay the same for now
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -753,6 +759,7 @@ router.get('/stats', auth, async (req, res) => {
       by_category: categoryStats,
       recent_activity: recentActivity,
       top_value_items: topValueItems,
+      lastUpdated: mostRecentUpdate?.updatedAt || new Date(),
       alerts: {
         low_stock: summary.low_stock_count,
         out_of_stock: summary.out_of_stock_count,
