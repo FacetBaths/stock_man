@@ -27,6 +27,7 @@ export const useAuthStore = defineStore('auth', () => {
   const error = ref<string | null>(null)
   const initialized = ref(false)
   const refreshPromise = ref<Promise<void> | null>(null)
+  const tokenRefreshTimer = ref<NodeJS.Timeout | null>(null)
 
   // Computed properties
   const isAuthenticated = computed(() => {
@@ -79,8 +80,14 @@ export const useAuthStore = defineStore('auth', () => {
       
       const decoded = JSON.parse(jsonPayload) as JwtPayload
       const currentTime = Date.now() / 1000
-      return decoded.exp <= currentTime + 60 // Consider expired if expires in next minute
-    } catch {
+      const expiresIn = decoded.exp - currentTime
+      
+      console.log(`Token expires in ${expiresIn} seconds`)
+      
+      // Consider expired if expires in next 2 minutes to allow time for refresh
+      return expiresIn <= 120
+    } catch (error) {
+      console.error('Token decode error:', error)
       return true
     }
   }

@@ -60,20 +60,30 @@ const getAuthStore = async () => {
 // Request interceptor to add auth token with automatic refresh
 api.interceptors.request.use(async (config) => {
   try {
-    const store = await getAuthStore()
-    const accessToken = await store.getValidAccessToken()
+    // Skip auth for login and refresh endpoints to avoid circular calls
+    const skipAuthUrls = ['/auth/login', '/auth/refresh', '/auth/logout-token']
+    const shouldSkipAuth = skipAuthUrls.some(url => config.url?.includes(url))
     
-    if (accessToken) {
-      config.headers.Authorization = `Bearer ${accessToken}`
-    } else {
-      // Fallback to legacy token for backward compatibility
-      const legacyToken = localStorage.getItem('token')
-      if (legacyToken) {
-        config.headers.Authorization = `Bearer ${legacyToken}`
+    if (!shouldSkipAuth) {
+      const store = await getAuthStore()
+      const accessToken = await store.getValidAccessToken()
+      
+      if (accessToken) {
+        config.headers.Authorization = `Bearer ${accessToken}`
+        console.log('Added auth token to request:', config.url)
+      } else {
+        // Fallback to legacy token for backward compatibility
+        const legacyToken = localStorage.getItem('token')
+        if (legacyToken) {
+          config.headers.Authorization = `Bearer ${legacyToken}`
+          console.log('Added legacy token to request:', config.url)
+        }
       }
+    } else {
+      console.log('Skipping auth for URL:', config.url)
     }
   } catch (error) {
-    console.warn('Failed to get access token:', error)
+    console.warn('Failed to get access token for request:', config.url, error)
     // Continue with request without token
   }
   
