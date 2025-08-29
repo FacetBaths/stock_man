@@ -1,23 +1,32 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useQuasar } from 'quasar'
 import { useAuthStore } from '@/stores/auth'
 import { skuApi } from '@/utils/api'
 import type { UpdateSKURequest } from '@/types'
 
 interface Props {
+  modelValue: boolean
   item: any // Flexible to handle different data structures from Dashboard
 }
 
 const props = defineProps<Props>()
 
 const emit = defineEmits<{
-  close: []
+  'update:modelValue': [value: boolean]
   success: []
 }>()
 
+const $q = useQuasar()
 const authStore = useAuthStore()
 const isUpdating = ref(false)
 const error = ref<string | null>(null)
+
+// Dialog visibility
+const showDialog = computed({
+  get: () => props.modelValue,
+  set: (value) => emit('update:modelValue', value)
+})
 
 // Form data for SKU editing
 const formData = ref<UpdateSKURequest>({
@@ -25,20 +34,33 @@ const formData = ref<UpdateSKURequest>({
   description: '',
   brand: '',
   model: '',
-  color: '',
-  dimensions: '',
-  finish: '',
+  details: {},
   unit_cost: 0,
+  currency: 'USD',
   barcode: '',
-  notes: '',
+  status: 'active',
   category_id: ''
 })
 
 const canEditCost = computed(() => authStore.user?.role === 'admin' || authStore.user?.role === 'warehouse_manager')
 const currentSkuId = ref('')
 
+// Status options
+const statusOptions = [
+  { label: 'Active', value: 'active' },
+  { label: 'Inactive', value: 'inactive' },
+  { label: 'Discontinued', value: 'discontinued' }
+]
+
 const initializeForm = () => {
   console.log('🔍 EditItemModal: Initializing form with item:', props.item)
+  
+  // Return early if no item is provided
+  if (!props.item) {
+    console.log('🔍 EditItemModal: No item provided, skipping form initialization')
+    return
+  }
+  
   console.log('🔍 EditItemModal: SKU data at item.sku:', props.item.sku)
   console.log('🔍 EditItemModal: SKU data at item.sku_id:', props.item.sku_id)
   console.log('🔍 EditItemModal: Item keys:', Object.keys(props.item))
@@ -95,18 +117,51 @@ const initializeForm = () => {
     resolved_category_id: categoryId
   })
   
-  // Initialize form with SKU data, extracting from details object if needed
+  // Initialize form with SKU data - handle both root level and details object fields
+  // Based on your SKU structure, some fields are at root level, some are in details
+  console.log('Raw SKU details object:', skuData.details)
+  
+  // Handle unit_cost which might be a MongoDB number object
+  let unitCost = 0
+  if (typeof skuData.unit_cost === 'object' && skuData.unit_cost?.$numberInt) {
+    unitCost = parseInt(skuData.unit_cost.$numberInt)
+  } else if (typeof skuData.unit_cost === 'number') {
+    unitCost = skuData.unit_cost
+  } else if (props.item.average_cost) {
+    unitCost = props.item.average_cost
+  }
+  
   formData.value = {
-    name: skuData.name || skuData.details?.name || 'SKU Product',
-    description: skuData.description || skuData.details?.description || '',
-    brand: skuData.brand || skuData.details?.brand || '',
-    model: skuData.model || skuData.details?.model || '',
-    color: skuData.color || skuData.details?.color || skuData.details?.color_name || '',
-    dimensions: skuData.dimensions || skuData.details?.dimensions || '',
-    finish: skuData.finish || skuData.details?.finish || '',
-    unit_cost: skuData.unit_cost || props.item.average_cost || 0,
+    // Root level fields from SKU
+    name: skuData.name || 'SKU Product',
+    description: skuData.description || '',
+    brand: skuData.brand || '',
+    model: skuData.model || '',
+    
+    // Details object - only category-specific fields (per SKU model schema)
+    details: {
+      // Wall-specific fields
+      product_line: skuData.details?.product_line || '',
+      color_name: skuData.details?.color_name || '',
+      dimensions: skuData.details?.dimensions || '',
+      finish: skuData.details?.finish || '',
+      
+      // Tool-specific fields  
+      tool_type: skuData.details?.tool_type || '',
+      manufacturer: skuData.details?.manufacturer || '',
+      serial_number: skuData.details?.serial_number || '',
+      voltage: skuData.details?.voltage || '',
+      features: skuData.details?.features || [],
+      
+      // Common fields
+      weight: skuData.details?.weight || 0,
+      specifications: skuData.details?.specifications || {}
+    },
+    
+    unit_cost: unitCost,
+    currency: skuData.currency || 'USD',
     barcode: skuData.barcode || '',
-    notes: skuData.notes || '',
+    status: skuData.status || 'active',
     // Only include category_id if it's valid, otherwise exclude it to avoid validation error
     ...(categoryId && categoryId !== '' ? { category_id: categoryId } : {})
   }
@@ -132,7 +187,11 @@ const handleSubmit = async () => {
     
     // Clean up form data - remove empty strings to avoid validation issues
     const cleanedData = Object.fromEntries(
-      Object.entries(formData.value).filter(([_, value]) => {
+      Object.entries(formData.value).filter(([key, value]) => {
+        // Always keep the details object even if it's empty
+        if (key === 'details') {
+          return true
+        }
         // Keep the value if it's not an empty string, or if it's a number (including 0)
         return value !== '' && value !== null && value !== undefined
       })
@@ -146,7 +205,12 @@ const handleSubmit = async () => {
     await skuApi.updateSKU(currentSkuId.value, cleanedData)
     
     console.log('SKU updated successfully')
+    $q.notify({
+      type: 'positive',
+      message: 'SKU updated successfully'
+    })
     emit('success')
+    showDialog.value = false
   } catch (err: any) {
     console.error('Update SKU error:', err)
     console.error('Error response:', err.response)
@@ -174,471 +238,262 @@ const handleSubmit = async () => {
     }
     
     error.value = errorMessage
+    $q.notify({
+      type: 'negative',
+      message: errorMessage
+    })
   } finally {
     isUpdating.value = false
   }
 }
 
 const handleClose = () => {
-  emit('close')
+  showDialog.value = false
+}
+
+const onValidationError = () => {
+  $q.notify({
+    type: 'negative',
+    message: 'Please correct the form errors'
+  })
 }
 
 onMounted(() => {
   console.log('EditItemModal mounted with item:', props.item)
-  console.log('Item SKU structure:', props.item.sku_id)
+  if (props.item) {
+    console.log('Item SKU structure:', props.item.sku_id)
+  } else {
+    console.log('No item provided to EditItemModal')
+  }
   initializeForm()
 })
 </script>
 
 <template>
-  <div class="modal-overlay" @click.self="handleClose">
-    <div class="modal-dialog">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h3>Edit SKU</h3>
-          <button class="close-button" @click="handleClose">&times;</button>
+  <q-dialog v-model="showDialog" persistent>
+    <q-card style="min-width: 600px; max-width: 800px">
+      <q-card-section class="row items-center">
+        <div class="text-h6">
+          <q-icon name="edit" class="q-mr-sm" />
+          Edit SKU
         </div>
+        <q-space />
+        <q-btn icon="close" flat round dense @click="handleClose" />
+      </q-card-section>
 
-        <div class="modal-body">
-          <form @submit.prevent="handleSubmit">
-            <div v-if="error" class="alert alert-danger">
+      <q-separator />
+
+      <q-form @submit="handleSubmit" @validation-error="onValidationError">
+        <q-card-section>
+          <div v-if="error" class="q-mb-md">
+            <q-banner class="text-white bg-red">
+              <q-icon name="error" class="q-mr-sm" />
               {{ error }}
-            </div>
+            </q-banner>
+          </div>
 
+          <div class="row q-col-gutter-md">
             <!-- SKU Code (Read-only) -->
-            <div class="form-group">
-              <label class="form-label">SKU Code</label>
-              <div class="sku-code-display">
-                <span class="sku-code-badge">
-                  {{ (item.sku && item.sku.sku_code) || (item.sku_id && item.sku_id.sku_code) || 'No SKU' }}
-                </span>
-              </div>
+            <div v-if="item" class="col-12">
+              <q-card flat bordered class="q-pa-md bg-grey-1">
+                <div class="text-subtitle2 text-weight-medium q-mb-sm">
+                  <q-icon name="qr_code" class="q-mr-xs" />
+                  SKU Information
+                </div>
+                <div class="row q-col-gutter-md">
+                  <div class="col-12 col-sm-6">
+                    <div class="text-caption text-grey-6">SKU Code</div>
+                    <q-chip
+                      :label="(item.sku && item.sku.sku_code) || (item.sku_id && item.sku_id.sku_code) || 'No SKU'"
+                      color="primary"
+                      text-color="white"
+                      icon="qr_code"
+                    />
+                  </div>
+                  <div class="col-12 col-sm-6">
+                    <div class="text-caption text-grey-6">Total Quantity</div>
+                    <div class="text-body1 text-weight-medium">{{ item.total_quantity || 0 }}</div>
+                  </div>
+                  <div v-if="item.primary_location" class="col-12 col-sm-6">
+                    <div class="text-caption text-grey-6">Primary Location</div>
+                    <div class="text-body1">{{ item.primary_location }}</div>
+                  </div>
+                  <div v-if="item.category" class="col-12 col-sm-6">
+                    <div class="text-caption text-grey-6">Category</div>
+                    <div class="text-body1">{{ item.category.name }}</div>
+                  </div>
+                </div>
+              </q-card>
             </div>
 
-            <!-- Inventory Summary (Read-only) -->
-            <div class="form-group">
-              <label class="form-label">Inventory Information</label>
-              <div class="inventory-info">
-                <div class="info-item">
-                  <span class="info-label">Total Quantity:</span>
-                  <span class="info-value">{{ item.total_quantity }}</span>
-                </div>
-                <div v-if="item.primary_location" class="info-item">
-                  <span class="info-label">Primary Location:</span>
-                  <span class="info-value">{{ item.primary_location }}</span>
-                </div>
-                <div v-if="item.category" class="info-item">
-                  <span class="info-label">Category:</span>
-                  <span class="info-value">{{ item.category.name }}</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- SKU Details -->
-            <div class="form-group">
-              <label for="name" class="form-label">Product Name *</label>
-              <input
-                id="name"
+            <!-- Product Name -->
+            <div class="col-12">
+              <q-input
                 v-model="formData.name"
-                type="text"
-                class="form-control"
-                required
+                label="Product Name *"
+                outlined
+                dense
+                :rules="[val => !!val || 'Product name is required']"
               />
             </div>
 
-            <div class="form-group">
-              <label for="description" class="form-label">Description</label>
-              <textarea
-                id="description"
+            <!-- Description -->
+            <div class="col-12">
+              <q-input
                 v-model="formData.description"
-                class="form-control"
+                label="Description"
+                outlined
+                dense
+                type="textarea"
                 rows="3"
                 placeholder="Detailed product description..."
-              ></textarea>
+              />
             </div>
 
-            <div class="form-row">
-              <div class="form-group">
-                <label for="brand" class="form-label">Brand</label>
-                <input
-                  id="brand"
-                  v-model="formData.brand"
-                  type="text"
-                  class="form-control"
-                  placeholder="Brand name"
-                />
-              </div>
-
-              <div class="form-group">
-                <label for="model" class="form-label">Model</label>
-                <input
-                  id="model"
-                  v-model="formData.model"
-                  type="text"
-                  class="form-control"
-                  placeholder="Model number/name"
-                />
-              </div>
+            <!-- Brand and Model -->
+            <div class="col-12 col-sm-6">
+              <q-input
+                v-model="formData.brand"
+                label="Brand"
+                outlined
+                dense
+                placeholder="Brand name"
+              />
             </div>
 
-            <div class="form-row">
-              <div class="form-group">
-                <label for="color" class="form-label">Color</label>
-                <input
-                  id="color"
-                  v-model="formData.color"
-                  type="text"
-                  class="form-control"
-                  placeholder="Color name"
-                />
-              </div>
-
-              <div class="form-group">
-                <label for="dimensions" class="form-label">Dimensions</label>
-                <input
-                  id="dimensions"
-                  v-model="formData.dimensions"
-                  type="text"
-                  class="form-control"
-                  placeholder="e.g., 24x48 inches"
-                />
-              </div>
+            <div class="col-12 col-sm-6">
+              <q-input
+                v-model="formData.model"
+                label="Model"
+                outlined
+                dense
+                placeholder="Model number/name"
+              />
             </div>
 
-            <div class="form-group">
-              <label for="finish" class="form-label">Finish</label>
-              <input
-                id="finish"
-                v-model="formData.finish"
-                type="text"
-                class="form-control"
+            <!-- Color and Dimensions -->
+            <div class="col-12 col-sm-6">
+              <q-input
+                v-model="formData.details.color_name"
+                label="Color"
+                outlined
+                dense
+                placeholder="Color name"
+              />
+            </div>
+
+            <div class="col-12 col-sm-6">
+              <q-input
+                v-model="formData.details.dimensions"
+                label="Dimensions"
+                outlined
+                dense
+                placeholder="e.g., 24x48 inches"
+              />
+            </div>
+
+            <!-- Finish -->
+            <div class="col-12">
+              <q-input
+                v-model="formData.details.finish"
+                label="Finish"
+                outlined
+                dense
                 placeholder="Surface finish or treatment"
               />
             </div>
 
-            <div class="form-group">
-              <label for="barcode" class="form-label">Barcode</label>
-              <input
-                id="barcode"
-                v-model="formData.barcode"
-                type="text"
-                class="form-control"
-                placeholder="Product barcode/UPC/EAN"
+            <!-- Product Line and Tool Type -->
+            <div class="col-12 col-sm-6">
+              <q-input
+                v-model="formData.details.product_line"
+                label="Product Line"
+                outlined
+                dense
+                placeholder="Product line name"
               />
-              <small class="form-text text-muted">
-                Used for barcode scanning and product identification
-              </small>
             </div>
 
-            <div v-if="canEditCost" class="form-group">
-              <label for="unit-cost" class="form-label">Unit Cost (USD)</label>
-              <input
-                id="unit-cost"
+            <div class="col-12 col-sm-6">
+              <q-input
+                v-model="formData.details.tool_type"
+                label="Tool Type"
+                outlined
+                dense
+                placeholder="Tool category"
+              />
+            </div>
+
+            <!-- Barcode -->
+            <div class="col-12">
+              <q-input
+                v-model="formData.barcode"
+                label="Barcode"
+                outlined
+                dense
+                placeholder="Product barcode/UPC/EAN"
+                hint="Used for barcode scanning and product identification"
+              />
+            </div>
+
+            <!-- Unit Cost (if authorized) -->
+            <div v-if="canEditCost" class="col-12 col-sm-6">
+              <q-input
                 v-model.number="formData.unit_cost"
+                label="Unit Cost"
+                outlined
+                dense
                 type="number"
-                class="form-control"
                 min="0"
                 step="0.01"
+                prefix="$"
                 placeholder="0.00"
+                hint="Cost per unit for this SKU"
               />
-              <small class="form-text text-muted">
-                Cost per unit for this SKU
-              </small>
             </div>
 
-            <div class="form-group">
-              <label for="notes" class="form-label">Notes</label>
-              <textarea
-                id="notes"
+            <!-- Status -->
+            <div class="col-12 col-sm-6">
+              <q-select
+                v-model="formData.status"
+                label="Status"
+                outlined
+                dense
+                :options="statusOptions"
+                emit-value
+                map-options
+              />
+            </div>
+
+            <!-- Notes -->
+            <div class="col-12">
+              <q-input
                 v-model="formData.notes"
-                class="form-control"
+                label="Notes"
+                outlined
+                dense
+                type="textarea"
                 rows="2"
                 placeholder="Additional notes about this SKU..."
-              ></textarea>
+              />
             </div>
+          </div>
+        </q-card-section>
 
-            <div class="modal-actions">
-              <button type="button" class="btn btn-secondary" @click="handleClose">
-                Cancel
-              </button>
-              <button
-                type="submit"
-                class="btn btn-primary"
-                :disabled="isUpdating"
-              >
-                <span v-if="isUpdating" class="spinner mr-2"></span>
-                {{ isUpdating ? 'Updating...' : 'Update SKU' }}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
-  </div>
+        <q-separator />
+
+        <q-card-actions align="right">
+          <q-btn flat color="grey-7" @click="handleClose">Cancel</q-btn>
+          <q-btn
+            color="primary"
+            type="submit"
+            :loading="isUpdating"
+          >
+            Update SKU
+          </q-btn>
+        </q-card-actions>
+      </q-form>
+    </q-card>
+  </q-dialog>
 </template>
 
-<style scoped>
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  padding: 1rem;
-}
-
-.modal-dialog {
-  background: white;
-  border-radius: 0.5rem;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  width: 100%;
-  max-width: 600px;
-  max-height: 90vh;
-  overflow-y: auto;
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1.5rem;
-  border-bottom: 1px solid #dee2e6;
-}
-
-.modal-header h3 {
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 600;
-}
-
-.close-button {
-  background: none;
-  border: none;
-  font-size: 2rem;
-  color: #6c757d;
-  cursor: pointer;
-  line-height: 1;
-  padding: 0;
-}
-
-.close-button:hover {
-  color: #000;
-}
-
-.modal-body {
-  padding: 1.5rem;
-}
-
-.form-row {
-  display: flex;
-  gap: 1rem;
-}
-
-.form-row .form-group {
-  flex: 1;
-}
-
-.form-group {
-  margin-bottom: 1rem;
-}
-
-.form-label {
-  display: block;
-  margin-bottom: 0.5rem;
-  font-weight: 500;
-  color: #333;
-}
-
-.form-control,
-.form-select {
-  display: block;
-  width: 100%;
-  padding: 0.75rem;
-  border: 1px solid #ced4da;
-  border-radius: 0.375rem;
-  font-size: 1rem;
-  line-height: 1.5;
-  background-color: #fff;
-  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
-}
-
-.form-control:focus,
-.form-select:focus {
-  border-color: #86b7fe;
-  outline: 0;
-  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
-}
-
-.form-control:disabled {
-  background-color: #e9ecef;
-  opacity: 1;
-}
-
-.form-text {
-  margin-top: 0.25rem;
-  font-size: 0.875em;
-  color: #6c757d;
-}
-
-.alert {
-  padding: 0.75rem 1.25rem;
-  margin-bottom: 1rem;
-  border: 1px solid transparent;
-  border-radius: 0.375rem;
-}
-
-.alert-danger {
-  color: #721c24;
-  background-color: #f8d7da;
-  border-color: #f5c6cb;
-}
-
-.btn {
-  display: inline-block;
-  font-weight: 400;
-  text-align: center;
-  text-decoration: none;
-  vertical-align: middle;
-  cursor: pointer;
-  border: 1px solid transparent;
-  padding: 0.75rem 1.5rem;
-  font-size: 1rem;
-  line-height: 1.5;
-  border-radius: 0.375rem;
-  transition: color 0.15s ease-in-out, background-color 0.15s ease-in-out, border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
-}
-
-.btn:disabled {
-  pointer-events: none;
-  opacity: 0.65;
-}
-
-.btn-secondary {
-  color: #fff;
-  background-color: #6c757d;
-  border-color: #6c757d;
-}
-
-.btn-secondary:hover {
-  background-color: #5c636a;
-  border-color: #565e64;
-}
-
-.btn-primary {
-  color: #fff;
-  background-color: #0d6efd;
-  border-color: #0d6efd;
-}
-
-.btn-primary:hover {
-  background-color: #0b5ed7;
-  border-color: #0a58ca;
-}
-
-.spinner {
-  display: inline-block;
-  width: 1rem;
-  height: 1rem;
-  border: 0.125em solid currentColor;
-  border-right-color: transparent;
-  border-radius: 50%;
-  animation: spinner-border 0.75s linear infinite;
-}
-
-@keyframes spinner-border {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.mr-2 {
-  margin-right: 0.5rem;
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 1rem;
-  margin-top: 2rem;
-  padding-top: 1rem;
-  border-top: 1px solid #dee2e6;
-}
-
-/* SKU Code Display */
-.sku-code-display {
-  margin-top: 0.25rem;
-}
-
-.sku-code-badge {
-  display: inline-block;
-  background-color: #6f42c1;
-  color: white;
-  padding: 0.25rem 0.75rem;
-  border-radius: 1rem;
-  font-size: 0.875rem;
-  font-weight: 600;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-}
-
-/* Inventory Information Display */
-.inventory-info {
-  border: 1px solid #e9ecef;
-  border-radius: 0.375rem;
-  padding: 1rem;
-  background-color: #f8f9fa;
-  margin-top: 0.25rem;
-}
-
-.info-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.5rem;
-}
-
-.info-item:last-child {
-  margin-bottom: 0;
-}
-
-.info-label {
-  font-weight: 600;
-  font-size: 0.875rem;
-  color: #495057;
-}
-
-.info-value {
-  font-size: 0.875rem;
-  color: #6c757d;
-}
-
-
-@media (max-width: 768px) {
-  .modal-overlay {
-    padding: 0.5rem;
-  }
-  
-  .form-row {
-    flex-direction: column;
-    gap: 0;
-  }
-  
-  .modal-actions {
-    flex-direction: column;
-  }
-  
-  .sku-info-group {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.25rem;
-  }
-  
-  .sku-info-label {
-    min-width: auto;
-  }
-}
-</style>

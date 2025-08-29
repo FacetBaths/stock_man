@@ -70,29 +70,89 @@ export interface Category {
   children?: Category[]           // For hierarchical structure (if used)
 }
 
-// ✅ SKU model - matches BACKEND_API_REFERENCE.md EXACTLY
+// ✅ SKU model - matches ACTUAL backend model (SKU.js) EXACTLY
 export interface SKU {
   _id: string
-  sku_code: string
-  product_type: string
-  product_details: string
-  current_cost: number
+  sku_code: string               // ❌ NOT "item_code"
+  category_id: string            // Reference to Category
+
+  // Consolidated product information
+  name: string                   // Product name
+  description: string
+  brand: string
+  model: string
+
+  // Category-specific details (polymorphic)
+  details: {
+    // For walls:
+    product_line?: string
+    color_name?: string
+    dimensions?: string
+    finish?: string
+
+    // For tools:
+    tool_type?: string
+    manufacturer?: string
+    serial_number?: string
+    voltage?: string
+    features?: string[]
+
+    // Common fields:
+    weight?: number
+    specifications?: Record<string, any>
+  }
+
+  // Consolidated costing information
+  unit_cost: number              // Current cost (not current_cost)
+  currency: string
   cost_history: Array<{
     cost: number
     effective_date: string
     updated_by: string
     notes: string
+    createdAt: string
+    updatedAt: string
   }>
+
+  // Status management
+  status: 'active' | 'discontinued' | 'pending'
+
+  // Metadata
   barcode: string
-  description: string
-  notes: string
-  status: string
+  supplier_info: {
+    supplier_name: string
+    supplier_sku: string
+    lead_time_days: number
+  }
+  images: string[]
+
+  // Stock thresholds
   stock_thresholds: {
     understocked: number
     overstocked: number
   }
+
+  // Bundle/Kit configuration
+  is_bundle: boolean
+  bundle_items: Array<{
+    sku_id: string
+    quantity: number
+    description: string
+  }>
+
+  // Tracking
   created_by: string
   last_updated_by: string
+
+  // POPULATED RELATIONSHIP (from API response)
+  category?: {
+    _id: string
+    name: string
+    type: 'product' | 'tool'
+    description: string
+  }
+
+  // METADATA
   createdAt: string
   updatedAt: string
 }
@@ -134,7 +194,7 @@ export interface Inventory {
   last_movement_date: string
   createdAt: string
   updatedAt: string
-  
+
   // ✅ Additional fields from API response (BACKEND_API_REFERENCE.md)
   sku?: {
     _id: string
@@ -321,63 +381,55 @@ export interface UpdateCategoryRequest {
   sort_order?: number
 }
 
-// ✅ Tag model - Instance-based structure (new architecture)
+// ✅ Tag model - Instance-based architecture (clean implementation)
 export interface Tag {
   _id: string
   customer_name: string
   tag_type: 'reserved' | 'broken' | 'imperfect' | 'loaned' | 'stock'
   status: 'active' | 'fulfilled' | 'cancelled'
-  
-  // ✅ NEW: Instance-based structure
+
+  // ✅ SKU items with pure instance-based architecture
   sku_items: Array<{
+    _id: string
     sku_id: string | {
       _id: string
       sku_code: string
+      name: string
       description: string
     }
     // Single source of truth: quantity = selected_instance_ids.length
     selected_instance_ids: string[]
     selection_method: 'auto' | 'manual' | 'fifo' | 'cost_based'
     notes: string
-    
-    // Legacy fields for migration compatibility (will be removed)
-    quantity?: number
-    remaining_quantity?: number
   }>
-  
-  project_name: string
-  due_date: string
+
   notes: string
+  due_date?: string
+  project_name: string
   created_by: string
-  fulfilled_by?: string
-  fulfilled_date?: string
-  cancelled_by?: string
-  cancelled_date?: string
-  cancellation_reason?: string
   last_updated_by: string
+  fulfilled_date?: string
+  fulfilled_by?: string
   createdAt: string
   updatedAt: string
-  
-  // ✅ Computed fields from API response
-  total_quantity?: number
-  remaining_quantity?: number
+
+  // ✅ Virtual/computed fields from API response
   is_partially_fulfilled?: boolean
   is_fully_fulfilled?: boolean
   is_overdue?: boolean
+  total_quantity?: number
   fulfillment_progress?: number
 }
 
-// ✅ Create tag request - Instance-based structure
+// ✅ Create tag request - Pure instance-based structure
 export interface CreateTagRequest {
   customer_name: string
   tag_type?: 'reserved' | 'broken' | 'imperfect' | 'loaned' | 'stock'
   sku_items: Array<{
     sku_id: string
-    // NEW: Support both formats during migration
-    selected_instance_ids?: string[]
+    selected_instance_ids?: string[] // Optional for auto-selection
     selection_method?: 'auto' | 'manual' | 'fifo' | 'cost_based'
-    // Legacy support during migration
-    quantity?: number
+    quantity?: number // Only for auto-selection methods
     notes?: string
   }>
   notes?: string
@@ -385,7 +437,7 @@ export interface CreateTagRequest {
   project_name?: string
 }
 
-// ✅ Update tag request - Instance-based structure
+// ✅ Update tag request - Pure instance-based structure
 export interface UpdateTagRequest {
   customer_name?: string
   tag_type?: 'reserved' | 'broken' | 'imperfect' | 'loaned' | 'stock'
@@ -394,9 +446,6 @@ export interface UpdateTagRequest {
     selected_instance_ids: string[]
     selection_method: 'auto' | 'manual' | 'fifo' | 'cost_based'
     notes?: string
-    // Legacy fields for migration
-    quantity?: number
-    remaining_quantity?: number
   }>
   notes?: string
   status?: 'active' | 'fulfilled' | 'cancelled'
@@ -546,12 +595,13 @@ export interface LinkExistingRequest {
 }
 
 // Stock status types
-export type StockStatus = 'understocked' | 'adequate' | 'overstocked'
+export type StockStatus = 'out_of_stock' | 'understocked' | 'adequate' | 'overstocked'
 
 export const STOCK_STATUS_CONFIG = {
-  understocked: { label: 'Understocked', color: 'red-6', icon: 'warning' },
+  out_of_stock: { label: 'Out of Stock', color: 'red-6', icon: 'cancel' },
+  understocked: { label: 'Understocked', color: 'orange-6', icon: 'warning' },
   adequate: { label: 'Adequate', color: 'green-6', icon: 'check_circle' },
-  overstocked: { label: 'Overstocked', color: 'orange-6', icon: 'inventory_2' }
+  overstocked: { label: 'Overstocked', color: 'yellow-6', icon: 'inventory_2' }
 } as const
 
 // Legacy product detail interfaces for compatibility (commented out for future reference)

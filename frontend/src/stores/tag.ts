@@ -156,7 +156,7 @@ export const useTagStore = defineStore('tag', () => {
       console.log('Tags received:', response.tags?.length || 0)
       if (response.tags?.length > 0) {
         console.log('First tag sample:', response.tags[0])
-        console.log('First tag items:', response.tags[0]?.items)
+        console.log('First tag sku_items:', response.tags[0]?.sku_items)
       }
       console.log('====================')
       
@@ -195,7 +195,7 @@ export const useTagStore = defineStore('tag', () => {
       
       console.log('Single tag response:', response)
       console.log('Tag data:', response.tag)
-      console.log('Tag items:', response.tag?.items)
+      console.log('Tag sku_items:', response.tag?.sku_items)
       console.log('==========================')
       
       currentTag.value = response.tag
@@ -354,13 +354,13 @@ export const useTagStore = defineStore('tag', () => {
     )
   }
 
-  const getTagsByItems = (itemIds: string[]) => {
+  const getTagsBySKUs = (skuIds: string[]) => {
     return tags.value.filter(tag => 
-      tag.items?.some(tagItem => {
-        const itemId = typeof tagItem.item_id === 'string' 
-          ? tagItem.item_id 
-          : tagItem.item_id._id
-        return itemIds.includes(itemId)
+      tag.sku_items?.some(tagSkuItem => {
+        const skuId = typeof tagSkuItem.sku_id === 'string' 
+          ? tagSkuItem.sku_id 
+          : tagSkuItem.sku_id._id
+        return skuIds.includes(skuId)
       })
     )
   }
@@ -440,7 +440,7 @@ export const useTagStore = defineStore('tag', () => {
     // Helper methods
     getTagsByCustomer,
     getTagsByProject,
-    getTagsByItems,
+    getTagsBySKUs,
     searchTags,
     updateFilters,
     clearFilters,

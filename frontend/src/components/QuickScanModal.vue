@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 import { barcodeApi, inventoryApi, instancesApi, skuApi } from '@/utils/api'
 import type { SKU } from '@/types'
+import AddItemModal from './AddItemModal.vue'
 
 const emit = defineEmits<{
   close: []
@@ -22,6 +23,10 @@ const isLoading = ref(false)
 const isProcessing = ref(false)
 const error = ref<string | null>(null)
 const mode = ref<'scan' | 'batch'>('scan') // 'scan' for quick lookup, 'batch' for quantity management
+
+// Add Item Modal state for creating SKUs
+const showAddItemModal = ref(false)
+const selectedBarcodeForSKU = ref('')
 
 const canScan = computed(() => barcodeInput.value.trim().length > 0)
 const foundItems = computed(() => scannedItems.value.filter(item => item.found))
@@ -175,19 +180,64 @@ const formatSKUDescription = (sku: SKU): string => {
     return sku.description
   }
   
-  // Otherwise, try to build from populated product_details
-  if (sku.product_details && typeof sku.product_details === 'object') {
-    const details = sku.product_details as any
+  // Build description from name and brand/model
+  if (sku.name && sku.name.trim()) {
+    let desc = sku.name
+    if (sku.brand) desc += ` - ${sku.brand}`
+    if (sku.model) desc += ` ${sku.model}`
+    return desc
+  }
+  
+  // Otherwise, try to build from details object
+  if (sku.details && typeof sku.details === 'object') {
+    const details = sku.details as any
     
-    if (sku.product_type === 'wall') {
+    // For product items (walls, etc.)
+    if (details.product_line || details.color_name || details.dimensions) {
       return `${details.product_line || ''} ${details.color_name || ''} ${details.dimensions || ''}`.trim()
-    } else {
-      return `${details.name || ''} ${details.brand || ''} ${details.model || ''}`.trim()
+    }
+    
+    // For tools
+    if (details.tool_type || details.manufacturer) {
+      return `${details.tool_type || ''} ${details.manufacturer || ''}`.trim()
     }
   }
   
-  // Fallback to product type
-  return sku.product_type || 'Unknown item'
+  // Fallback to SKU code
+  return sku.sku_code || 'Unknown item'
+}
+
+const handleCreateSKUForBarcode = (barcode: string) => {
+  selectedBarcodeForSKU.value = barcode
+  showAddItemModal.value = true
+}
+
+const handleAddItemSuccess = async () => {
+  showAddItemModal.value = false
+  
+  // Refresh the barcode lookup for the newly created SKU
+  if (selectedBarcodeForSKU.value) {
+    try {
+      const response = await barcodeApi.batchScan({ barcodes: [selectedBarcodeForSKU.value] })
+      const foundItem = response.found.find(item => item.barcode === selectedBarcodeForSKU.value)
+      
+      if (foundItem) {
+        // Update the existing scanned item to mark it as found
+        const existingIndex = scannedItems.value.findIndex(item => item.barcode === selectedBarcodeForSKU.value)
+        if (existingIndex >= 0) {
+          scannedItems.value[existingIndex].found = true
+          scannedItems.value[existingIndex].sku = foundItem.sku
+        }
+      }
+    } catch (error) {
+      console.error('Failed to refresh barcode lookup:', error)
+    }
+    
+    selectedBarcodeForSKU.value = ''
+  }
+  
+  // Emit success to trigger inventory refresh
+  emit('success')
 }
 
 const handleClose = () => {
@@ -352,19 +402,25 @@ const handleClose = () => {
                       <span class="sku-code">{{ item.sku.sku_code }}</span>
                       <span class="sku-description">{{ formatSKUDescription(item.sku) }}</span>
                     </div>
-                    <div v-if="mode === 'scan' && item.sku.totalQuantity !== undefined" class="quantity-info">
-                      <span class="quantity">{{ item.sku.totalQuantity }} in stock</span>
-                      <span 
-                        class="status-badge"
-                        :class="`status-${item.sku.stockStatus}`"
-                      >
-                        {{ item.sku.stockStatus }}
+                    <div v-if="mode === 'scan'" class="quantity-info">
+                      <span class="quantity">Ready for scanning</span>
+                      <span class="status-badge status-active">
+                        Available
                       </span>
                     </div>
                   </div>
                   
                   <div v-else class="result-details">
-                    <span class="not-found-text">Barcode not found in system</span>
+                    <div class="not-found-info">
+                      <span class="not-found-text">Barcode not found in system</span>
+                      <button 
+                        type="button" 
+                        class="btn btn-sm btn-primary create-sku-btn"
+                        @click="handleCreateSKUForBarcode(item.barcode)"
+                      >
+                        Create SKU
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -397,6 +453,15 @@ const handleClose = () => {
       </div>
     </div>
   </div>
+  
+  <!-- Add Item Modal for creating SKUs -->
+  <AddItemModal
+    v-if="showAddItemModal"
+    :mode="'create'"
+    :initial-barcode="selectedBarcodeForSKU"
+    @close="showAddItemModal = false"
+    @success="handleAddItemSuccess"
+  />
 </template>
 
 <style scoped>
@@ -796,6 +861,20 @@ const handleClose = () => {
 .not-found-text {
   color: #dc3545;
   font-style: italic;
+}
+
+.not-found-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.create-sku-btn {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.75rem;
+  white-space: nowrap;
 }
 
 .empty-state {

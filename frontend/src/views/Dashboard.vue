@@ -4,7 +4,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useInventoryStore } from "@/stores/inventory";
 import { useCategoryStore } from "@/stores/category";
 import InventoryTable from "@/components/InventoryTable.vue";
-import AddStockModal from "@/components/AddStockModal.vue";
+import AddItemModal from "@/components/AddItemModal.vue";
 import EditItemModal from "@/components/EditItemModal.vue";
 import QuickScanModal from "@/components/QuickScanModal.vue";
 import type { Inventory } from "@/types";
@@ -281,10 +281,19 @@ onMounted(async () => {
   // Fetch stats and initial inventory data for better UX
   await inventoryStore.fetchStats();
 
-  // Auto-load initial inventory data (but safely)
+  // Auto-load initial inventory data (always load on mount)
   setTimeout(() => {
-    if (inventoryTableRef.value && inventoryStore.inventory.length === 0) {
+    console.log('[Dashboard] Auto-loading inventory data. Current inventory length:', inventoryStore.inventory.length)
+    if (inventoryTableRef.value) {
+      console.log('[Dashboard] Triggering inventory refresh with filters:', getCurrentFilters())
       inventoryTableRef.value.refreshInventory(getCurrentFilters());
+    } else {
+      console.warn('[Dashboard] inventoryTableRef not ready, retrying in 200ms')
+      setTimeout(() => {
+        if (inventoryTableRef.value) {
+          inventoryTableRef.value.refreshInventory(getCurrentFilters());
+        }
+      }, 200);
     }
   }, 100);
 });
@@ -625,16 +634,15 @@ onMounted(async () => {
     </div>
 
     <!-- Modals -->
-    <AddStockModal
+    <AddItemModal
       v-if="showAddModal"
       @close="showAddModal = false"
       @success="handleAddSuccess"
     />
 
     <EditItemModal
-      v-if="showEditModal && itemToEdit"
+      v-model="showEditModal"
       :item="itemToEdit"
-      @close="showEditModal = false"
       @success="handleEditSuccess"
     />
 

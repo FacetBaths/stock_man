@@ -11,10 +11,10 @@ import type {
 import { inventoryApi, instancesApi, skuApi } from '@/utils/api'
 
 export const useInventoryStore = defineStore('inventory', () => {
-  // New architecture: Aggregated inventory data
-  const inventory = ref<any[]>([])
+  // New architecture: Aggregated inventory data (matches BACKEND_API_REFERENCE.md exactly)
+  const inventory = ref<Inventory[]>([])
   const stats = ref<InventoryStats | null>(null)
-  const currentSKUInventory = ref<any | null>(null)
+  const currentSKUInventory = ref<Inventory | null>(null)
 
   // Individual instances for stock management
   const instances = ref<Instance[]>([])
@@ -175,66 +175,8 @@ export const useInventoryStore = defineStore('inventory', () => {
       console.log('📊 [Store] Final API params being sent:', apiParams)
       const response = await inventoryApi.getInventory(apiParams)
 
-      // Transform backend inventory data to match frontend expectations
-      inventory.value = response.inventory.map((item: any) => ({
-        // Keep all original inventory properties
-        ...item,
-        // Map common fields for component compatibility
-        _id: item._id,
-        quantity: item.total_quantity || 0,
-        product_type: item.category?.name?.toLowerCase().replace(/\s+/g, '_') || 'miscellaneous',
-        location: item.primary_location || 'Unknown',
-        notes: '', // inventory records don't have notes
-        updatedAt: item.updatedAt,
-        createdAt: item.createdAt,
-        // Transform tag_summary to tagSummary with camelCase properties
-        tagSummary: item.tag_summary ? {
-          reserved: item.tag_summary.reserved || 0,
-          broken: item.tag_summary.broken || 0,
-          loaned: item.tag_summary.loaned || 0,
-          imperfect: item.tag_summary.imperfect || 0, // Add support for imperfect tags if backend adds them
-          totalTagged: item.tag_summary.totalTagged || 0
-        } : {
-          reserved: 0,
-          broken: 0,
-          loaned: 0,
-          imperfect: 0,
-          totalTagged: 0
-        },
-        // CRITICAL FIX: Preserve original SKU data structure for EditItemModal
-        // The EditItemModal expects populated SKU data in item.sku
-        sku: item.sku ? {
-          _id: item.sku._id,
-          sku_code: item.sku.sku_code || '',
-          name: item.sku.name || 'Unknown Product',
-          description: item.sku.description || '',
-          brand: item.sku.brand || '',
-          model: item.sku.model || '',
-          color: item.sku.color || '',
-          dimensions: item.sku.dimensions || '',
-          finish: item.sku.finish || '',
-          unit_cost: item.sku.unit_cost || 0,
-          barcode: item.sku.barcode || '',
-          notes: item.sku.notes || '',
-          category_id: item.sku.category_id || item.category?._id || '',
-          status: item.sku.status || 'active',
-          current_cost: item.sku.unit_cost || item.average_cost || 0
-        } : null,
-        // Also preserve sku_id for fallback
-        sku_id: item.sku_id,
-        // Add product details for display (legacy compatibility)
-        product_details: {
-          name: item.sku?.name || 'Unknown Product',
-          description: item.sku?.description || '',
-          brand: item.sku?.brand || '',
-          model: item.sku?.model || ''
-        },
-        // Map cost fields
-        cost: item.average_cost || 0,
-        // Map SKU fields for backward compatibility
-        sku_code: item.sku?.sku_code || '',
-        barcode: item.sku?.barcode || ''
-      }))
+      // Store inventory data as-is from backend (clean architecture)
+      inventory.value = response.inventory
       pagination.value = {
         total_items: response.pagination.total_items,
         total_pages: response.pagination.total_pages,
@@ -626,37 +568,6 @@ export const useInventoryStore = defineStore('inventory', () => {
     }
   }
 
-  // Backward compatibility methods
-  const loadItems = async (params?: {
-    in_stock_only?: boolean
-    product_type?: string
-    search?: string
-    page?: number
-  }) => {
-    // Map to fetchInventory for backward compatibility
-    return await fetchInventory({
-      search: params?.search,
-      page: params?.page || 1,
-      status: params?.in_stock_only ? undefined : 'all'
-    })
-  }
-
-  const loadStats = async () => {
-    return await fetchStats()
-  }
-
-  // Computed property for backward compatibility  
-  const itemsByType = computed(() => {
-    const result: Record<string, any[]> = {}
-    inventory.value.forEach(item => {
-      const type = item.product_type || 'unknown'
-      if (!result[type]) {
-        result[type] = []
-      }
-      result[type].push(item)
-    })
-    return result
-  })
 
   return {
     // State - Inventory
@@ -688,7 +599,6 @@ export const useInventoryStore = defineStore('inventory', () => {
     inventoryByStatus,
     inventoryStats,
     instancesByLocation,
-    itemsByType, // Backward compatibility
 
     // Actions - Inventory
     fetchInventory,
@@ -721,10 +631,6 @@ export const useInventoryStore = defineStore('inventory', () => {
     clearInventoryFilters,
 
     // Item creation (full workflow)
-    createItem,
-
-    // Backward compatibility methods
-    loadItems,
-    loadStats
+    createItem
   }
 })

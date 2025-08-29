@@ -351,8 +351,8 @@
         <template v-slot:body-cell-stock_status="props">
           <q-td :props="props">
             <StockStatusChip
-              :status="props.row.stockStatus"
-              :quantity="props.row.totalQuantity"
+              :status="getStockStatus(props.row)"
+              :quantity="props.row.inventory?.total_quantity || 0"
               :thresholds="props.row.stock_thresholds"
             />
           </q-td>
@@ -528,14 +528,14 @@ const columns = [
   {
     name: 'current_cost',
     label: 'Current Cost',
-    field: 'current_cost',
+    field: 'unit_cost',
     align: 'right',
     sortable: true
   },
   {
     name: 'totalQuantity',
     label: 'Total Quantity',
-    field: 'totalQuantity',
+    field: (row: any) => row.inventory?.total_quantity || 0,
     align: 'right',
     sortable: true
   },
@@ -623,10 +623,24 @@ const getStatusColor = (status: string) => {
   return colors[status] || 'grey'
 }
 
-const getCategoryName = (categoryId: string) => {
+const getCategoryName = (categoryId: string | any) => {
   if (!categoryId) return 'Uncategorized'
-  const category = categoryStore.categories.find(c => c._id === categoryId)
-  return category ? category.name : 'Unknown Category'
+  
+  // Handle case where categoryId is already populated object from backend
+  if (typeof categoryId === 'object' && categoryId.displayName) {
+    return categoryId.displayName
+  }
+  if (typeof categoryId === 'object' && categoryId.name) {
+    return categoryId.name
+  }
+  
+  // Handle case where categoryId is still just an ID string
+  if (typeof categoryId === 'string') {
+    const category = categoryStore.categories.find(c => c._id === categoryId)
+    return category ? category.name : 'Unknown Category'
+  }
+  
+  return 'Unknown Category'
 }
 
 const getCategoryColor = (categoryId: string | any) => {
@@ -646,6 +660,39 @@ const getCategoryColor = (categoryId: string | any) => {
   // Use category ID to generate consistent color
   const index = idString ? idString.charCodeAt(idString.length - 1) % colors.length : 0
   return colors[index]
+}
+
+// Get stock status from inventory data based on backend flags
+const getStockStatus = (sku: any) => {
+  if (!sku.inventory) return 'out_of_stock'
+  
+  // Use backend calculated flags first (preferred)
+  if (sku.inventory.is_out_of_stock) {
+    return 'out_of_stock'
+  }
+  if (sku.inventory.is_overstock) {
+    return 'overstocked'
+  }
+  if (sku.inventory.is_low_stock) {
+    return 'understocked'
+  }
+  
+  // Fallback to manual calculation if backend flags not available
+  const totalQty = sku.inventory.total_quantity || 0
+  const availableQty = sku.inventory.available_quantity || 0
+  const thresholds = sku.stock_thresholds || { understocked: 5, overstocked: 100 }
+  
+  if (totalQty === 0 || availableQty === 0) {
+    return 'out_of_stock'
+  }
+  if (totalQty >= thresholds.overstocked) {
+    return 'overstocked'
+  }
+  if (availableQty <= thresholds.understocked) {
+    return 'understocked'
+  }
+  
+  return 'adequate'
 }
 
 const refreshData = async () => {

@@ -40,19 +40,15 @@ export const useSKUStore = defineStore('sku', () => {
 
   // Computed properties for new architecture
   const activeSKUs = computed(() => 
-    skus.value.filter(sku => sku.is_active && sku.status === 'active')
+    skus.value.filter(sku => sku.status === 'active')
   )
   
   const inactiveSKUs = computed(() => 
-    skus.value.filter(sku => !sku.is_active || sku.status === 'pending')
+    skus.value.filter(sku => sku.status === 'pending')
   )
   
   const discontinuedSKUs = computed(() => 
     skus.value.filter(sku => sku.status === 'discontinued')
-  )
-  
-  const lendableSKUs = computed(() => 
-    skus.value.filter(sku => sku.is_lendable)
   )
   
   const bundleSKUs = computed(() => 
@@ -76,19 +72,40 @@ export const useSKUStore = defineStore('sku', () => {
 
   const skusByStockStatus = computed(() => {
     const result = {
-      low_stock: [] as SKU[],
+      out: [] as SKU[],
+      understocked: [] as SKU[],
       adequate: [] as SKU[],
-      out_of_stock: [] as SKU[],
+      overstocked: [] as SKU[],
       needs_reorder: [] as SKU[]
     }
     
     skus.value.forEach(sku => {
       const inventory = sku.inventory
       if (inventory) {
-        if (inventory.is_out_of_stock) result.out_of_stock.push(sku)
-        else if (inventory.is_low_stock) result.low_stock.push(sku)
-        else if (inventory.available_quantity <= inventory.reorder_point) result.needs_reorder.push(sku)
-        else result.adequate.push(sku)
+        const thresholds = sku.stock_thresholds || { understocked: 5, overstocked: 100 }
+        const availableQty = inventory.available_quantity || 0
+        const totalQty = inventory.total_quantity || 0
+        
+        // Check for out of stock first (zero quantity)
+        if (inventory.is_out_of_stock || availableQty === 0 || totalQty === 0) {
+          result.out.push(sku)
+        }
+        // Check for overstock
+        else if (inventory.is_overstock || totalQty >= thresholds.overstocked) {
+          result.overstocked.push(sku)
+        }
+        // Check for understocked (low stock but not out)
+        else if (inventory.is_low_stock || availableQty <= thresholds.understocked) {
+          result.understocked.push(sku)
+        }
+        // Check for reorder needed (separate from understocked)
+        else if (availableQty <= (inventory.reorder_point || 0)) {
+          result.needs_reorder.push(sku)
+        }
+        // Default to adequate stock
+        else {
+          result.adequate.push(sku)
+        }
       }
     })
     
@@ -98,7 +115,6 @@ export const useSKUStore = defineStore('sku', () => {
   const skuStats = computed(() => {
     const total = skus.value.length
     const active = activeSKUs.value.length
-    const lendable = lendableSKUs.value.length
     const bundles = bundleSKUs.value.length
     const withBarcodes = skus.value.filter(sku => sku.barcode).length
     const totalValue = skus.value.reduce((sum, sku) => {
@@ -113,13 +129,14 @@ export const useSKUStore = defineStore('sku', () => {
     return {
       total,
       active,
-      lendable,
       bundles,
       withBarcodes,
       totalQuantity,
       totalValue,
-      lowStock: skusByStockStatus.value.low_stock.length,
-      outOfStock: skusByStockStatus.value.out_of_stock.length,
+      outOfStock: skusByStockStatus.value.out.length,
+      understocked: skusByStockStatus.value.understocked.length,
+      adequate: skusByStockStatus.value.adequate.length,
+      overstocked: skusByStockStatus.value.overstocked.length,
       needsReorder: skusByStockStatus.value.needs_reorder.length
     }
   })
@@ -451,7 +468,6 @@ export const useSKUStore = defineStore('sku', () => {
     activeSKUs,
     inactiveSKUs,
     discontinuedSKUs,
-    lendableSKUs,
     bundleSKUs,
     skusByCategory,
     skusByStockStatus,

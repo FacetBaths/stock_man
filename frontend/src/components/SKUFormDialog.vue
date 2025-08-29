@@ -51,7 +51,9 @@
                 emit-value
                 map-options
                 :rules="[val => !!val || 'Product Type is required']"
+                :disable="isEditing"
                 @update:model-value="onProductTypeChange"
+                :hint="isEditing ? 'Cannot change product type when editing' : ''"
               />
             </div>
 
@@ -61,15 +63,19 @@
                 v-model="form.is_bundle"
                 label="This is a Bundle/Kit (contains multiple products)"
                 color="primary"
+                :disable="isEditing"
                 @update:model-value="onBundleModeChange"
               />
               <div class="text-caption text-grey-6" v-if="form.is_bundle">
                 Perfect for wall kits that contain multiple wall panels or other product combinations.
               </div>
+              <div v-if="isEditing" class="text-caption text-grey-6">
+                Bundle configuration cannot be changed when editing
+              </div>
             </div>
 
-            <!-- Product Mode Toggle (only show if not bundle) -->
-            <div class="col-12" v-if="!form.is_bundle">
+            <!-- Product Mode Toggle (only show if not bundle and not editing) -->
+            <div class="col-12" v-if="!form.is_bundle && !isEditing">
               <q-option-group
                 v-model="productMode"
                 :options="productModeOptions"
@@ -93,6 +99,8 @@
                 map-options
                 :rules="[val => productMode === 'existing' ? (!!val || 'Product Details is required') : true]"
                 :loading="loadingProducts"
+                :disable="isEditing"
+                :hint="isEditing ? 'Product details cannot be changed when editing' : ''"
               />
             </div>
 
@@ -328,6 +336,38 @@
               </div>
             </template>
 
+            <!-- Product Name (for editing mode) -->
+            <div v-if="isEditing" class="col-12">
+              <q-input
+                v-model="form.name"
+                label="Product Name *"
+                outlined
+                dense
+                :rules="[val => !!val || 'Product name is required']"
+              />
+            </div>
+
+            <!-- Brand and Model (for editing mode) -->
+            <div v-if="isEditing" class="col-12 col-sm-6">
+              <q-input
+                v-model="form.brand"
+                label="Brand"
+                outlined
+                dense
+                placeholder="Brand name"
+              />
+            </div>
+
+            <div v-if="isEditing" class="col-12 col-sm-6">
+              <q-input
+                v-model="form.model"
+                label="Model"
+                outlined
+                dense
+                placeholder="Model number/name"
+              />
+            </div>
+
             <!-- Manufacturer Model -->
             <div class="col-12 col-sm-6">
               <q-input
@@ -508,6 +548,10 @@ const defaultForm = {
     color: '',
     description: ''
   },
+  // Editing mode fields
+  name: '',
+  brand: '',
+  model: '',
   manufacturer_model: '',
   barcode: '',
   current_cost: 0,
@@ -736,14 +780,52 @@ const onSubmit = async () => {
     saving.value = true
     
     if (isEditing.value && props.sku) {
-      // Update existing SKU - only send fields backend expects
+      // Update existing SKU - match backend API exactly from BACKEND_API_REFERENCE.md
       const updates: UpdateSKURequest = {
-        name: props.sku.name || 'SKU Product', // Use existing name (required field)
+        // Core SKU fields from backend model
+        name: form.value.name || props.sku.name || 'SKU Product',
         description: form.value.description,
+        brand: form.value.brand,
+        model: form.value.model,
         barcode: form.value.barcode,
-        notes: form.value.notes,
         status: form.value.status,
-        unit_cost: form.value.current_cost
+        unit_cost: form.value.current_cost,
+        currency: 'USD', // Default currency
+        
+        // Details object - merge existing details with form updates  
+        details: {
+          // Preserve existing details from backend
+          ...props.sku.details,
+          
+          // Include manufacturer_model in details if provided (not root level)
+          ...(form.value.manufacturer_model && { 
+            manufacturer_model: form.value.manufacturer_model 
+          }),
+          
+          // Extract and preserve product_details fields in details object
+          ...(props.sku.product_details && typeof props.sku.product_details === 'object' ? {
+            product_line: (props.sku.product_details as any)?.product_line || props.sku.details?.product_line,
+            color_name: (props.sku.product_details as any)?.color_name || props.sku.details?.color_name,
+            dimensions: (props.sku.product_details as any)?.dimensions || props.sku.details?.dimensions,
+            finish: (props.sku.product_details as any)?.finish || props.sku.details?.finish,
+            // Include any other product detail fields
+            weight: (props.sku.product_details as any)?.weight || props.sku.details?.weight,
+            specifications: (props.sku.product_details as any)?.specifications || props.sku.details?.specifications
+          } : {})
+        },
+        
+        // Stock thresholds
+        stock_thresholds: form.value.stock_thresholds,
+        
+        // Supplier info if available (preserve existing)
+        ...(props.sku.supplier_info && {
+          supplier_info: props.sku.supplier_info
+        }),
+        
+        // Images if available (preserve existing)
+        ...(props.sku.images && {
+          images: props.sku.images
+        })
       }
       
       // Extract category_id - this is required by backend validation
@@ -772,7 +854,7 @@ const onSubmit = async () => {
       await skuStore.updateSKU(props.sku._id, updates)
       
       // Add cost if changed
-      if (form.value.current_cost !== props.sku.current_cost) {
+      if (form.value.current_cost !== props.sku.unit_cost) {
         await skuStore.addCost(props.sku._id, {
           cost: form.value.current_cost,
           notes: 'Updated from form'
@@ -862,9 +944,13 @@ watch(() => props.modelValue, (newValue) => {
           color: '',
           description: ''
         },
+        // Editing mode fields
+        name: props.sku.name || 'SKU Product',
+        brand: props.sku.brand || '',
+        model: props.sku.model || '',
         manufacturer_model: props.sku.manufacturer_model || '',
         barcode: props.sku.barcode || '',
-        current_cost: props.sku.current_cost,
+        current_cost: props.sku.unit_cost || 0,
         stock_thresholds: { ...props.sku.stock_thresholds },
         description: props.sku.description || '',
         notes: props.sku.notes || '',

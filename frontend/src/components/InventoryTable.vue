@@ -2,8 +2,9 @@
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useInventoryStore } from '@/stores/inventory'
-import type { Inventory } from '@/types'
+import type { Inventory, StockStatus } from '@/types'
 import { TAG_TYPES } from '@/types'
+import StockStatusChip from '@/components/StockStatusChip.vue'
 
 interface Props {
   canWrite: boolean
@@ -39,10 +40,15 @@ const emit = defineEmits<{
 const refreshInventory = async (filters?: any) => {
   const filtersToUse = filters || props.filters
   console.log('InventoryTable: Refreshing with filters:', filtersToUse)
+  console.log('InventoryTable: Current inventory count before fetch:', inventoryStore.inventory.length)
+  console.log('InventoryTable: Store loading state:', inventoryStore.isLoading)
   try {
-    await inventoryStore.fetchInventory(filtersToUse)
+    const result = await inventoryStore.fetchInventory(filtersToUse)
+    console.log('InventoryTable: Fetch completed. New inventory count:', inventoryStore.inventory.length)
+    console.log('InventoryTable: Fetch result:', result)
   } catch (error) {
-    console.error('Failed to refresh inventory:', error)
+    console.error('InventoryTable: Failed to refresh inventory:', error)
+    console.error('InventoryTable: Error details:', error.response?.data || error.message)
   }
 }
 
@@ -387,6 +393,32 @@ const getStockStatusNew = (item: any) => {
   return { class: 'in-stock', text: 'In Stock', color: 'positive' }
 }
 
+// Helper to convert inventory stock status to StockStatusChip compatible format
+const getStockStatusForChip = (item: any): StockStatus => {
+  // Get stock thresholds from SKU if available
+  const thresholds = item.sku?.stock_thresholds || { understocked: 5, overstocked: 100 }
+  const availableQty = getAvailableQuantityNew(item)
+  const totalQty = getQuantity(item)
+  
+  // Check for out of stock first (zero quantity)
+  if (item.is_out_of_stock || availableQty === 0 || totalQty === 0) {
+    return 'out'
+  }
+  
+  // Check for overstock (if available)
+  if (item.is_overstock || (thresholds.overstocked && totalQty >= thresholds.overstocked)) {
+    return 'overstocked'
+  }
+  
+  // Check for understocked (low stock but not out)
+  if (item.is_low_stock || (thresholds.understocked && availableQty <= thresholds.understocked)) {
+    return 'understocked'
+  }
+  
+  // Default to adequate stock
+  return 'adequate'
+}
+
 // Handle tag status click
 const handleTagStatusClick = (item: Inventory) => {
   const status = getPrimaryTagStatus(item)
@@ -505,7 +537,7 @@ const handleTagStatusClick = (item: Inventory) => {
               <div class="quantity-display">
                 <!-- Total Quantity Badge -->
                 <q-badge 
-                  :color="getStockStatus(getQuantity(item)).color" 
+                  :color="getStockStatusNew(item).color" 
                   :label="getQuantity(item).toString()"
                   class="total-quantity-badge"
                   :title="`Total: ${getQuantity(item)} items`"
@@ -550,12 +582,10 @@ const handleTagStatusClick = (item: Inventory) => {
 
             <!-- Status & Info Section -->
             <div class="item-section status-section">
-              <q-chip 
-                :color="getStockStatus(getQuantity(item)).color"
-                text-color="white"
-                size="sm"
-                :label="getStockStatus(getQuantity(item)).text"
-                class="status-chip"
+              <StockStatusChip
+                :status="getStockStatusForChip(item)"
+                :quantity="getAvailableQuantityNew(item)"
+                :thresholds="item.sku?.stock_thresholds"
               />
               <div class="location-label">
                 <q-icon name="place" size="xs" class="q-mr-xs" />
