@@ -186,7 +186,8 @@ const getVersionTooltip = () => {
 
           <q-space />
 
-          <!-- Temporary API Test Button -->
+          <!-- Temporary API Test Button (commented out for production) -->
+          <!-- 
           <q-btn 
             flat 
             color="white"
@@ -195,8 +196,10 @@ const getVersionTooltip = () => {
             class="q-mr-md"
             size="sm"
           />
+          -->
           
-          <!-- Emergency Force Logout Button (temporary) -->
+          <!-- Emergency Force Logout Button (commented out for production) -->
+          <!-- 
           <q-btn 
             flat 
             color="red"
@@ -206,6 +209,7 @@ const getVersionTooltip = () => {
             size="sm"
             icon="logout"
           />
+          -->
 
           <!-- Mobile Menu Button -->
           <q-btn
