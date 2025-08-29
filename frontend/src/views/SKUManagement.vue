@@ -383,6 +383,49 @@
           </q-td>
         </template>
 
+        <template v-slot:body-cell-quantity_controls="props">
+          <q-td :props="props">
+            <div class="row q-gutter-xs no-wrap items-center justify-center">
+              <q-btn
+                size="xs"
+                color="negative"
+                icon="remove"
+                round
+                @click.stop="adjustQuantity(props.row, -1)"
+                :disable="!authStore.canWrite || (props.row.inventory?.available_quantity || 0) === 0"
+              >
+                <q-tooltip>Decrease quantity by 1</q-tooltip>
+              </q-btn>
+              
+              <div class="text-body2 text-center" style="min-width: 30px">
+                {{ props.row.inventory?.available_quantity || 0 }}
+              </div>
+              
+              <q-btn
+                size="xs"
+                color="positive"
+                icon="add"
+                round
+                @click.stop="adjustQuantity(props.row, 1)"
+                :disable="!authStore.canWrite"
+              >
+                <q-tooltip>Increase quantity by 1</q-tooltip>
+              </q-btn>
+              
+              <q-btn
+                size="xs"
+                color="blue"
+                icon="tune"
+                round
+                @click.stop="openBulkAdjustDialog(props.row)"
+                :disable="!authStore.canWrite"
+              >
+                <q-tooltip>Bulk adjust quantity</q-tooltip>
+              </q-btn>
+            </div>
+          </q-td>
+        </template>
+
         <template v-slot:body-cell-status="props">
           <q-td :props="props">
             <q-chip
@@ -467,7 +510,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useSKUStore } from '@/stores/sku'
 import { useCategoryStore } from '@/stores/category'
 import { useInventoryStore } from '@/stores/inventory'
-import { inventoryApi } from '@/utils/api'
+import { inventoryApi, instancesApi } from '@/utils/api'
 import { PRODUCT_TYPES, type SKU } from '@/types'
 import StockStatusChip from '@/components/StockStatusChip.vue'
 import SKUFormDialog from '@/components/SKUFormDialog.vue'
@@ -538,6 +581,13 @@ const columns = [
     field: (row: any) => row.inventory?.total_quantity || 0,
     align: 'right',
     sortable: true
+  },
+  {
+    name: 'quantity_controls',
+    label: 'Quick Adjust',
+    field: '',
+    align: 'center',
+    sortable: false
   },
   {
     name: 'status',
@@ -1006,6 +1056,76 @@ const openBulkCreateDialog = () => {
         message: error.message || 'Failed to bulk create SKUs'
       })
     }
+  })
+}
+
+// Quantity adjustment methods
+const adjustQuantity = async (sku: SKU, adjustment: number) => {
+  try {
+    const response = await instancesApi.adjustQuantity({
+      sku_id: sku._id,
+      adjustment: adjustment,
+      reason: 'Quick adjustment from SKU Management'
+    })
+    
+    // Update the SKU in the local store optimistically
+    const skuIndex = skuStore.skus.findIndex(s => s._id === sku._id)
+    if (skuIndex !== -1 && skuStore.skus[skuIndex].inventory) {
+      const currentAvailable = skuStore.skus[skuIndex].inventory!.available_quantity || 0
+      const currentTotal = skuStore.skus[skuIndex].inventory!.total_quantity || 0
+      
+      skuStore.skus[skuIndex].inventory!.available_quantity = Math.max(0, currentAvailable + adjustment)
+      skuStore.skus[skuIndex].inventory!.total_quantity = Math.max(0, currentTotal + adjustment)
+    }
+    
+    $q.notify({
+      type: 'positive',
+      message: response.message || `Successfully ${adjustment > 0 ? 'increased' : 'decreased'} quantity by ${Math.abs(adjustment)}`
+    })
+    
+    // Refresh data to get accurate counts
+    await refreshData()
+  } catch (error: any) {
+    console.error('Error adjusting quantity:', error)
+    $q.notify({
+      type: 'negative',
+      message: error.response?.data?.message || error.message || 'Failed to adjust quantity'
+    })
+  }
+}
+
+const openBulkAdjustDialog = (sku: SKU) => {
+  $q.dialog({
+    title: 'Bulk Adjust Quantity',
+    message: `Current quantity: ${sku.inventory?.available_quantity || 0}`,
+    prompt: {
+      model: '',
+      type: 'number',
+      placeholder: 'Enter adjustment amount (+/-)',
+      hint: 'Positive numbers increase, negative numbers decrease'
+    },
+    cancel: true,
+    persistent: true
+  }).onOk(async (adjustmentStr: string) => {
+    const adjustment = parseInt(adjustmentStr)
+    if (isNaN(adjustment) || adjustment === 0) {
+      $q.notify({
+        type: 'warning',
+        message: 'Please enter a valid non-zero number'
+      })
+      return
+    }
+    
+    const currentQuantity = sku.inventory?.available_quantity || 0
+    if (adjustment < 0 && Math.abs(adjustment) > currentQuantity) {
+      $q.notify({
+        type: 'warning', 
+        message: `Cannot decrease by ${Math.abs(adjustment)}. Only ${currentQuantity} available.`
+      })
+      return
+    }
+    
+    await adjustQuantity(sku, adjustment)
   })
 }
 

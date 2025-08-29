@@ -212,4 +212,137 @@ router.get('/cost-breakdown/:sku_id',
   }
 );
 
+// POST /api/instances/adjust-quantity - Adjust quantity for a SKU (add or remove instances)
+router.post('/adjust-quantity',
+  auth,
+  requireWriteAccess,
+  [
+    body('sku_id').isMongoId().withMessage('Invalid SKU ID'),
+    body('adjustment').isInt().withMessage('Adjustment must be an integer'),
+    body('reason').optional().trim().isLength({ max: 200 }).withMessage('Reason cannot exceed 200 characters')
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
+      }
+
+      const { sku_id, adjustment, reason } = req.body;
+
+      if (adjustment === 0) {
+        return res.status(400).json({ message: 'Adjustment cannot be zero' });
+      }
+
+      // Verify SKU exists
+      const sku = await SKU.findById(sku_id);
+      if (!sku) {
+        return res.status(404).json({ message: 'SKU not found' });
+      }
+
+      let result;
+      
+      if (adjustment > 0) {
+        // INCREASE quantity - create new instances
+        const instances = [];
+        const acquisitionDate = new Date();
+        const unitCost = sku.unit_cost || 0; // Use current SKU cost
+        
+        for (let i = 0; i < adjustment; i++) {
+          const instance = new Instance({
+            sku_id,
+            acquisition_date: acquisitionDate,
+            acquisition_cost: unitCost,
+            location: 'Inventory Adjustment',
+            notes: reason || `Quantity increased by ${adjustment} via quick adjustment`,
+            added_by: req.user.username
+          });
+          
+          await instance.save();
+          instances.push(instance);
+        }
+        
+        result = {
+          action: 'increased',
+          quantity: adjustment,
+          instances_created: instances,
+          cost_per_unit: unitCost
+        };
+      } else {
+        // DECREASE quantity - delete instances (FIFO - oldest first)
+        const quantityToRemove = Math.abs(adjustment);
+        
+        // Get available instances (not tagged) sorted by oldest first
+        const availableInstances = await Instance.find({ 
+          sku_id, 
+          tag_id: null 
+        }).sort({ acquisition_date: 1 }).limit(quantityToRemove);
+        
+        if (availableInstances.length < quantityToRemove) {
+          return res.status(400).json({ 
+            message: `Cannot remove ${quantityToRemove} instances. Only ${availableInstances.length} available instances found.`,
+            available_quantity: availableInstances.length
+          });
+        }
+        
+        // Calculate total value being removed
+        const totalValueRemoved = availableInstances.reduce((sum, inst) => sum + (inst.acquisition_cost || 0), 0);
+        const instanceIds = availableInstances.map(inst => inst._id);
+        
+        // Delete the instances
+        await Instance.deleteMany({ _id: { $in: instanceIds } });
+        
+        result = {
+          action: 'decreased',
+          quantity: quantityToRemove,
+          instances_removed: availableInstances.length,
+          total_value_removed: totalValueRemoved,
+          average_cost_removed: availableInstances.length > 0 ? totalValueRemoved / availableInstances.length : 0
+        };
+      }
+
+      // Update inventory quantities
+      let inventory = await Inventory.findOne({ sku_id });
+      if (!inventory) {
+        inventory = new Inventory({
+          sku_id,
+          last_updated_by: req.user.username
+        });
+      }
+
+      // Recalculate totals from actual instances
+      const totalInstances = await Instance.countDocuments({ sku_id });
+      const availableInstances = await Instance.countDocuments({ 
+        sku_id, 
+        tag_id: null 
+      });
+      const taggedInstances = await Instance.countDocuments({ 
+        sku_id, 
+        tag_id: { $ne: null } 
+      });
+
+      inventory.total_quantity = totalInstances;
+      inventory.available_quantity = availableInstances;
+      inventory.reserved_quantity = taggedInstances;
+      inventory.last_updated_by = req.user.username;
+      await inventory.save();
+
+      res.json({
+        message: `Successfully ${result.action} quantity by ${Math.abs(adjustment)}`,
+        sku: {
+          _id: sku._id,
+          sku_code: sku.sku_code,
+          name: sku.name
+        },
+        adjustment_details: result,
+        inventory_summary: inventory.getSummary()
+      });
+
+    } catch (error) {
+      console.error('Adjust quantity error:', error);
+      res.status(500).json({ message: 'Server error', error: error.message });
+    }
+  }
+);
+
 module.exports = router;

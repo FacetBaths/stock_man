@@ -434,6 +434,33 @@ export const instancesApi = {
   getCostBreakdown: async (skuId: string) => {
     const response = await api.get(`/instances/cost-breakdown/${skuId}`)
     return response.data
+  },
+
+  // Adjust quantity for a SKU - POST /api/instances/adjust-quantity
+  adjustQuantity: async (data: {
+    sku_id: string
+    adjustment: number // positive to increase, negative to decrease
+    reason?: string
+  }): Promise<{
+    message: string
+    sku: {
+      _id: string
+      sku_code: string
+      name: string
+    }
+    adjustment_details: {
+      action: 'increased' | 'decreased'
+      quantity: number
+      instances_created?: any[]
+      instances_removed?: number
+      cost_per_unit?: number
+      total_value_removed?: number
+      average_cost_removed?: number
+    }
+    inventory_summary: any
+  }> => {
+    const response = await api.post('/instances/adjust-quantity', data)
+    return response.data
   }
 }
 
