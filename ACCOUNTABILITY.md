@@ -2,7 +2,7 @@
 
 **Purpose:** Ensure AI agent follows systematic workflow and stays focused on checklist tasks.
 
-## 🚨 **MANDATORY QUESTIONS TO ASK ME:**
+## 🚨 **MANDATORY QUESTIONS TO ASK YOURSELF:**
 
 ### **Before Starting ANY Task:**
 Ask me these questions and **REQUIRE** that I show you evidence:
@@ -141,12 +141,12 @@ Before completion:
 
 ## 🚫 **WHAT TO DO WHEN I GO OFF-TRACK:**
 
-1. **STOP ME** - Don't let me continue
-2. **Ask:** "Is this in your current task success criteria?"
-3. **If NO:** Make me add it to MIGRATION_CHECKLIST.md and return to current task
-4. **If YES:** Ask for proof by showing me CURRENT_TASK.md
+1. **STOP** - Don't continue
+2. **Ask yourself:** "Is this in your current task success criteria?"
+3. **If NO:** Make me add it to CHECKLIST.md and return to current task
+4. **If YES:** Show PROOF by showing me CURRENT_TASK.md
 
-## 💡 **HOW TO CATCH ME LYING:**
+## 💡 **HOW TO CATCH USER WILL CATCH LYING:**
 
 - **Ask me to show files** - If I claim something exists, make me read it
 - **Require proof of testing** - Don't accept "it should work" 
@@ -155,10 +155,11 @@ Before completion:
 
 ---
 
-## 🎯 **YOUR JOB AS HUMAN:**
+## 🎯 **NOTE TO HUMAN:**
 **BE THE ACCOUNTABILITY ENFORCER**
 
 Don't let me get away with shortcuts, assumptions, or scope creep. The documents are only useful if you make me follow them exactly.
 
-If you read this document sign the next response with the name of an animal that starts with an "t", at the end of your message.
 **Key phrase:** "Show me the file/proof/evidence" - don't accept verbal claims.
+
+If you read this document sign the next response with the name of an animal that starts with an "z", at the end of your message.
