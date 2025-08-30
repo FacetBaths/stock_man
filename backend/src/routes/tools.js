@@ -1181,4 +1181,236 @@ router.put('/:id/condition',
   }
 );
 
+// GET /api/tools/stats - Get tools-specific dashboard statistics
+router.get('/stats', auth, async (req, res) => {
+  try {
+    console.log('🔧 [Tools Stats API] Starting real-time tools statistics calculation...');
+    const mongoose = require('mongoose');
+
+    // ✅ REAL-TIME TOOLS STATS: Calculate from actual instances and tags for TOOLS ONLY
+    const toolsStats = await mongoose.model('SKU').aggregate([
+      // Start with active SKUs
+      { $match: { status: 'active' } },
+      
+      // Get category info first
+      {
+        $lookup: {
+          from: 'categories',
+          localField: 'category_id',
+          foreignField: '_id',
+          as: 'category'
+        }
+      },
+      { $unwind: { path: '$category', preserveNullAndEmptyArrays: true } },
+      
+      // ✅ FILTER: Include ONLY tools in tools stats
+      {
+        $match: {
+          'category.type': 'tool' // Include ONLY tools
+        }
+      },
+      
+      // Get all instances for each tool SKU
+      {
+        $lookup: {
+          from: 'instances',
+          localField: '_id',
+          foreignField: 'sku_id',
+          as: 'all_instances'
+        }
+      },
+      
+      // Get tag breakdown for tagged instances
+      {
+        $lookup: {
+          from: 'instances',
+          let: { skuId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ['$sku_id', '$$skuId'] },
+                tag_id: { $ne: null }
+              }
+            },
+            {
+              $lookup: {
+                from: 'tags',
+                localField: 'tag_id',
+                foreignField: '_id',
+                as: 'tag'
+              }
+            },
+            { $unwind: '$tag' },
+            {
+              $group: {
+                _id: '$tag.tag_type',
+                count: { $sum: 1 }
+              }
+            }
+          ],
+          as: 'tag_breakdown'
+        }
+      },
+      
+      // Calculate real-time quantities for tools
+      {
+        $addFields: {
+          total_quantity: { $size: '$all_instances' },
+          available_quantity: {
+            $size: {
+              $filter: {
+                input: '$all_instances',
+                cond: { $eq: ['$$this.tag_id', null] }
+              }
+            }
+          },
+          reserved_quantity: {
+            $let: {
+              vars: {
+                reserved_breakdown: {
+                  $arrayElemAt: [
+                    {
+                      $filter: {
+                        input: '$tag_breakdown',
+                        cond: { $eq: ['$$this._id', 'reserved'] }
+                      }
+                    },
+                    0
+                  ]
+                }
+              },
+              in: { $ifNull: ['$$reserved_breakdown.count', 0] }
+            }
+          },
+          broken_quantity: {
+            $let: {
+              vars: {
+                broken_breakdown: {
+                  $arrayElemAt: [
+                    {
+                      $filter: {
+                        input: '$tag_breakdown',
+                        cond: { $in: ['$$this._id', ['broken', 'imperfect']] }
+                      }
+                    },
+                    0
+                  ]
+                }
+              },
+              in: { $ifNull: ['$$broken_breakdown.count', 0] }
+            }
+          },
+          loaned_quantity: {
+            $let: {
+              vars: {
+                loaned_breakdown: {
+                  $arrayElemAt: [
+                    {
+                      $filter: {
+                        input: '$tag_breakdown',
+                        cond: { $eq: ['$$this._id', 'loaned'] }
+                      }
+                    },
+                    0
+                  ]
+                }
+              },
+              in: { $ifNull: ['$$loaned_breakdown.count', 0] }
+            }
+          },
+          total_value: {
+            $sum: {
+              $map: {
+                input: '$all_instances',
+                as: 'instance',
+                in: { $ifNull: ['$$instance.acquisition_cost', '$unit_cost', 0] }
+              }
+            }
+          }
+        }
+      },
+      
+      // Group for summary statistics
+      {
+        $group: {
+          _id: null,
+          totalTools: { $sum: 1 }, // Total number of tool SKUs
+          totalQuantity: { $sum: '$total_quantity' }, // Total tool instances
+          availableTools: { $sum: '$available_quantity' }, // Available tool instances
+          reservedTools: { $sum: '$reserved_quantity' }, // Reserved tool instances
+          brokenTools: { $sum: '$broken_quantity' }, // Broken tool instances
+          loanedTools: { $sum: '$loaned_quantity' }, // Loaned tool instances
+          totalValue: { $sum: '$total_value' } // Total value of all tools
+        }
+      }
+    ]);
+
+    // ✅ Get overdue loans count for tools
+    const toolCategories = await Category.find({ type: 'tool' }).select('_id');
+    const toolCategoryIds = toolCategories.map(cat => cat._id);
+    
+    let overdueLoans = 0;
+    if (toolCategoryIds.length > 0) {
+      // Get tool SKUs
+      const toolSKUs = await SKU.find({ 
+        category_id: { $in: toolCategoryIds } 
+      }).select('_id');
+      const toolSKUIds = toolSKUs.map(sku => sku._id);
+      
+      if (toolSKUIds.length > 0) {
+        // Count overdue loans containing tool SKUs
+        overdueLoans = await Tag.countDocuments({
+          status: 'active',
+          tag_type: 'loaned',
+          due_date: { $lt: new Date() },
+          'sku_items.sku_id': { $in: toolSKUIds }
+        });
+      }
+    }
+
+    const stats = toolsStats.length > 0 ? toolsStats[0] : {
+      totalTools: 0,
+      totalQuantity: 0,
+      availableTools: 0,
+      reservedTools: 0,
+      brokenTools: 0,
+      loanedTools: 0,
+      totalValue: 0
+    };
+
+    // Add overdue loans count
+    stats.overdueLoans = overdueLoans;
+
+    console.log(`✅ [Tools Stats API] Real-time calculation complete:`);
+    console.log(`   - Total Tools (SKUs): ${stats.totalTools}`);
+    console.log(`   - Total Instances: ${stats.totalQuantity}`);
+    console.log(`   - Available: ${stats.availableTools}`);
+    console.log(`   - Loaned: ${stats.loanedTools}`);
+    console.log(`   - Overdue: ${stats.overdueLoans}`);
+    console.log(`   - Total Value: $${stats.totalValue}`);
+
+    res.json({
+      stats: {
+        totalTools: stats.totalQuantity, // Total instances (what user expects as "tools on hand")
+        availableTools: stats.availableTools, // Available instances
+        loanedTools: stats.loanedTools, // Loaned instances
+        overdueLoans: stats.overdueLoans, // Overdue loan tags
+        totalValue: stats.totalValue // Total value
+      },
+      meta: {
+        totalToolSKUs: stats.totalTools, // Number of different tool types
+        calculatedAt: new Date(),
+        source: 'real-time'
+      }
+    });
+
+  } catch (error) {
+    console.error('Tools stats error:', error);
+    res.status(500).json({ 
+      message: 'Failed to fetch tools statistics', 
+      error: error.message 
+    });
+  }
+});
+
 module.exports = router;

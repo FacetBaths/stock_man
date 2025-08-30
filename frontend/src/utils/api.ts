@@ -585,47 +585,17 @@ export const toolsApi = {
   // Get tools dashboard stats
   getDashboardStats: async () => {
     try {
-      // Get tool categories
-      const categoriesResponse = await categoryApi.getCategories({ active_only: true })
-      const toolCategories = categoriesResponse.categories.filter(cat => cat.type === 'tool')
+      // Use the new tools-specific stats endpoint
+      const statsResponse = await api.get('/tools/stats')
       
-      // Get active loans (use smaller limit for stats)
+      // Get active loans for additional context
       const loansResponse = await toolsApi.getActiveLoans({ limit: 100 })
       
-      // Get inventory stats
-      const statsResponse = await inventoryApi.getStats()
-      
-      // Calculate tools-specific stats
-      let toolsStats = {
-        totalTools: 0,
-        availableTools: 0,
-        loanedTools: 0,
-        overdueLoans: 0,
-        totalValue: 0,
-        lowStockTools: 0,
-        outOfStockTools: 0
-      }
-
-      if (toolCategories.length > 0 && statsResponse.summary) {
-        // This is a simplified calculation - ideally the backend would provide tools-specific stats
-        const totalStats = statsResponse.summary
-        const toolsRatio = toolCategories.length / (categoriesResponse.categories.length || 1)
-        
-        toolsStats = {
-          totalTools: Math.round(totalStats.total_skus * toolsRatio),
-          availableTools: Math.round(totalStats.available_quantity * toolsRatio),
-          loanedTools: loansResponse.tags?.length || 0,
-          overdueLoans: loansResponse.tags?.filter(tag => tag.is_overdue).length || 0,
-          totalValue: Math.round(totalStats.total_value * toolsRatio),
-          lowStockTools: Math.round(totalStats.low_stock_count * toolsRatio),
-          outOfStockTools: Math.round(totalStats.out_of_stock_count * toolsRatio)
-        }
-      }
-
       return {
-        stats: toolsStats,
+        stats: statsResponse.data.stats,
         activeLoans: loansResponse.tags || [],
-        recentActivity: [] // This would need backend support for activity tracking
+        recentActivity: [], // This would need backend support for activity tracking
+        meta: statsResponse.data.meta
       }
     } catch (error) {
       console.error('Failed to fetch tools dashboard stats:', error)

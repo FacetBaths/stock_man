@@ -4,6 +4,9 @@ import { useRouter } from 'vue-router'
 import { toolsApi, categoryApi } from '@/utils/api'
 import { debounce } from 'quasar'
 import type { Tag } from '@/types'
+import ToolsTable from '@/components/ToolsTable.vue'
+import EditToolModal from '@/components/EditToolModal.vue'
+import { useToolsStore } from '@/stores/tools'
 
 // Dashboard statistics
 const dashboardStats = ref({
@@ -31,9 +34,17 @@ const error = ref<string | null>(null)
 // Modal states
 const showCreateLoanModal = ref(false)
 const showReturnModal = ref(false)
+const showEditToolModal = ref(false)
+const selectedTool = ref(null)
 
 // Router
 const router = useRouter()
+
+// Tab management
+const currentTab = ref('dashboard')
+
+// Tools store
+const toolsStore = useToolsStore()
 
 // Computed properties
 const filteredLoans = computed(() => {
@@ -188,6 +199,26 @@ const formatDate = (dateString: string) => {
   })
 }
 
+// Tool editing functionality
+const editTool = (tool: any) => {
+  selectedTool.value = tool
+  showEditToolModal.value = true
+}
+
+const handleToolUpdated = async () => {
+  // Refresh the tools table after an edit
+  showEditToolModal.value = false
+  selectedTool.value = null
+  
+  // Refresh the tools inventory data
+  try {
+    await toolsStore.fetchToolsInventory()
+    console.log('✅ Tools inventory refreshed after edit')
+  } catch (error) {
+    console.error('❌ Failed to refresh tools inventory after edit:', error)
+  }
+}
+
 // Initialize dashboard
 onMounted(async () => {
   await refreshDashboard()
@@ -212,382 +243,402 @@ onMounted(async () => {
         </div>
       </div>
 
-      <!-- Tools Statistics -->
+      <!-- Tab Navigation -->
       <div class="col-12">
-        <div class="row q-col-gutter-md">
-          <!-- Total Tools -->
-          <div class="col-12 col-sm-6 col-md">
-            <q-card class="glass-card full-height">
-              <q-card-section class="text-center">
+        <div class="glass-card">
+          <q-tabs
+            v-model="currentTab"
+            dense
+            class="text-primary"
+            active-color="primary"
+            indicator-color="primary"
+            align="left"
+            no-caps
+          >
+            <q-tab name="dashboard" icon="dashboard" label="Dashboard" />
+            <q-tab name="inventory" icon="inventory" label="Inventory" />
+            <q-tab name="loans" icon="assignment" label="Loans" />
+          </q-tabs>
+        </div>
+      </div>
+
+      <!-- Tab Content -->
+      <div class="col-12">
+        <q-tab-panels v-model="currentTab" animated>
+          <!-- Dashboard Tab -->
+          <q-tab-panel name="dashboard" class="q-pa-none">
+            <div class="row q-col-gutter-lg">
+              <!-- Tools Statistics -->
+              <div class="col-12">
+                <div class="row q-col-gutter-md">
+                  <!-- Total Tools -->
+                  <div class="col-12 col-sm-6 col-md">
+                    <q-card class="glass-card full-height">
+                      <q-card-section class="text-center">
+                        <q-circular-progress
+                          v-if="isLoading"
+                          indeterminate
+                          size="50px"
+                          color="primary"
+                        />
+                        <div v-else>
+                          <div class="text-h3 text-weight-bold text-primary">
+                            {{ dashboardStats.totalTools }}
+                          </div>
+                          <div class="text-subtitle1 text-grey-7">Total Tools</div>
+                        </div>
+                      </q-card-section>
+                    </q-card>
+                  </div>
+
+                  <!-- Available Tools -->
+                  <div class="col-12 col-sm-6 col-md">
+                    <q-card class="glass-card full-height">
+                      <q-card-section class="text-center">
+                        <q-circular-progress
+                          v-if="isLoading"
+                          indeterminate
+                          size="50px"
+                          color="positive"
+                        />
+                        <div v-else>
+                          <div class="text-h3 text-weight-bold text-positive">
+                            {{ dashboardStats.availableTools }}
+                          </div>
+                          <div class="text-subtitle1 text-grey-7">Available</div>
+                        </div>
+                      </q-card-section>
+                    </q-card>
+                  </div>
+
+                  <!-- Loaned Tools -->
+                  <div class="col-12 col-sm-6 col-md">
+                    <q-card class="glass-card full-height">
+                      <q-card-section class="text-center">
+                        <q-circular-progress
+                          v-if="isLoading"
+                          indeterminate
+                          size="50px"
+                          color="warning"
+                        />
+                        <div v-else>
+                          <div class="text-h3 text-weight-bold text-warning">
+                            {{ dashboardStats.loanedTools }}
+                          </div>
+                          <div class="text-subtitle1 text-grey-7">On Loan</div>
+                        </div>
+                      </q-card-section>
+                    </q-card>
+                  </div>
+
+                  <!-- Overdue Loans -->
+                  <div class="col-12 col-sm-6 col-md">
+                    <q-card class="glass-card full-height">
+                      <q-card-section class="text-center">
+                        <q-circular-progress
+                          v-if="isLoading"
+                          indeterminate
+                          size="50px"
+                          color="negative"
+                        />
+                        <div v-else>
+                          <div class="text-h3 text-weight-bold text-negative">
+                            {{ dashboardStats.overdueLoans }}
+                          </div>
+                          <div class="text-subtitle1 text-grey-7">Overdue</div>
+                        </div>
+                      </q-card-section>
+                    </q-card>
+                  </div>
+
+                  <!-- Total Value -->
+                  <div class="col-12 col-sm-6 col-md">
+                    <q-card class="glass-card full-height">
+                      <q-card-section class="text-center">
+                        <q-circular-progress
+                          v-if="isLoading"
+                          indeterminate
+                          size="50px"
+                          color="info"
+                        />
+                        <div v-else>
+                          <div class="text-h3 text-weight-bold text-info">
+                            ${{ formatCurrency(dashboardStats.totalValue) }}
+                          </div>
+                          <div class="text-subtitle1 text-grey-7">Total Value</div>
+                        </div>
+                      </q-card-section>
+                    </q-card>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Quick Actions -->
+              <div class="col-12">
+                <div class="glass-card q-pa-lg">
+                  <div class="row items-center q-mb-md">
+                    <h5 class="text-h5 q-ma-none text-weight-bold">Quick Actions</h5>
+                    <q-space />
+                    <q-btn
+                      flat
+                      round
+                      icon="refresh"
+                      size="sm"
+                      @click="refreshDashboard"
+                      :loading="isLoading"
+                      :disable="isLoading"
+                    >
+                      <q-tooltip>Refresh Dashboard</q-tooltip>
+                    </q-btn>
+                  </div>
+                  <div class="row q-col-gutter-md">
+                    <div class="col-12 col-sm-6 col-md-4">
+                      <q-btn
+                        color="primary"
+                        icon="inventory"
+                        label="Manage Inventory"
+                        class="full-width"
+                        size="lg"
+                        no-caps
+                        @click="currentTab = 'inventory'"
+                      />
+                    </div>
+                    <div class="col-12 col-sm-6 col-md-4">
+                      <q-btn
+                        color="positive"
+                        icon="add_shopping_cart"
+                        label="Create Loan"
+                        class="full-width"
+                        size="lg"
+                        no-caps
+                        @click="showCreateLoanModal = true"
+                        :disable="isLoading"
+                      />
+                    </div>
+                    <div class="col-12 col-sm-6 col-md-4">
+                      <q-btn
+                        color="warning"
+                        icon="assignment_return"
+                        label="Return Tools"
+                        class="full-width"
+                        size="lg"
+                        no-caps
+                        @click="showReturnModal = true"
+                        :disable="isLoading"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </q-tab-panel>
+
+          <!-- Inventory Tab -->
+          <q-tab-panel name="inventory" class="q-pa-none">
+            <div class="glass-card q-pa-lg">
+              <div class="row items-center q-mb-lg">
+                <q-icon name="inventory" size="32px" class="text-primary q-mr-md" />
+                <div>
+                  <h5 class="text-h5 q-ma-none text-weight-bold">Tool Inventory</h5>
+                  <p class="text-body2 q-ma-none text-grey-7">
+                    Manage and track all your tools with real-time inventory status
+                  </p>
+                </div>
+              </div>
+              <ToolsTable :can-write="true" @edit="editTool" />
+            </div>
+          </q-tab-panel>
+
+          <!-- Loans Tab -->
+          <q-tab-panel name="loans" class="q-pa-none">
+            <div class="glass-card q-pa-lg">
+              <div class="row items-center q-mb-lg">
+                <q-icon name="assignment" size="32px" class="text-primary q-mr-md" />
+                <div>
+                  <h5 class="text-h5 q-ma-none text-weight-bold">Tool Loans Management</h5>
+                  <p class="text-body2 q-ma-none text-grey-7">
+                    Track active loans, create new loans, and process returns
+                  </p>
+                </div>
+                <q-space />
+                <q-input
+                  v-model="searchTerm"
+                  placeholder="Search loans..."
+                  dense
+                  outlined
+                  clearable
+                  class="q-mr-md"
+                  style="width: 250px"
+                >
+                  <template v-slot:prepend>
+                    <q-icon name="search" />
+                  </template>
+                </q-input>
+              </div>
+
+              <!-- Loading State -->
+              <div v-if="isLoadingLoans" class="text-center q-py-xl">
                 <q-circular-progress
-                  v-if="isLoading"
                   indeterminate
                   size="50px"
                   color="primary"
+                  class="q-mb-md"
                 />
-                <div v-else>
-                  <div class="text-h3 text-weight-bold text-primary">
-                    {{ dashboardStats.totalTools }}
-                  </div>
-                  <div class="text-subtitle1 text-grey-7">Total Tools</div>
-                </div>
-              </q-card-section>
-            </q-card>
-          </div>
+                <div class="text-body1 text-grey-7">Loading active loans...</div>
+              </div>
 
-          <!-- Available Tools -->
-          <div class="col-12 col-sm-6 col-md">
-            <q-card class="glass-card full-height">
-              <q-card-section class="text-center">
-                <q-circular-progress
-                  v-if="isLoading"
-                  indeterminate
-                  size="50px"
-                  color="positive"
+              <!-- Error State -->
+              <div v-else-if="error && !isLoading" class="text-center q-py-xl">
+                <q-icon name="error" size="48px" class="text-negative q-mb-md" />
+                <div class="text-body1 text-grey-7 q-mb-md">{{ error }}</div>
+                <q-btn
+                  color="primary"
+                  outline
+                  @click="loadActiveLoans"
+                  label="Retry"
                 />
-                <div v-else>
-                  <div class="text-h3 text-weight-bold text-positive">
-                    {{ dashboardStats.availableTools }}
-                  </div>
-                  <div class="text-subtitle1 text-grey-7">Available</div>
-                </div>
-              </q-card-section>
-            </q-card>
-          </div>
+              </div>
 
-          <!-- Loaned Tools -->
-          <div class="col-12 col-sm-6 col-md">
-            <q-card class="glass-card full-height">
-              <q-card-section class="text-center">
-                <q-circular-progress
-                  v-if="isLoading"
-                  indeterminate
-                  size="50px"
-                  color="warning"
+              <!-- Empty State -->
+              <div v-else-if="filteredLoans.length === 0" class="text-center q-py-xl">
+                <q-icon name="assignment" size="64px" class="text-grey-5 q-mb-md" />
+                <div class="text-h6 text-grey-6 q-mb-sm">
+                  {{ activeLoans.length === 0 ? 'No Active Loans' : 'No Matching Loans' }}
+                </div>
+                <div class="text-body2 text-grey-7 q-mb-md">
+                  {{ activeLoans.length === 0 
+                    ? 'No tools are currently loaned out.' 
+                    : 'No loans match your search criteria.' }}
+                </div>
+                <q-btn
+                  v-if="activeLoans.length === 0"
+                  color="primary"
+                  @click="showCreateLoanModal = true"
+                  label="Create First Loan"
+                  icon="add"
                 />
-                <div v-else>
-                  <div class="text-h3 text-weight-bold text-warning">
-                    {{ dashboardStats.loanedTools }}
-                  </div>
-                  <div class="text-subtitle1 text-grey-7">On Loan</div>
-                </div>
-              </q-card-section>
-            </q-card>
-          </div>
+              </div>
 
-          <!-- Overdue Loans -->
-          <div class="col-12 col-sm-6 col-md">
-            <q-card class="glass-card full-height">
-              <q-card-section class="text-center">
-                <q-circular-progress
-                  v-if="isLoading"
-                  indeterminate
-                  size="50px"
-                  color="negative"
-                />
-                <div v-else>
-                  <div class="text-h3 text-weight-bold text-negative">
-                    {{ dashboardStats.overdueLoans }}
-                  </div>
-                  <div class="text-subtitle1 text-grey-7">Overdue</div>
-                </div>
-              </q-card-section>
-            </q-card>
-          </div>
-
-          <!-- Total Value -->
-          <div class="col-12 col-sm-6 col-md">
-            <q-card class="glass-card full-height">
-              <q-card-section class="text-center">
-                <q-circular-progress
-                  v-if="isLoading"
-                  indeterminate
-                  size="50px"
-                  color="info"
-                />
-                <div v-else>
-                  <div class="text-h3 text-weight-bold text-info">
-                    ${{ formatCurrency(dashboardStats.totalValue) }}
-                  </div>
-                  <div class="text-subtitle1 text-grey-7">Total Value</div>
-                </div>
-              </q-card-section>
-            </q-card>
-          </div>
-
-          <!-- Low Stock Tools -->
-          <div class="col-12 col-sm-6 col-md">
-            <q-card class="glass-card full-height">
-              <q-card-section class="text-center">
-                <q-circular-progress
-                  v-if="isLoading"
-                  indeterminate
-                  size="50px"
-                  color="orange"
-                />
-                <div v-else>
-                  <div class="text-h3 text-weight-bold text-orange">
-                    {{ dashboardStats.lowStockTools }}
-                  </div>
-                  <div class="text-subtitle1 text-grey-7">Low Stock</div>
-                </div>
-              </q-card-section>
-            </q-card>
-          </div>
-        </div>
-      </div>
-
-      <!-- Quick Actions -->
-      <div class="col-12">
-        <div class="glass-card q-pa-lg">
-          <div class="row items-center q-mb-md">
-            <h5 class="text-h5 q-ma-none text-weight-bold">Quick Actions</h5>
-            <q-space />
-            <q-btn
-              flat
-              round
-              icon="refresh"
-              size="sm"
-              @click="refreshDashboard"
-              :loading="isLoading"
-              :disable="isLoading"
-            >
-              <q-tooltip>Refresh Dashboard</q-tooltip>
-            </q-btn>
-          </div>
-          <div class="row q-col-gutter-md">
-            <div class="col-12 col-sm-6 col-md-3">
-              <q-btn
-                color="primary"
-                icon="assignment"
-                label="View Tools Inventory"
-                class="full-width"
-                size="lg"
-                no-caps
-                @click="navigateToToolsInventory"
-              />
-            </div>
-            <div class="col-12 col-sm-6 col-md-3">
-              <q-btn
-                color="positive"
-                icon="add_shopping_cart"
-                label="Create Loan"
-                class="full-width"
-                size="lg"
-                no-caps
-                @click="showCreateLoanModal = true"
-                :disable="isLoading"
-              />
-            </div>
-            <div class="col-12 col-sm-6 col-md-3">
-              <q-btn
-                color="warning"
-                icon="assignment_return"
-                label="Return Tools"
-                class="full-width"
-                size="lg"
-                no-caps
-                @click="showReturnModal = true"
-                :disable="isLoading"
-              />
-            </div>
-            <div class="col-12 col-sm-6 col-md-3">
-              <q-btn
-                color="info"
-                icon="analytics"
-                label="Reports"
-                class="full-width"
-                size="lg"
-                no-caps
-                disable
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Active Loans Section -->
-      <div class="col-12">
-        <div class="glass-card q-pa-lg">
-          <div class="row items-center q-mb-md">
-            <h5 class="text-h5 q-ma-none text-weight-bold">Active Loans</h5>
-            <q-space />
-            <q-input
-              v-model="searchTerm"
-              placeholder="Search loans..."
-              dense
-              outlined
-              clearable
-              class="q-mr-md"
-              style="width: 250px"
-            >
-              <template v-slot:prepend>
-                <q-icon name="search" />
-              </template>
-            </q-input>
-          </div>
-
-          <!-- Loading State -->
-          <div v-if="isLoadingLoans" class="text-center q-py-xl">
-            <q-circular-progress
-              indeterminate
-              size="50px"
-              color="primary"
-              class="q-mb-md"
-            />
-            <div class="text-body1 text-grey-7">Loading active loans...</div>
-          </div>
-
-          <!-- Error State -->
-          <div v-else-if="error && !isLoading" class="text-center q-py-xl">
-            <q-icon name="error" size="48px" class="text-negative q-mb-md" />
-            <div class="text-body1 text-grey-7 q-mb-md">{{ error }}</div>
-            <q-btn
-              color="primary"
-              outline
-              @click="loadActiveLoans"
-              label="Retry"
-            />
-          </div>
-
-          <!-- Empty State -->
-          <div v-else-if="filteredLoans.length === 0" class="text-center q-py-xl">
-            <q-icon name="assignment" size="64px" class="text-grey-5 q-mb-md" />
-            <div class="text-h6 text-grey-6 q-mb-sm">
-              {{ activeLoans.length === 0 ? 'No Active Loans' : 'No Matching Loans' }}
-            </div>
-            <div class="text-body2 text-grey-7 q-mb-md">
-              {{ activeLoans.length === 0 
-                ? 'No tools are currently loaned out.' 
-                : 'No loans match your search criteria.' }}
-            </div>
-            <q-btn
-              v-if="activeLoans.length === 0"
-              color="primary"
-              @click="showCreateLoanModal = true"
-              label="Create First Loan"
-              icon="add"
-            />
-          </div>
-
-          <!-- Loans List -->
-          <div v-else>
-            <div class="row q-col-gutter-md">
-              <div 
-                v-for="loan in paginatedLoans" 
-                :key="loan._id" 
-                class="col-12 col-md-6 col-lg-4"
-              >
-                <q-card 
-                  class="loan-card full-height"
-                  :class="{ 'overdue-card': loan.is_overdue }"
-                >
-                  <q-card-section>
-                    <!-- Loan Header -->
-                    <div class="row items-center q-mb-sm">
-                      <div class="col">
-                        <div class="text-h6 text-weight-bold">{{ loan.customer_name }}</div>
-                        <div v-if="loan.project_name" class="text-caption text-grey-7">
-                          {{ loan.project_name }}
+              <!-- Loans List -->
+              <div v-else>
+                <div class="row q-col-gutter-md">
+                  <div 
+                    v-for="loan in paginatedLoans" 
+                    :key="loan._id" 
+                    class="col-12 col-md-6 col-lg-4"
+                  >
+                    <q-card 
+                      class="loan-card full-height"
+                      :class="{ 'overdue-card': loan.is_overdue }"
+                    >
+                      <q-card-section>
+                        <!-- Loan Header -->
+                        <div class="row items-center q-mb-sm">
+                          <div class="col">
+                            <div class="text-h6 text-weight-bold">{{ loan.customer_name }}</div>
+                            <div v-if="loan.project_name" class="text-caption text-grey-7">
+                              {{ loan.project_name }}
+                            </div>
+                          </div>
+                          <div class="col-auto">
+                            <q-chip
+                              :color="loan.is_overdue ? 'negative' : 'warning'"
+                              text-color="white"
+                              size="sm"
+                              :label="loan.is_overdue ? 'Overdue' : 'Active'"
+                            />
+                          </div>
                         </div>
-                      </div>
-                      <div class="col-auto">
-                        <q-chip
-                          :color="loan.is_overdue ? 'negative' : 'warning'"
-                          text-color="white"
+
+                        <!-- Loan Details -->
+                        <div class="q-mb-md">
+                          <div class="row q-mb-xs">
+                            <div class="col-5 text-caption text-grey-7">Items:</div>
+                            <div class="col text-caption text-weight-medium">
+                              {{ loan.total_quantity || 0 }} tools
+                            </div>
+                          </div>
+                          <div v-if="loan.due_date" class="row q-mb-xs">
+                            <div class="col-5 text-caption text-grey-7">Due:</div>
+                            <div class="col text-caption text-weight-medium"
+                                 :class="{ 'text-negative': loan.is_overdue }">
+                              {{ formatDate(loan.due_date) }}
+                            </div>
+                          </div>
+                          <div class="row">
+                            <div class="col-5 text-caption text-grey-7">Created:</div>
+                            <div class="col text-caption text-weight-medium">
+                              {{ formatDate(loan.createdAt) }}
+                            </div>
+                          </div>
+                        </div>
+
+                        <!-- Tools List -->
+                        <div v-if="loan.sku_items && loan.sku_items.length > 0" class="q-mb-md">
+                          <div class="text-caption text-grey-7 q-mb-xs">Tools:</div>
+                          <div class="tools-list">
+                            <div 
+                              v-for="item in loan.sku_items.slice(0, 3)" 
+                              :key="item._id" 
+                              class="tool-item"
+                            >
+                              <q-icon name="build" size="16px" class="q-mr-xs" />
+                              <span class="text-caption">
+                                {{ typeof item.sku_id === 'object' ? item.sku_id.name : 'Unknown Tool' }}
+                              </span>
+                              <span class="text-caption text-grey-6 q-ml-xs">
+                                ×{{ item.selected_instance_ids?.length || 0 }}
+                              </span>
+                            </div>
+                            <div v-if="loan.sku_items.length > 3" class="text-caption text-grey-6">
+                              +{{ loan.sku_items.length - 3 }} more
+                            </div>
+                          </div>
+                        </div>
+                      </q-card-section>
+
+                      <q-separator />
+
+                      <q-card-actions align="around">
+                        <q-btn
+                          flat
                           size="sm"
-                          :label="loan.is_overdue ? 'Overdue' : 'Active'"
+                          color="primary"
+                          label="Details"
+                          @click="viewLoanDetails(loan)"
                         />
-                      </div>
-                    </div>
+                        <q-btn
+                          flat
+                          size="sm"
+                          color="positive"
+                          label="Return"
+                          @click="returnLoan(loan)"
+                          :loading="isUpdating"
+                        />
+                      </q-card-actions>
+                    </q-card>
+                  </div>
+                </div>
 
-                    <!-- Loan Details -->
-                    <div class="q-mb-md">
-                      <div class="row q-mb-xs">
-                        <div class="col-5 text-caption text-grey-7">Items:</div>
-                        <div class="col text-caption text-weight-medium">
-                          {{ loan.total_quantity || 0 }} tools
-                        </div>
-                      </div>
-                      <div v-if="loan.due_date" class="row q-mb-xs">
-                        <div class="col-5 text-caption text-grey-7">Due:</div>
-                        <div class="col text-caption text-weight-medium"
-                             :class="{ 'text-negative': loan.is_overdue }">
-                          {{ formatDate(loan.due_date) }}
-                        </div>
-                      </div>
-                      <div class="row">
-                        <div class="col-5 text-caption text-grey-7">Created:</div>
-                        <div class="col text-caption text-weight-medium">
-                          {{ formatDate(loan.createdAt) }}
-                        </div>
-                      </div>
-                    </div>
-
-                    <!-- Tools List -->
-                    <div v-if="loan.sku_items && loan.sku_items.length > 0" class="q-mb-md">
-                      <div class="text-caption text-grey-7 q-mb-xs">Tools:</div>
-                      <div class="tools-list">
-                        <div 
-                          v-for="item in loan.sku_items.slice(0, 3)" 
-                          :key="item._id" 
-                          class="tool-item"
-                        >
-                          <q-icon name="build" size="16px" class="q-mr-xs" />
-                          <span class="text-caption">
-                            {{ typeof item.sku_id === 'object' ? item.sku_id.name : 'Unknown Tool' }}
-                          </span>
-                          <span class="text-caption text-grey-6 q-ml-xs">
-                            ×{{ item.selected_instance_ids?.length || 0 }}
-                          </span>
-                        </div>
-                        <div v-if="loan.sku_items.length > 3" class="text-caption text-grey-6">
-                          +{{ loan.sku_items.length - 3 }} more
-                        </div>
-                      </div>
-                    </div>
-                  </q-card-section>
-
-                  <q-separator />
-
-                  <q-card-actions align="around">
-                    <q-btn
-                      flat
-                      size="sm"
-                      color="primary"
-                      label="Details"
-                      @click="viewLoanDetails(loan)"
-                    />
-                    <q-btn
-                      flat
-                      size="sm"
-                      color="positive"
-                      label="Return"
-                      @click="returnLoan(loan)"
-                      :loading="isUpdating"
-                    />
-                  </q-card-actions>
-                </q-card>
+                <!-- Pagination -->
+                <div v-if="totalPages > 1" class="row items-center justify-center q-mt-lg">
+                  <q-pagination
+                    v-model="currentPage"
+                    :max="totalPages"
+                    :max-pages="7"
+                    boundary-numbers
+                    direction-links
+                    color="primary"
+                  />
+                  <div class="q-ml-md text-caption text-grey-7">
+                    Showing {{ (currentPage - 1) * itemsPerPage + 1 }}-{{ Math.min(currentPage * itemsPerPage, totalLoans) }} 
+                    of {{ totalLoans }} loans
+                  </div>
+                </div>
               </div>
             </div>
-
-            <!-- Pagination -->
-            <div v-if="totalPages > 1" class="row items-center justify-center q-mt-lg">
-              <q-pagination
-                v-model="currentPage"
-                :max="totalPages"
-                :max-pages="7"
-                boundary-numbers
-                direction-links
-                color="primary"
-              />
-              <div class="q-ml-md text-caption text-grey-7">
-                Showing {{ (currentPage - 1) * itemsPerPage + 1 }}-{{ Math.min(currentPage * itemsPerPage, totalLoans) }} 
-                of {{ totalLoans }} loans
-              </div>
-            </div>
-          </div>
-        </div>
+          </q-tab-panel>
+        </q-tab-panels>
       </div>
 
       <!-- Create Loan Modal -->
@@ -646,6 +697,14 @@ onMounted(async () => {
           </q-card-actions>
         </q-card>
       </q-dialog>
+
+      <!-- Edit Tool Modal -->
+      <EditToolModal 
+        v-if="selectedTool"
+        v-model="showEditToolModal"
+        :tool="selectedTool"
+        @updated="handleToolUpdated"
+      />
     </div>
   </q-page>
 </template>
