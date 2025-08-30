@@ -1,156 +1,125 @@
-# CURRENT TASK: Create Tool-Specific API Endpoints
+# CURRENT TASK: Create Tools Dashboard View
 
-**Task:** 2 of 13  
+**Task:** 6 of 13  
 **Branch:** `feature/tools-management`  
-**Phase:** Backend (Phase 1)  
+**Phase:** Frontend (Phase 2)  
 **Estimated Time:** 3 hours  
 **Status:** ❌ PENDING
 
 ---
 
 ## 🎯 **TASK OVERVIEW**
-Create dedicated API endpoints for tools management that return only tool-related data, complementing the existing product endpoints.
+Enhance the existing Tools.vue placeholder view to create a fully functional tools dashboard that displays real-time tool inventory data, active checkouts/loans, and provides quick action buttons for tool management operations.
 
 ## ✅ **SUCCESS CRITERIA**
-- [ ] Create `GET /api/tools/inventory` - tools-only inventory view
-- [ ] Create `GET /api/tools/skus` - tools-only SKU management
-- [ ] Create `GET /api/tools/tags` - tools-only checkout/loans view
-- [ ] Create `POST /api/tools/checkout` - checkout tools to contractors
-- [ ] All endpoints return properly filtered tool data only
-- [ ] Test endpoints with curl/Postman
+- [ ] Show tools-only inventory summary with real-time data
+- [ ] Display tool checkout status (available, loaned, maintenance)
+- [ ] Show active tool loans/checkouts
+- [ ] Include quick actions (checkout, return, condition change)
+- [ ] Use consistent styling with existing dashboard
 
 ## 🔧 **TECHNICAL REQUIREMENTS**
 
-### **Files to Create:**
-1. `backend/src/routes/tools.js` - New tools router with tool-specific endpoints
-
 ### **Files to Modify:**
-1. `backend/src/server.js` - Add tools route to express app
-2. `backend/src/app.js` - Add tools route to express app (if separate)
+1. `frontend/src/App.vue` - Add Tools tab to main navigation
+2. `frontend/src/router.ts` - Add Tools route definition
 
 ### **Implementation Details:**
-- **Tools Inventory API**: Mirror `/api/inventory` but with `category.type = 'tool'` filter
-- **Tools SKUs API**: Mirror `/api/skus` but with `category.type = 'tool'` filter
-- **Tools Tags API**: Mirror `/api/tags` but include only tags with tool SKUs
-- **Tools Checkout API**: New endpoint for checking out tools to contractors
+- **Navigation Tab**: Add "Tools" tab between existing navigation items
+- **Route Configuration**: Create route for `/tools` path
+- **Active State**: Ensure tab highlights when Tools section is active
+- **Responsive Design**: Tab works on both desktop and mobile layouts
 
-### **Backend Logic Pattern:**
-```javascript
-// Tools filter pattern (opposite of product filter):
-{
-  $lookup: {
-    from: 'categories',
-    localField: 'category_id', 
-    foreignField: '_id',
-    as: 'category'
-  }
-},
-{
-  $match: {
-    'category.type': 'tool'  // Include ONLY tools
-  }
-}
+### **Navigation Structure Pattern:**
+```vue
+<!-- Add to existing navigation tabs -->
+<router-link to="/tools" class="nav-tab">
+  <span class="nav-icon">🔧</span>
+  <span class="nav-text">Tools</span>
+</router-link>
 ```
 
 ## 🧪 **TESTING REQUIREMENTS**
 
 ### **Validation Steps:**
-1. **Before Changes**: Create test tool categories and SKUs
-2. **Test Current Behavior**: Verify tools appear in existing endpoints
-3. **After Changes**: Verify tools are filtered out
-4. **Regression Test**: Verify products still work normally
+1. **Before Changes**: Note existing navigation tabs and their styling
+2. **Test Current Behavior**: Verify all existing navigation works properly
+3. **After Changes**: Verify Tools tab appears and works
+4. **Regression Test**: Verify all existing navigation still works
 
-### **Test Commands:**
-```bash
-# Test new tools endpoints
-curl -H "Authorization: Bearer $TOKEN" "http://localhost:5000/api/tools/inventory"
-curl -H "Authorization: Bearer $TOKEN" "http://localhost:5000/api/tools/skus"
-curl -H "Authorization: Bearer $TOKEN" "http://localhost:5000/api/tools/tags"
-
-# Test tools checkout endpoint
-curl -X POST -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"contractor_name": "John Doe", "project_name": "Site A", "due_date": "2024-01-15", "sku_items": [{"sku_id": "TOOL_ID", "quantity": 1}]}' \
-  "http://localhost:5000/api/tools/checkout"
-```
+### **Manual Testing:**
+1. **Desktop**: Open app in browser, verify Tools tab appears and is clickable
+2. **Mobile**: Test responsive navigation with Tools tab included
+3. **Active State**: Navigate to Tools section, verify tab highlights
+4. **Styling**: Ensure Tools tab matches existing navigation styling
 
 ## 📋 **STEP-BY-STEP PLAN**
 
-### **Step 1: Study Existing Route Patterns**
-- [ ] Examine `backend/src/routes/inventory.js` structure and patterns
-- [ ] Examine `backend/src/routes/skus.js` structure and patterns
-- [ ] Examine `backend/src/routes/tags.js` structure and patterns
-- [ ] Understand authentication and validation patterns
+### **Step 1: Study Existing Navigation Structure**
+- [ ] Examine `frontend/src/App.vue` navigation structure
+- [ ] Examine `frontend/src/router.ts` route definitions
+- [ ] Understand existing navigation styling and patterns
+- [ ] Note tab order and positioning logic
 
-### **Step 2: Create Tools Router File**
-- [ ] Create `backend/src/routes/tools.js` with express router
-- [ ] Import necessary models (Category, SKU, Tag, Inventory, etc.)
-- [ ] Set up basic authentication middleware
-- [ ] Add route structure skeleton
+### **Step 2: Create Tools Route Definition**
+- [ ] Add Tools route to `frontend/src/router.ts`
+- [ ] Create placeholder Tools view component (basic)
+- [ ] Ensure route path `/tools` is properly configured
+- [ ] Test route navigation works
 
-### **Step 3: Implement Tools Inventory Endpoint**
-- [ ] Create `GET /api/tools/inventory` endpoint
-- [ ] Copy aggregation pipeline from inventory.js
-- [ ] Modify filters to include ONLY `category.type = 'tool'`
-- [ ] Test endpoint returns only tool inventory
+### **Step 3: Add Tools Navigation Tab**
+- [ ] Add Tools tab to navigation in `frontend/src/App.vue`
+- [ ] Position tab logically between existing tabs
+- [ ] Apply consistent styling with existing tabs
+- [ ] Add appropriate icon for Tools section
 
-### **Step 4: Implement Tools SKUs Endpoint** 
-- [ ] Create `GET /api/tools/skus` endpoint
-- [ ] Copy query logic from skus.js
-- [ ] Modify filters to include ONLY `category.type = 'tool'`
-- [ ] Test endpoint returns only tool SKUs
+### **Step 4: Test Navigation Functionality**
+- [ ] Test Tools tab click navigates to `/tools`
+- [ ] Verify tab highlights when active
+- [ ] Test on desktop browser
+- [ ] Test on mobile/responsive layout
 
-### **Step 5: Implement Tools Tags Endpoint**
-- [ ] Create `GET /api/tools/tags` endpoint
-- [ ] Copy query logic from tags.js
-- [ ] Modify filters to include only tags with tool SKUs
-- [ ] Test endpoint returns only tool-related tags
-
-### **Step 6: Implement Tools Checkout Endpoint**
-- [ ] Create `POST /api/tools/checkout` endpoint
-- [ ] Copy checkout logic from existing tag creation
-- [ ] Ensure it creates tags for tool checkout (not product fulfillment)
-- [ ] Test tool checkout creates proper tag relationships
-
-### **Step 7: Register Routes and Test**
-- [ ] Add tools router to `backend/src/server.js`
-- [ ] Test all endpoints with curl/Postman
-- [ ] Verify existing product endpoints still work
-- [ ] Verify tools and products remain completely separated
+### **Step 5: Verify Existing Navigation**
+- [ ] Test all existing navigation tabs still work
+- [ ] Verify no styling or functionality regressions
+- [ ] Ensure Tools tab integrates seamlessly
 
 ## ⚠️ **POTENTIAL RISKS**
-- **Code Duplication**: Copying existing route logic may lead to maintenance issues
-- **Route Conflicts**: Ensure tools routes don't conflict with existing routes
-- **Authentication**: Maintain same security level as existing endpoints
-- **Data Consistency**: Tool filtering must be consistent across all new endpoints
+- **Navigation Breaking**: Changes to App.vue could break existing navigation
+- **Route Conflicts**: Ensure `/tools` route doesn't conflict with existing routes
+- **Styling Issues**: Tools tab styling must match existing tabs
+- **Mobile Layout**: Navigation must work on mobile/responsive layouts
 
 ---
 
 ## 📝 **IMPLEMENTATION NOTES**
 
 ### **Before Starting:**
-1. Study existing route files to understand patterns
-2. Plan the tools router structure
-3. Ensure Task 1 (filtering) is complete and working
+1. Study existing frontend navigation structure
+2. Note current navigation styling patterns
+3. Ensure backend Tasks 1-4 are complete for API availability
 
 ### **During Implementation:**
-- Copy and adapt existing route logic rather than reinventing
-- Test each endpoint as you create it
-- Ensure consistent authentication and validation
-- Maintain the same response format as existing endpoints
+- Follow existing navigation patterns and styling
+- Test on both desktop and mobile layouts
+- Ensure proper Vue router integration
+- Use appropriate icon for Tools section
 
 ### **After Completion:**
-- Update CHECKLIST.md Task 2 status to ✅ Complete
-- Update CURRENT_TASK.md for next task (Task 3)
-- Commit changes with reference to Task 2
-- Verify tools endpoints work and products endpoints still work
+- Update CHECKLIST.md Task 5 status to ✅ Complete
+- Update CURRENT_TASK.md for next task (Task 6)
+- Commit changes with reference to Task 5
+- Verify all navigation works and no regressions
 
 ---
 
-**Dependencies:** Task 1 (product filtering) must be complete  
-**Next Task:** Task 3 - Implement Tool Return Functionality
+**Dependencies:** Task 2 (needs tool API endpoints), Task 5 (Tools.vue placeholder already exists)  
+**Next Task:** Task 7 - Create Tool Inventory Management
 
-**Remember:** Follow WORKFLOW_DISCIPLINE.md - complete this task fully before moving to Task 3!
+**📝 Phase 1 Complete:** See `PHASE_1_COMPLETION_SUMMARY.md` for backend implementation details  
+**📝 Task 5 Complete:** Tools navigation tab and placeholder view created
+
+**Remember:** Follow WORKFLOW_DISCIPLINE.md - complete this task fully before moving to Task 7!
 
 ## 🚨 **SCOPE CREEP ALERTS:**
 

@@ -166,10 +166,35 @@ router.get('/',
       const limit = parseInt(req.query.limit) || 50;
       const skip = (page - 1) * limit;
 
+      // ✅ FILTER: Get tool categories to exclude
+      const toolCategories = await Category.find({ type: 'tool' }).select('_id');
+      const toolCategoryIds = toolCategories.map(cat => cat._id.toString());
+      
       // Build filter
       const filter = {};
       
+      // ✅ FILTER: Exclude tool categories from product SKU view
+      if (toolCategoryIds.length > 0) {
+        filter.category_id = { $nin: toolCategoryIds };
+      }
+      
       if (req.query.category_id) {
+        // If specific category requested, ensure it's not a tool category
+        if (toolCategoryIds.includes(req.query.category_id)) {
+          // Return empty results if requesting a tool category
+          return res.json({
+            skus: [],
+            pagination: {
+              currentPage: page,
+              totalPages: 0,
+              totalSkus: 0,
+              limit,
+              hasNextPage: false,
+              hasPrevPage: false
+            }
+          });
+        }
+        // Override the $nin with specific category if it's not a tool
         filter.category_id = req.query.category_id;
       }
       
@@ -290,6 +315,11 @@ router.get('/:id',
       const sku = await query;
 
       if (!sku) {
+        return res.status(404).json({ message: 'SKU not found' });
+      }
+      
+      // ✅ FILTER: Block access to tool SKUs in product view
+      if (sku.category_id && sku.category_id.type === 'tool') {
         return res.status(404).json({ message: 'SKU not found' });
       }
 

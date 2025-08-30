@@ -68,6 +68,15 @@ const formData = ref<UpdateSKURequest>({
 const canEditCost = computed(() => authStore.user?.role === 'admin' || authStore.user?.role === 'warehouse_manager')
 const currentSkuId = ref('')
 
+// UI helper for editing features as comma-separated string
+const featuresInput = ref('')
+
+watch(() => formData.value.details?.features, (newVal) => {
+  if (Array.isArray(newVal)) {
+    featuresInput.value = newVal.join(', ')
+  }
+}, { immediate: true })
+
 // Status options
 const statusOptions = [
   { label: 'Active', value: 'active' },
@@ -246,21 +255,32 @@ const handleSubmit = async () => {
       formData: formData.value
     })
 
-    // Clean up form data - remove empty strings to avoid validation issues
+    // Clean up form data - preserve all fields but handle null/undefined
     const cleanedData = Object.fromEntries(
       Object.entries(formData.value).filter(([key, value]) => {
         // Always keep the details object even if it's empty
         if (key === 'details') {
           return true
         }
-        // Keep the value if it's not an empty string, or if it's a number (including 0)
-        return value !== '' && value !== null && value !== undefined
+        // Keep all fields, only filter out null/undefined (preserve empty strings)
+        return value !== null && value !== undefined
       })
     )
 
     console.log('Cleaned form data:', cleanedData)
     console.log('Cleaned form data keys:', Object.keys(cleanedData))
     console.log('Cleaned form data values:', Object.values(cleanedData))
+
+    // Additional logging to debug what's being sent
+    console.log('🔧 [EditItemModal] Sending SKU update with:', {
+      skuId: currentSkuId.value,
+      payload: cleanedData,
+      detailsObject: cleanedData.details
+    })
+    console.log('🔧 [EditItemModal] Complete payload structure:', JSON.stringify(cleanedData, null, 2))
+    console.log('🔧 [EditItemModal] Details object structure:', JSON.stringify(cleanedData.details, null, 2))
+    console.log('🔧 [EditItemModal] Details object keys:', Object.keys(cleanedData.details || {}))
+    console.log('🔧 [EditItemModal] Details object values:', Object.values(cleanedData.details || {}))
 
     // Update the SKU data using the SKU API
     await skuApi.updateSKU(currentSkuId.value, cleanedData)
@@ -457,56 +477,56 @@ onMounted(() => {
               />
             </div>
 
-            <!-- Color and Dimensions -->
-            <div class="col-12 col-sm-6">
-              <q-input
-                v-model="formData.details.color_name"
-                label="Color"
-                outlined
-                dense
-                placeholder="Color name"
-              />
-            </div>
-
-            <div class="col-12 col-sm-6">
-              <q-input
-                v-model="formData.details.dimensions"
-                label="Dimensions"
-                outlined
-                dense
-                placeholder="e.g., 24x48 inches"
-              />
-            </div>
-
-            <!-- Finish -->
+            <!-- Tool Type -->
             <div class="col-12">
-              <q-input
-                v-model="formData.details.finish"
-                label="Finish"
-                outlined
-                dense
-                placeholder="Surface finish or treatment"
-              />
-            </div>
-
-            <!-- Product Line and Tool Type -->
-            <div class="col-12 col-sm-6">
-              <q-input
-                v-model="formData.details.product_line"
-                label="Product Line"
-                outlined
-                dense
-                placeholder="Product line name"
-              />
-            </div>
-
-            <div class="col-12 col-sm-6">
               <q-input
                 v-model="formData.details.tool_type"
                 label="Tool Type"
                 outlined
                 dense
-                placeholder="Tool category"
+                placeholder="e.g., Power Tool, Hand Tool, Measuring Tool"
+              />
+            </div>
+
+            <!-- Tool-specific fields -->
+            <div class="col-12 col-sm-4">
+              <q-input
+                v-model="formData.details.manufacturer"
+                label="Manufacturer"
+                outlined
+                dense
+                placeholder="e.g., Milwaukee"
+              />
+            </div>
+
+            <div class="col-12 col-sm-4">
+              <q-input
+                v-model="formData.details.serial_number"
+                label="Serial Number"
+                outlined
+                dense
+                placeholder="e.g., SN12345"
+              />
+            </div>
+
+            <div class="col-12 col-sm-4">
+              <q-input
+                v-model="formData.details.voltage"
+                label="Voltage"
+                outlined
+                dense
+                placeholder="e.g., 18V"
+              />
+            </div>
+
+            <div class="col-12">
+              <q-input
+                :model-value="featuresInput"
+                @update:model-value="(val: string) => { featuresInput = val; formData.details.features = val.split(',').map(v => v.trim()).filter(v => v) }"
+                label="Features (comma-separated)"
+                outlined
+                dense
+                placeholder="e.g., Brushless, LED Light, Keyless Blade Change"
               />
             </div>
 

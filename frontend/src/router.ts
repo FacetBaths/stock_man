@@ -2,8 +2,10 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import Login from '@/views/Login.vue'
 import Dashboard from '@/views/Dashboard.vue'
+import Inventory from '@/views/Inventory.vue'
 import Tags from '@/views/Tags.vue'
 import SKUManagement from '@/views/SKUManagement.vue'
+import Tools from '@/views/Tools.vue'
 
 const routes = [
   {
@@ -23,6 +25,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/inventory',
+    name: 'Inventory',
+    component: Inventory,
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/tags',
     name: 'Tags',
     component: Tags,
@@ -32,6 +40,12 @@ const routes = [
     path: '/skus',
     name: 'SKUManagement',
     component: SKUManagement,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/tools',
+    name: 'Tools',
+    component: Tools,
     meta: { requiresAuth: true }
   }
 ]

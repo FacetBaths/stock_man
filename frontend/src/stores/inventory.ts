@@ -136,7 +136,8 @@ export const useInventoryStore = defineStore('inventory', () => {
     page?: number,
     limit?: number,
     sort_by?: string,
-    sort_order?: 'asc' | 'desc'
+    sort_order?: 'asc' | 'desc',
+    include_tools?: 'true' | 'false' // Add parameter to include tools when needed
   }) => {
     // console.clear()
     // console.log('Fetching inventory...')
@@ -163,7 +164,8 @@ export const useInventoryStore = defineStore('inventory', () => {
       let apiParams = {
         ...inventoryFilters.value,
         page: params?.page || pagination.value.current_page,
-        limit: params?.limit || pagination.value.items_per_page
+        limit: params?.limit || pagination.value.items_per_page,
+        include_tools: params?.include_tools // Pass through include_tools parameter
       }
       
       // Remove empty category_id to avoid sending it to backend

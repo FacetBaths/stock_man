@@ -244,6 +244,7 @@ export const inventoryApi = {
     limit?: number
     sort_by?: string
     sort_order?: 'asc' | 'desc'
+    include_tools?: 'true' | 'false' // Add parameter to include tools when needed
   }) => {
     console.log('🔍 [Frontend API] inventoryApi.getInventory called with params:', params)
     console.log('📊 [Frontend API] category_id type and value:', typeof params?.category_id, params?.category_id)
@@ -515,6 +516,153 @@ export const categoryApi = {
   getHierarchy: async () => {
     const response = await api.get('/categories/hierarchy/tree')
     return response.data
+  }
+}
+
+// Tools Dashboard API - for tools-specific functionality and loan management
+export const toolsApi = {
+  // Get active loans (tools currently loaned out)
+  getActiveLoans: async (params?: {
+    customer_name?: string
+    overdue_only?: boolean
+    project_name?: string
+    sort_by?: 'due_date' | 'customer_name' | 'created_at'
+    sort_order?: 'asc' | 'desc'
+    page?: number
+    limit?: number
+  }) => {
+    const response = await api.get('/tags', {
+      params: {
+        tag_type: 'loaned',
+        status: 'active',
+        include_items: true,
+        ...params,
+        // Ensure limit is within backend validation range (1-100)
+        limit: Math.min(params?.limit || 50, 100)
+      }
+    })
+    return response.data
+  },
+
+  // Get tools inventory (tools category items with status)
+  getToolsInventory: async (params?: {
+    search?: string
+    status?: 'all' | 'low_stock' | 'out_of_stock' | 'overstock'
+    available_only?: boolean
+    sort_by?: 'sku_code' | 'name'
+    sort_order?: 'asc' | 'desc'
+    page?: number
+    limit?: number
+  }) => {
+    // Get tool categories first to filter by them
+    const categoriesResponse = await categoryApi.getCategories({ active_only: true })
+    const toolCategories = categoriesResponse.categories.filter(cat => cat.type === 'tool')
+    
+    if (toolCategories.length === 0) {
+      return { inventory: [], pagination: { total_items: 0, total_pages: 0, current_page: 1, items_per_page: 50 } }
+    }
+
+    const toolCategoryIds = toolCategories.map(cat => cat._id)
+    
+    // Get inventory for tool categories
+    const response = await inventoryApi.getInventory({
+      ...params,
+      // Filter by tool categories - we'll need to make multiple calls or enhance the backend
+      // For now, get all inventory and filter client-side
+    })
+
+    // Filter results to only include tools
+    const toolsInventory = response.inventory.filter(item => 
+      item.sku && toolCategoryIds.includes(item.sku.category_id)
+    )
+
+    return {
+      ...response,
+      inventory: toolsInventory
+    }
+  },
+
+  // Get tools dashboard stats
+  getDashboardStats: async () => {
+    try {
+      // Get tool categories
+      const categoriesResponse = await categoryApi.getCategories({ active_only: true })
+      const toolCategories = categoriesResponse.categories.filter(cat => cat.type === 'tool')
+      
+      // Get active loans (use smaller limit for stats)
+      const loansResponse = await toolsApi.getActiveLoans({ limit: 100 })
+      
+      // Get inventory stats
+      const statsResponse = await inventoryApi.getStats()
+      
+      // Calculate tools-specific stats
+      let toolsStats = {
+        totalTools: 0,
+        availableTools: 0,
+        loanedTools: 0,
+        overdueLoans: 0,
+        totalValue: 0,
+        lowStockTools: 0,
+        outOfStockTools: 0
+      }
+
+      if (toolCategories.length > 0 && statsResponse.summary) {
+        // This is a simplified calculation - ideally the backend would provide tools-specific stats
+        const totalStats = statsResponse.summary
+        const toolsRatio = toolCategories.length / (categoriesResponse.categories.length || 1)
+        
+        toolsStats = {
+          totalTools: Math.round(totalStats.total_skus * toolsRatio),
+          availableTools: Math.round(totalStats.available_quantity * toolsRatio),
+          loanedTools: loansResponse.tags?.length || 0,
+          overdueLoans: loansResponse.tags?.filter(tag => tag.is_overdue).length || 0,
+          totalValue: Math.round(totalStats.total_value * toolsRatio),
+          lowStockTools: Math.round(totalStats.low_stock_count * toolsRatio),
+          outOfStockTools: Math.round(totalStats.out_of_stock_count * toolsRatio)
+        }
+      }
+
+      return {
+        stats: toolsStats,
+        activeLoans: loansResponse.tags || [],
+        recentActivity: [] // This would need backend support for activity tracking
+      }
+    } catch (error) {
+      console.error('Failed to fetch tools dashboard stats:', error)
+      throw error
+    }
+  },
+
+  // Create new tool loan
+  createLoan: async (loanData: {
+    customer_name: string
+    sku_items: Array<{
+      sku_id: string
+      quantity: number
+      selection_method?: 'auto' | 'manual' | 'fifo'
+      selected_instance_ids?: string[]
+      notes?: string
+    }>
+    project_name?: string
+    due_date?: string
+    notes?: string
+  }) => {
+    const response = await tagApi.createTag({
+      ...loanData,
+      tag_type: 'loaned'
+    })
+    return response
+  },
+
+  // Return loaned tools
+  returnLoan: async (tagId: string, returnData?: {
+    notes?: string
+    condition_notes?: string
+  }) => {
+    const response = await tagApi.fulfillTag(tagId, {
+      fulfillment_items: [] // This would need to be populated based on the tag's items
+    })
+    return response
   }
 }
 

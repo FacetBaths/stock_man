@@ -8,6 +8,7 @@ import StockStatusChip from '@/components/StockStatusChip.vue'
 
 interface Props {
   canWrite: boolean
+  items?: Inventory[]
   filters?: {
     category_id?: string
     search?: string
@@ -28,8 +29,8 @@ onMounted(() => {
   // This component now only responds to explicit refreshInventory() calls
 })
 
-// Use inventory data from store
-const items = computed(() => inventoryStore.inventory)
+// Use provided items or fallback to store inventory
+const items = computed(() => props.items || inventoryStore.inventory)
 
 const emit = defineEmits<{
   edit: [item: Inventory]

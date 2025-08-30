@@ -5,6 +5,7 @@ const router = express.Router();
 // Import models
 const Tag = require('../models/Tag');
 const SKU = require('../models/SKU');
+const Category = require('../models/Category');
 const Inventory = require('../models/Inventory');
 const { auth, requireRole, requireWriteAccess } = require('../middleware/authEnhanced');
 const AuditLog = require('../models/AuditLog');
@@ -446,8 +447,26 @@ router.get('/',
       const limit = parseInt(req.query.limit) || 50;
       const skip = (page - 1) * limit;
 
+      // ✅ FILTER: Get tool categories to exclude tags containing tool SKUs
+      const toolCategories = await Category.find({ type: 'tool' }).select('_id');
+      const toolCategoryIds = toolCategories.map(cat => cat._id.toString());
+      
       // Build query filter
       const filter = {};
+      
+      // ✅ FILTER: Exclude tags that contain any tool SKUs from product view
+      if (toolCategoryIds.length > 0) {
+        // First get all SKUs that belong to tool categories
+        const toolSKUs = await SKU.find({ 
+          category_id: { $in: toolCategoryIds } 
+        }).select('_id');
+        const toolSKUIds = toolSKUs.map(sku => sku._id);
+        
+        if (toolSKUIds.length > 0) {
+          // Exclude tags that have any tool SKUs in their sku_items
+          filter['sku_items.sku_id'] = { $nin: toolSKUIds };
+        }
+      }
       
       if (req.query.customer_name && req.query.customer_name.trim()) {
         filter.customer_name = new RegExp(req.query.customer_name.trim(), 'i');
@@ -576,6 +595,19 @@ router.get('/:id',
 
       if (!tag) {
         return res.status(404).json({ message: 'Tag not found' });
+      }
+      
+      // ✅ FILTER: Check if tag contains any tool SKUs, if so return 404
+      if (tag.sku_items && tag.sku_items.length > 0) {
+        const hasToolSKUs = tag.sku_items.some(skuItem => 
+          skuItem.sku_id && 
+          skuItem.sku_id.category_id && 
+          skuItem.sku_id.category_id.type === 'tool'
+        );
+        
+        if (hasToolSKUs) {
+          return res.status(404).json({ message: 'Tag not found' });
+        }
       }
 
       const tagObj = tag.toObject();

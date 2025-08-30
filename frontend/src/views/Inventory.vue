@@ -1,14 +1,19 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useInventoryStore } from '@/stores/inventory'
 import { useCategoryStore } from '@/stores/category'
 import { PRODUCT_TYPES } from '@/types'
+import { skuApi } from '@/utils/api'
 import InventoryTable from '@/components/InventoryTable.vue'
 import AddStockModal from '@/components/AddStockModal.vue'
+import AddToolModal from '@/components/AddToolModal.vue'
 import EditItemModal from '@/components/EditItemModal.vue'
 import QuickScanModal from '@/components/QuickScanModal.vue'
 import type { Inventory } from '@/types'
+
+const route = useRoute()
 
 const authStore = useAuthStore()
 const inventoryStore = useInventoryStore()
@@ -22,56 +27,104 @@ const showEditModal = ref(false)
 const showQuickScanModal = ref(false)
 const itemToEdit = ref<any | null>(null)
 
+// Since this page is only accessed from Tools dashboard, always show tool categories
 const availableTabs = computed(() => {
-  const tabs = [{ value: 'all', label: 'All Items' }, ...PRODUCT_TYPES]
-  return tabs
+  const toolCategories = categoryStore.categories
+    .filter(cat => cat.type === 'tool' && cat.status === 'active')
+    .map(cat => ({ value: cat._id, label: cat.name }))
+  
+  return [{ value: 'all', label: 'All Tools' }, ...toolCategories]
 })
 
+// Since this page is tools-only, filter to show only tools and apply search/category filters
 const filteredItems = computed(() => {
-  let items = inventoryStore.items
+  // Use inventory data from backend (Inventory model records)
+  let items = inventoryStore.inventory || []
+  
+  console.log('🔧 [Debug] Raw inventory items:', items.length)
+  if (items.length > 0) {
+    console.log('🔧 [Debug] Sample item:', items[0])
+  }
 
-  // Apply search filter first (global search)
+  // STEP 1: Filter to only tool categories (since this is a tools-only page)
+  const toolCategoryIds = categoryStore.categories
+    .filter(cat => cat.type === 'tool' && cat.status === 'active')
+    .map(cat => cat._id)
+  
+  console.log('🔧 [Debug] Tool category IDs:', toolCategoryIds)
+  
+  items = items.filter(item => {
+    // Check if this inventory item's category is a tool category
+    const isToolCategory = toolCategoryIds.includes(item.category?._id) || 
+                         toolCategoryIds.includes(item.sku?.category_id)
+    if (isToolCategory) {
+      console.log('🔧 [Debug] Found tool:', item.sku?.name, 'category:', item.category?.name)
+    }
+    return isToolCategory
+  })
+  
+  console.log('🔧 [Debug] After tool filter:', items.length)
+
+  // STEP 2: Apply search filter (global search within tools)
   if (searchQuery.value.trim()) {
     const search = searchQuery.value.toLowerCase().trim()
+    console.log('🔍 [Debug] Applying search filter:', search)
+    
     items = items.filter(item => {
-      const details = item.product_details as any
+      // Search through SKU fields (populated from backend)
+      if (item.sku) {
+        const sku = item.sku
+        if (sku.sku_code?.toLowerCase().includes(search) || 
+            sku.name?.toLowerCase().includes(search) ||
+            sku.barcode?.toLowerCase().includes(search) ||
+            sku.brand?.toLowerCase().includes(search) ||
+            sku.model?.toLowerCase().includes(search) ||
+            sku.description?.toLowerCase().includes(search)) {
+          return true
+        }
+      }
       
-      // Check SKU code and barcode first
-      if (item.sku_code?.toLowerCase().includes(search) || item.barcode?.toLowerCase().includes(search)) {
+      // Search through category name
+      if (item.category?.name?.toLowerCase().includes(search)) {
         return true
       }
       
-      if (item.product_type === 'wall') {
-        return (
-          details.product_line?.toLowerCase().includes(search) ||
-          details.color_name?.toLowerCase().includes(search) ||
-          details.dimensions?.toLowerCase().includes(search) ||
-          details.finish?.toLowerCase().includes(search)
-        )
-      } else {
-        return (
-          details.name?.toLowerCase().includes(search) ||
-          details.brand?.toLowerCase().includes(search) ||
-          details.model?.toLowerCase().includes(search) ||
-          details.color?.toLowerCase().includes(search) ||
-          details.dimensions?.toLowerCase().includes(search) ||
-          details.finish?.toLowerCase().includes(search) ||
-          details.description?.toLowerCase().includes(search)
-        )
-      }
+      return false
     })
+    
+    console.log('🔍 [Debug] After search filter:', items.length)
   }
 
-  // Then apply tab filter (unless searching, which overrides tabs)
+  // STEP 3: Apply category tab filter (specific tool category)
   if (!searchQuery.value.trim() && activeTab.value !== 'all') {
-    items = items.filter(item => item.product_type === activeTab.value)
+    console.log('🏷️ [Debug] Applying category tab filter:', activeTab.value)
+    
+    items = items.filter(item => {
+      // Filter by category ID (from Inventory → SKU → Category relationship)
+      if (item.sku?.category_id === activeTab.value) {
+        return true
+      }
+      // If category is populated object
+      if (item.category?._id === activeTab.value) {
+        return true
+      }
+      return false
+    })
+    
+    console.log('🏷️ [Debug] After category filter:', items.length)
   }
 
-  // Apply stock filter
+  // STEP 4: Apply stock filter
   if (showInStockOnly.value) {
-    items = items.filter(item => item.quantity > 0)
+    items = items.filter(item => {
+      // Check available_quantity from Inventory model
+      return item.available_quantity > 0
+    })
+    
+    console.log('📦 [Debug] After stock filter:', items.length)
   }
 
+  console.log('✅ [Debug] Final filtered items:', items.length)
   return items
 })
 
@@ -87,21 +140,27 @@ const handleInStockToggle = () => {
   loadItems()
 }
 
-// Load data using appropriate method based on what's available
+// Load all inventory data - filtering is done client-side for tools
 const loadInventory = async () => {
   try {
-    // Try to load aggregated inventory data first (new architecture)
-    await inventoryStore.fetchInventory({
-      search: searchQuery.value.trim(),
-      status: showInStockOnly.value ? 'available' : 'all'
-    })
+    // Load all inventory data - include tools for tools inventory
+    const params: any = {
+      status: showInStockOnly.value ? 'available' : 'all',
+      include_tools: 'true' // Include tools in inventory fetch
+    }
+    
+    // Only add search if there's an actual user search query
+    if (searchQuery.value.trim()) {
+      params.search = searchQuery.value.trim()
+    }
+    
+    console.log('🔄 [Debug] Loading inventory with params:', params)
+    
+    await inventoryStore.fetchInventory(params)
+    console.log('✅ [Debug] Inventory loaded, total items:', inventoryStore.inventory?.length || 0)
   } catch (error) {
-    console.log('Falling back to legacy Item loading method:', error)
-    // Fallback to legacy item loading method
-    await inventoryStore.loadItems({
-      in_stock_only: showInStockOnly.value,
-      search: searchQuery.value.trim()
-    })
+    console.error('❌ [Debug] Error loading inventory:', error)
+    throw error
   }
 }
 
@@ -117,26 +176,91 @@ const handleQuickScan = () => {
 }
 
 const handleEditItem = (item: any) => {
-  itemToEdit.value = item
+  console.log('🔧 [Inventory] Editing tool:', item)
+  // For tools, we want to edit the SKU information, not individual instances
+  // Transform the inventory item to match what EditToolModal expects
+  const toolToEdit = {
+    _id: item.sku?._id || item.sku_id,
+    sku_code: item.sku?.sku_code || item.sku_code,
+    category_id: item.sku?.category_id || item.category?._id,
+    name: item.sku?.name,
+    description: item.sku?.description,
+    brand: item.sku?.brand,
+    model: item.sku?.model,
+    unit_cost: item.sku?.unit_cost || item.average_cost,
+    barcode: item.sku?.barcode,
+    details: item.sku?.details || {},
+    // Include inventory summary for context
+    inventory: {
+      total_quantity: item.total_quantity,
+      available_quantity: item.available_quantity,
+      reserved_quantity: item.reserved_quantity,
+      broken_quantity: item.broken_quantity,
+      loaned_quantity: item.loaned_quantity
+    }
+  }
+  itemToEdit.value = toolToEdit
   showEditModal.value = true
 }
 
 const handleDeleteItem = async (item: any) => {
-  if (confirm(`Are you sure you want to delete this ${item.product_type} item?`)) {
+  const toolName = item.sku?.name || 'this tool'
+  const skuCode = item.sku?.sku_code || 'Unknown SKU'
+  const totalQuantity = item.total_quantity || 0
+  
+  const confirmed = confirm(
+    `⚠️ WARNING: Are you sure you want to DELETE "${toolName}" (${skuCode})?\n\n` +
+    `This will permanently remove:\n` +
+    `• The tool SKU and all its data\n` +
+    `• All ${totalQuantity} stock instances\n` +
+    `• Any associated history\n\n` +
+    `This action CANNOT be undone!`
+  )
+  
+  if (confirmed) {
     try {
-      // In the new architecture, we should remove stock instances instead
-      // This functionality needs to be updated to work with SKU/Instance pattern
-      console.warn('Delete functionality needs to be updated for new architecture')
-      await loadItems() // Refresh after delete
+      console.log('🗑️ [Inventory] Deleting tool SKU:', item.sku?._id)
+      
+      // Delete the SKU (this should cascade delete instances)
+      await skuApi.deleteSKU(item.sku?._id || item.sku_id)
+      
+      console.log('✅ [Inventory] Tool deleted successfully')
+      
+      // Refresh inventory and stats
+      await Promise.all([
+        loadItems(),
+        inventoryStore.fetchStats()
+      ])
+      
+      // Show success message
+      // You might want to add a toast notification here
+      console.log(`🎉 [Inventory] "${toolName}" has been deleted`)
+      
     } catch (error) {
-      console.error('Delete error:', error)
+      console.error('❌ [Inventory] Delete tool error:', error)
+      
+      // Show error message
+      const errorMsg = error.response?.data?.message || error.message || 'Unknown error'
+      alert(`Failed to delete tool: ${errorMsg}`)
     }
   }
 }
 
 const handleAddSuccess = () => {
   showAddModal.value = false
-  loadItems() // Refresh after add
+  console.log('🎉 [Inventory] Tool added successfully, refreshing inventory...')
+  
+  // Refresh both inventory and stats after adding
+  Promise.all([
+    loadItems(),
+    inventoryStore.fetchStats()
+  ]).then(() => {
+    console.log('✅ [Inventory] Inventory refreshed after tool addition')
+    console.log('📊 [Inventory] Current inventory items:', inventoryStore.inventory?.length || 0)
+    console.log('📊 [Inventory] Current stats:', inventoryStore.stats)
+  }).catch(error => {
+    console.error('❌ [Inventory] Error refreshing after tool addition:', error)
+  })
 }
 
 const handleEditSuccess = () => {
@@ -150,7 +274,32 @@ const handleQuickScanSuccess = () => {
   loadItems() // Refresh after batch processing
 }
 
+// Initialize filters from route query parameters (tools-only page)
+const initializeFromRoute = () => {
+  console.log('🔧 [Debug] Initializing tools inventory page')
+  
+  // Handle search parameter from Tools dashboard
+  if (route.query.search) {
+    searchQuery.value = route.query.search as string
+    console.log('🔍 [Debug] Search query from route:', searchQuery.value)
+  }
+  
+  // Handle category filter from Tools dashboard
+  if (route.query.category_id) {
+    activeTab.value = route.query.category_id as string
+    console.log('🏷️ [Debug] Category filter from route:', activeTab.value)
+  } else {
+    // Default to showing all tools
+    activeTab.value = 'all'
+  }
+  
+  console.log('🔧 [Debug] Tools inventory page initialized')
+}
+
 onMounted(async () => {
+  // Initialize filters from route first
+  initializeFromRoute()
+  
   await Promise.all([
     categoryStore.fetchCategories(), // Load categories for filtering
     loadItems(),
@@ -187,9 +336,18 @@ watch([searchQuery, showInStockOnly], () => {
             <h1 class="text-h4 text-dark q-mb-xs">
               <q-icon name="inventory_2" class="q-mr-sm" />
               Inventory Management
+              <q-chip 
+                color="primary"
+                text-color="white"
+                size="sm"
+                class="q-ml-md"
+              >
+                <q-icon name="build" size="14px" class="q-mr-xs" />
+                Tools Only
+              </q-chip>
             </h1>
             <p class="text-body2 text-dark opacity-80">
-              Manage your stock items, quantities, and product details
+              Manage your tools inventory, quantities, and tool details
             </p>
           </div>
           <div class="col-auto" v-if="inventoryStore.stats">
@@ -253,8 +411,8 @@ watch([searchQuery, showInStockOnly], () => {
                 @click="handleAddItem"
                 :loading="inventoryStore.isCreating"
                 color="positive"
-                icon="add"
-                label="Add Item"
+                icon="build"
+                label="Add Tool"
                 class="action-btn"
                 no-caps
               />
@@ -280,7 +438,7 @@ watch([searchQuery, showInStockOnly], () => {
             class="tab-item"
           >
             <q-badge
-              v-if="inventoryStore.itemsByType[tab.value]"
+              v-if="inventoryStore.itemsByType && inventoryStore.itemsByType[tab.value]"
               color="primary"
               floating
               rounded
@@ -322,6 +480,7 @@ watch([searchQuery, showInStockOnly], () => {
       <div v-else class="table-container glass-card" data-aos="fade-up" data-aos-delay="300">
         <InventoryTable
           :can-write="authStore.canWrite"
+          :items="filteredItems"
           :filters="tableFilters"
           @edit="handleEditItem"
           @delete="handleDeleteItem"
@@ -330,16 +489,17 @@ watch([searchQuery, showInStockOnly], () => {
     </div>
 
     <!-- Modals -->
-    <AddStockModal
+    <!-- Always use AddToolModal since this is a tools-only page -->
+    <AddToolModal
       v-if="showAddModal"
       @close="showAddModal = false"
       @success="handleAddSuccess"
     />
 
     <EditItemModal
-      v-if="showEditModal && itemToEdit"
+      v-model="showEditModal"
+      v-if="itemToEdit"
       :item="itemToEdit"
-      @close="showEditModal = false"
       @success="handleEditSuccess"
     />
 

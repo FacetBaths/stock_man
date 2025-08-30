@@ -7,6 +7,8 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "build": "echo 'No build step needed for backend'",
+    "test": "jest --detectOpenHandles",
+    "test:watch": "jest --watch --detectOpenHandles",
     "kill": "./kill-server.sh",
     "restart": "./kill-server.sh && npm run dev"
   },
@@ -23,7 +25,9 @@
     "multer": "^2.0.2"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1"
+    "jest": "^29.7.0",
+    "nodemon": "^3.0.1",
+    "supertest": "^6.3.4"
   },
   "keywords": [
     "inventory",

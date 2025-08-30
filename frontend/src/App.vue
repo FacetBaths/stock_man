@@ -110,6 +110,7 @@ const forceLogout = () => {
 const navTabs = [
   { path: "/dashboard", label: "Dashboard", icon: "dashboard" },
   { path: "/tags", label: "Tags", icon: "local_offer" },
+  { path: "/tools", label: "Tools", icon: "build" },
   { path: "/skus", label: "SKU Management", icon: "qr_code" },
 ];
 

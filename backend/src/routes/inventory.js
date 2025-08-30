@@ -57,7 +57,8 @@ router.get('/', auth, async (req, res) => {
       page = 1,
       limit = 50,
       sort_by = 'sku_code',
-      sort_order = 'asc'
+      sort_order = 'asc',
+      include_tools = 'false' // Add parameter to include tools when needed
     } = req.query;
 
     const mongoose = require('mongoose');
@@ -82,6 +83,13 @@ router.get('/', auth, async (req, res) => {
         }
       },
       { $unwind: { path: '$category', preserveNullAndEmptyArrays: true } },
+      
+      // ✅ FILTER: Include/exclude tools based on parameter
+      ...(include_tools !== 'true' ? [{
+        $match: {
+          'category.type': { $ne: 'tool' } // Exclude tools by default
+        }
+      }] : []),
       
       // ✅ REAL-TIME CALCULATION: Count instances for each SKU
       {
@@ -427,6 +435,24 @@ router.get('/stats', auth, async (req, res) => {
       // Start with active SKUs
       { $match: { status: 'active' } },
       
+      // Get category info first
+      {
+        $lookup: {
+          from: 'categories',
+          localField: 'category_id',
+          foreignField: '_id',
+          as: 'category'
+        }
+      },
+      { $unwind: { path: '$category', preserveNullAndEmptyArrays: true } },
+      
+      // ✅ FILTER: Exclude tools from stats
+      {
+        $match: {
+          'category.type': { $ne: 'tool' } // Exclude tools
+        }
+      },
+      
       // Get all instances for each SKU
       {
         $lookup: {
@@ -622,6 +648,13 @@ router.get('/stats', auth, async (req, res) => {
         }
       },
       { $unwind: { path: '$category', preserveNullAndEmptyArrays: true } },
+      
+      // ✅ FILTER: Exclude tools from category stats
+      {
+        $match: {
+          'category.type': { $ne: 'tool' } // Exclude tools
+        }
+      },
       
       // Get instances for real-time calculation
       {
