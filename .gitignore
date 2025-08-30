@@ -241,3 +241,12 @@ backups/
 
 # Build outputs
 frontend/dist/
+
+# Development and temporary files
+*.temp
+*.tmp
+debug_*.js
+test_*.js
+validate_*.js
+compare_*.js
+check_*.js
