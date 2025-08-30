@@ -9,8 +9,8 @@ const Inventory = require('../models/Inventory');
 const { auth, requireRole, requireWriteAccess } = require('../middleware/authEnhanced');
 const AuditLog = require('../models/AuditLog');
 
-// Validation middleware for SKU creation/updates
-const validateSKU = [
+// Validation middleware for SKU creation
+const validateSKUCreate = [
   body('sku_code')
     .optional()
     .trim()
@@ -81,6 +81,76 @@ const validateSKU = [
     .isLength({ max: 1000 })
     .withMessage('Notes cannot exceed 1000 characters')
 ];
+
+// Validation middleware for SKU updates - all fields optional
+const validateSKUUpdate = [
+  body('sku_code')
+    .optional()
+    .trim()
+    .toUpperCase()
+    .matches(/^[A-Z0-9\-_]+$/)
+    .withMessage('SKU code can only contain letters, numbers, hyphens, and underscores'),
+  body('name')
+    .optional()
+    .trim()
+    .isLength({ min: 1, max: 200 })
+    .withMessage('Product name must be between 1 and 200 characters'),
+  body('description')
+    .optional()
+    .trim()
+    .isLength({ max: 1000 })
+    .withMessage('Description cannot exceed 1000 characters'),
+  body('brand')
+    .optional()
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage('Brand cannot exceed 100 characters'),
+  body('model')
+    .optional()
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage('Model cannot exceed 100 characters'),
+  body('category_id')
+    .optional()
+    .isMongoId()
+    .withMessage('Category ID must be a valid MongoDB ID'),
+  body('unit_cost')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('Unit cost must be a non-negative number'),
+  body('currency')
+    .optional()
+    .trim()
+    .isLength({ min: 3, max: 3 })
+    .withMessage('Currency must be a 3-character code'),
+  body('barcode')
+    .optional()
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage('Barcode cannot exceed 50 characters'),
+  body('status')
+    .optional()
+    .isIn(['active', 'discontinued', 'pending'])
+    .withMessage('Status must be active, discontinued, or pending'),
+  body('details')
+    .optional()
+    .isObject()
+    .withMessage('Details must be an object'),
+  body('supplier_info')
+    .optional()
+    .isObject()
+    .withMessage('Supplier info must be an object'),
+  body('stock_thresholds')
+    .optional()
+    .isObject()
+    .withMessage('Stock thresholds must be an object'),
+  body('notes')
+    .optional()
+    .trim()
+    .isLength({ max: 1000 })
+    .withMessage('Notes cannot exceed 1000 characters')
+];
+
 // Helper function to generate SKU code based on category and manufacturer model
 async function generateSKUCode(categoryId, manufacturerModel = null) {
   try {
@@ -355,7 +425,7 @@ router.get('/:id',
 router.post('/', 
   auth,
   requireWriteAccess,
-  validateSKU,
+  validateSKUCreate,
   async (req, res) => {
     try {
       const errors = validationResult(req);
@@ -476,7 +546,7 @@ router.put('/:id',
   requireWriteAccess,
   [
     param('id').isMongoId().withMessage('Invalid SKU ID'),
-    ...validateSKU
+    ...validateSKUUpdate
   ],
   async (req, res) => {
     try {
