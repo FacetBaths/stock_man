@@ -12,6 +12,7 @@ import SKUFormDialog from '@/components/SKUFormDialog.vue'
 import AddCostDialog from '@/components/AddCostDialog.vue'
 import BatchScanDialog from '@/components/BatchScanDialog.vue'
 import ExportDialog from '@/components/ExportDialog.vue'
+import StatsCarousel from '@/components/StatsCarousel.vue'
 // In your SKU Management component (e.g., SKUManagement.vue)
 import { useRoute } from 'vue-router'
 
@@ -616,6 +617,38 @@ const openBulkAdjustDialog = (sku: SKU) => {
   })
 }
 
+// Computed stats for carousel
+const skuStats = computed(() => [
+  {
+    value: skuStore.skuStats.total,
+    label: 'Total SKUs',
+    icon: 'inventory',
+    iconColor: 'blue',
+    colClass: 'col-12 col-sm-6 col-md-3'
+  },
+  {
+    value: skuStore.skuStats.withBarcodes,
+    label: 'With Barcodes',
+    icon: 'qr_code',
+    iconColor: 'green',
+    colClass: 'col-12 col-sm-6 col-md-3'
+  },
+  {
+    value: skuStore.skuStats.understocked,
+    label: 'Low Stock',
+    icon: 'warning',
+    iconColor: 'red',
+    colClass: 'col-12 col-sm-6 col-md-3'
+  },
+  {
+    value: `$${formatCurrency(skuStore.skuStats.totalValue)}`,
+    label: 'Total Value',
+    icon: 'attach_money',
+    iconColor: 'green',
+    colClass: 'col-12 col-sm-6 col-md-3'
+  }
+])
+
 console.log({skuStore})
 console.log({categoryStore})
 console.log({inventoryStore})
@@ -648,102 +681,22 @@ onMounted(async () => {
 </script>
 <template>
   <div class="q-pa-md">
-    <!-- Header -->
-    <div class="row q-mb-md">
-      <div class="col">
-        <div class="text-h4 text-weight-bold">
-          <q-icon name="qr_code" class="q-mr-sm" />
-          SKU Management
+    <!-- Page Header -->
+    <div class="glass-card q-pa-lg q-mb-lg">
+      <div class="row items-center q-gutter-md">
+        <q-icon name="qr_code" size="48px" class="text-primary" />
+        <div>
+          <h4 class="text-h4 q-ma-none text-weight-bold text-dark">SKU Management</h4>
+          <p class="text-body1 q-ma-none text-grey-7">
+            Manage product SKUs, barcodes, and stock levels
+          </p>
         </div>
-        <div class="text-subtitle2 text-grey-7">
-          Manage product SKUs, barcodes, and stock levels
-        </div>
-      </div>
-      <div class="col-auto">
-        <q-btn-group>
-          <q-btn
-            color="primary"
-            label="Add SKU"
-            icon="add"
-            @click="openCreateDialog"
-            :disable="!authStore.canWrite"
-          />
-          <q-btn
-            color="secondary"
-            label="Batch Scan"
-            icon="qr_code_scanner"
-            @click="openBatchScanDialog"
-            :disable="!authStore.canWrite"
-          />
-          <q-btn
-            color="accent"
-            label="Export"
-            icon="download"
-            @click="openExportDialog"
-          />
-        </q-btn-group>
       </div>
     </div>
 
     <!-- Stats Cards -->
-    <div class="row q-col-gutter-md q-mb-md">
-      <div class="col-xs-12 col-sm-6 col-md-3">
-        <q-card class="stat-card">
-          <q-card-section class="row items-center no-wrap">
-            <div class="col">
-              <div class="text-h6">{{ skuStore.skuStats.total }}</div>
-              <div class="text-subtitle2 text-grey-7">Total SKUs</div>
-            </div>
-            <div class="col-auto">
-              <q-icon name="inventory" size="md" color="blue" />
-            </div>
-          </q-card-section>
-        </q-card>
-      </div>
-
-      <div class="col-xs-12 col-sm-6 col-md-3">
-        <q-card class="stat-card">
-          <q-card-section class="row items-center no-wrap">
-            <div class="col">
-              <div class="text-h6">{{ skuStore.skuStats.withBarcodes }}</div>
-              <div class="text-subtitle2 text-grey-7">With Barcodes</div>
-            </div>
-            <div class="col-auto">
-              <q-icon name="qr_code" size="md" color="green" />
-            </div>
-          </q-card-section>
-        </q-card>
-      </div>
-
-      <div class="col-xs-12 col-sm-6 col-md-3">
-        <q-card class="stat-card">
-          <q-card-section class="row items-center no-wrap">
-            <div class="col">
-              <div class="text-h6">{{ skuStore.skuStats.lowStock }}</div>
-              <div class="text-subtitle2 text-grey-7">Low Stock</div>
-            </div>
-            <div class="col-auto">
-              <q-icon name="warning" size="md" color="red" />
-            </div>
-          </q-card-section>
-        </q-card>
-      </div>
-
-      <div class="col-xs-12 col-sm-6 col-md-3">
-        <q-card class="stat-card">
-          <q-card-section class="row items-center no-wrap">
-            <div class="col">
-              <div class="text-h6">
-                ${{ formatCurrency(skuStore.skuStats.totalValue) }}
-              </div>
-              <div class="text-subtitle2 text-grey-7">Total Value</div>
-            </div>
-            <div class="col-auto">
-              <q-icon name="attach_money" size="md" color="green" />
-            </div>
-          </q-card-section>
-        </q-card>
-      </div>
+    <div class="q-mb-md">
+      <StatsCarousel :stats="skuStats" :is-loading="skuStore.loading" />
     </div>
 
     <!-- Filters -->
@@ -812,6 +765,49 @@ onMounted(async () => {
         </div>
       </q-card-section>
     </q-card>
+
+    <!-- Actions -->
+    <div class="glass-card q-pa-md q-mb-lg">
+      <div class="row items-center justify-between">
+        <div class="col-auto">
+          <h6 class="text-h6 q-ma-none text-weight-bold text-dark">Quick Actions</h6>
+          <p class="text-caption q-ma-none text-grey-7">Create, scan, or export SKU data</p>
+        </div>
+        <div class="col-auto">
+          <div class="row q-gutter-sm">
+            <q-btn
+              color="primary"
+              label="Add SKU"
+              icon="add"
+              @click="openCreateDialog"
+              :disable="!authStore.canWrite"
+              class="action-btn"
+              no-caps
+              size="md"
+            />
+            <q-btn
+              color="secondary"
+              label="Batch Scan"
+              icon="qr_code_scanner"
+              @click="openBatchScanDialog"
+              :disable="!authStore.canWrite"
+              class="action-btn"
+              no-caps
+              size="md"
+            />
+            <q-btn
+              color="accent"
+              label="Export"
+              icon="download"
+              @click="openExportDialog"
+              class="action-btn"
+              no-caps
+              size="md"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Products Without SKUs Section -->
     <q-card class="q-mb-md" v-if="productsWithoutSKUs.length > 0">
@@ -1155,6 +1151,36 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+/* Glass card styling */
+.glass-card {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 16px;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  transition: all 0.3s ease;
+}
+
+.glass-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.15);
+}
+
+/* Action buttons */
+.action-btn {
+  border-radius: 12px;
+  padding: 8px 16px;
+  font-weight: 600;
+  min-width: 100px;
+  transition: all 0.3s ease;
+}
+
+.action-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
 .stat-card {
   transition: transform 0.2s;
 }

@@ -3,7 +3,7 @@ import { onMounted, ref, onUnmounted } from "vue";
 import { RouterView, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import UserProfile from "@/components/UserProfile.vue";
-import packageInfo from '../../package.json';
+import packageInfo from "../../package.json";
 
 const authStore = useAuthStore();
 const router = useRouter();
@@ -34,77 +34,75 @@ onUnmounted(() => {
 });
 
 const handleLogout = async () => {
-  console.log('=== HANDLELOGOUT CALLED FROM APP.VUE ===')
-  console.log('Current route:', router.currentRoute.value.path)
-  console.log('Auth store state before logout:', {
+  console.log("=== HANDLELOGOUT CALLED FROM APP.VUE ===");
+  console.log("Current route:", router.currentRoute.value.path);
+  console.log("Auth store state before logout:", {
     isAuthenticated: authStore.isAuthenticated,
-    user: authStore.user?.username
-  })
-  
+    user: authStore.user?.username,
+  });
+
   try {
-    console.log('Calling authStore.logout()...')
+    console.log("Calling authStore.logout()...");
     await authStore.logout();
-    console.log('authStore.logout() completed successfully')
-    
-    console.log('Pushing to /login route...')
+    console.log("authStore.logout() completed successfully");
+
+    console.log("Pushing to /login route...");
     await router.push("/login");
-    console.log('Router push completed')
-    
+    console.log("Router push completed");
   } catch (error) {
-    console.error('Error in handleLogout:', error)
+    console.error("Error in handleLogout:", error);
   }
-  
-  console.log('=== HANDLELOGOUT COMPLETED ===')
+
+  console.log("=== HANDLELOGOUT COMPLETED ===");
 };
 
 // Test API connectivity
 const testApiConnection = async () => {
-  console.log('=== TESTING API CONNECTION ===')
-  console.log('API_BASE_URL from env:', import.meta.env.VITE_API_URL)
-  
+  console.log("=== TESTING API CONNECTION ===");
+  console.log("API_BASE_URL from env:", import.meta.env.VITE_API_URL);
+
   try {
     // Test direct fetch to health endpoint
-    console.log('Testing direct fetch to health endpoint...')
-    const response = await fetch('http://localhost:5000/api/health')
-    console.log('Health endpoint response status:', response.status)
-    const data = await response.json()
-    console.log('Health endpoint data:', data)
-    
+    console.log("Testing direct fetch to health endpoint...");
+    const response = await fetch("http://localhost:5000/api/health");
+    console.log("Health endpoint response status:", response.status);
+    const data = await response.json();
+    console.log("Health endpoint data:", data);
+
     // Test with axios api instance
-    console.log('Testing with axios api instance...')
-    const { healthApi } = await import('@/utils/api')
-    const healthResponse = await healthApi.check()
-    console.log('Axios health response:', healthResponse)
-    
+    console.log("Testing with axios api instance...");
+    const { healthApi } = await import("@/utils/api");
+    const healthResponse = await healthApi.check();
+    console.log("Axios health response:", healthResponse);
   } catch (error) {
-    console.error('API connection test failed:', error)
+    console.error("API connection test failed:", error);
   }
-  
-  console.log('=== API CONNECTION TEST COMPLETED ===')
+
+  console.log("=== API CONNECTION TEST COMPLETED ===");
 };
 
 // Force logout to clear stuck auth state
 const forceLogout = () => {
-  console.log('=== FORCE LOGOUT INITIATED ===')
-  
+  console.log("=== FORCE LOGOUT INITIATED ===");
+
   // Clear all auth data forcefully
-  localStorage.removeItem('accessToken')
-  localStorage.removeItem('refreshToken')
-  localStorage.removeItem('token')
-  localStorage.removeItem('user')
-  
+  localStorage.removeItem("accessToken");
+  localStorage.removeItem("refreshToken");
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
+
   // Clear auth store state if available
   if (authStore) {
-    authStore.clearAuthData()
+    authStore.clearAuthData();
   }
-  
-  console.log('All auth data cleared, forcing page reload...')
-  
+
+  console.log("All auth data cleared, forcing page reload...");
+
   // Force page reload to reset the app state completely
-  window.location.href = '/#/login'
-  window.location.reload()
-  
-  console.log('=== FORCE LOGOUT COMPLETED ===')
+  window.location.href = "/#/login";
+  window.location.reload();
+
+  console.log("=== FORCE LOGOUT COMPLETED ===");
 };
 
 const navTabs = [
@@ -117,22 +115,24 @@ const navTabs = [
 // Build info (can be injected during build process)
 const buildInfo = {
   version: import.meta.env.VITE_APP_VERSION || packageInfo.version,
-  buildTime: import.meta.env.VITE_BUILD_TIME || 'Unknown',
-  gitCommit: import.meta.env.VITE_GIT_COMMIT || 'Unknown',
-  gitBranch: import.meta.env.VITE_GIT_BRANCH || 'Unknown',
-  buildNumber: import.meta.env.VITE_BUILD_NUMBER || 'Unknown'
+  buildTime: import.meta.env.VITE_BUILD_TIME || "Unknown",
+  gitCommit: import.meta.env.VITE_GIT_COMMIT || "Unknown",
+  gitBranch: import.meta.env.VITE_GIT_BRANCH || "Unknown",
+  buildNumber: import.meta.env.VITE_BUILD_NUMBER || "Unknown",
 };
 
 const getVersionTooltip = () => {
-  const buildDate = buildInfo.buildTime !== 'Unknown' 
-    ? new Date(buildInfo.buildTime).toLocaleString() 
-    : buildInfo.buildTime;
-  
-  const buildNum = buildInfo.buildNumber !== 'Unknown' && buildInfo.buildNumber.length > 6
-    ? buildInfo.buildNumber.slice(-6)
-    : buildInfo.buildNumber;
-  
-  return `Version: ${buildInfo.version}\nBuild: #${buildNum}\nCommit: ${buildInfo.gitCommit}\nBranch: ${buildInfo.gitBranch}\nBuilt: ${buildDate}`
+  const buildDate =
+    buildInfo.buildTime !== "Unknown"
+      ? new Date(buildInfo.buildTime).toLocaleString()
+      : buildInfo.buildTime;
+
+  const buildNum =
+    buildInfo.buildNumber !== "Unknown" && buildInfo.buildNumber.length > 6
+      ? buildInfo.buildNumber.slice(-6)
+      : buildInfo.buildNumber;
+
+  return `Version: ${buildInfo.version}\nBuild: #${buildNum}\nCommit: ${buildInfo.gitCommit}\nBranch: ${buildInfo.gitBranch}\nBuilt: ${buildDate}`;
 };
 </script>
 
@@ -140,7 +140,7 @@ const getVersionTooltip = () => {
   <q-app>
     <q-layout v-if="authStore.isAuthenticated" view="hHh lpR fFf">
       <q-header class="glass-header">
-        <q-toolbar class="q-px-lg" style="min-height: 70px">
+        <q-toolbar class="q-px-lg" style="min-height: 70px;">
           <!-- Logo and Title -->
           <div class="row items-center no-wrap q-mr-lg">
             <img
@@ -148,14 +148,14 @@ const getVersionTooltip = () => {
               alt="Facet Renovations Logo"
               class="nav-logo q-mr-md"
             />
-            <div class="nav-title">
+            <div v-if="isDesktop" class="nav-title">
               <div class="row items-center q-gutter-xs">
-                <div class="text-h6 text-white text-weight-bold q-mb-none">
+                <div class="title text-h6 text-weight-bold q-mb-none">
                   Stock Manager
                 </div>
-                <q-chip 
-                  color="rgba(255, 255, 255, 0.2)" 
-                  text-color="white" 
+                <q-chip
+                  color="accent"
+                  text-color="white"
                   size="sm"
                   class="version-chip"
                 >
@@ -165,9 +165,9 @@ const getVersionTooltip = () => {
                   </q-tooltip>
                 </q-chip>
               </div>
-              <div class="text-caption text-white opacity-80">
+              <!-- <div class="text-caption text-white opacity-80">
                 Facet Renovations
-              </div>
+              </div> -->
             </div>
           </div>
 
@@ -198,7 +198,7 @@ const getVersionTooltip = () => {
             size="sm"
           />
           -->
-          
+
           <!-- Emergency Force Logout Button (commented out for production) -->
           <!-- 
           <q-btn 
@@ -221,7 +221,7 @@ const getVersionTooltip = () => {
             icon="menu"
           >
             <q-menu class="glass-menu" anchor="bottom right" self="top right">
-              <q-list class="q-pa-md" style="min-width: 220px">
+              <q-list class="q-pa-md" style="min-width: 220px;">
                 <q-item
                   v-for="tab in navTabs"
                   :key="tab.path"
@@ -268,7 +268,7 @@ const getVersionTooltip = () => {
             </div>
             <q-icon name="expand_more" class="q-ml-sm text-white" />
             <q-menu class="glass-menu" anchor="bottom right" self="top right">
-              <q-list class="q-pa-md" style="min-width: 200px">
+              <q-list class="q-pa-md" style="min-width: 200px;">
                 <q-item-label header class="text-weight-bold text-dark">
                   {{ authStore.user?.role.replace("_", " ").toUpperCase() }}
                 </q-item-label>
@@ -299,6 +299,22 @@ const getVersionTooltip = () => {
             </q-menu>
           </q-btn>
         </q-toolbar>
+        <q-toolbar inset v-if="!isDesktop">
+          <div class="title text-h6 text-weight-bold q-mb-none">
+            Stock Manager
+          </div>
+          <q-chip
+            color="accent"
+            text-color="white"
+            size="sm"
+            class="version-chip"
+          >
+            v{{ buildInfo.version }}
+            <q-tooltip class="bg-dark text-white" :delay="500">
+              {{ getVersionTooltip() }}
+            </q-tooltip>
+          </q-chip>
+        </q-toolbar>
       </q-header>
 
       <q-page-container class="gradient-bg">
@@ -319,7 +335,7 @@ const getVersionTooltip = () => {
           <q-space />
           <q-btn icon="close" flat round dense v-close-popup />
         </q-card-section>
-        
+
         <q-card-section class="q-pt-none full-height">
           <UserProfile />
         </q-card-section>
@@ -348,6 +364,10 @@ body {
 
 #app {
   min-height: 100vh;
+}
+
+.title {
+  color: #6c757d;
 }
 
 /* Basic button styles */
@@ -793,7 +813,7 @@ body {
     padding-left: 16px;
     padding-right: 16px;
   }
-  
+
   .version-chip {
     font-size: 10px;
   }

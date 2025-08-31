@@ -7,6 +7,7 @@ import InventoryTable from "@/components/InventoryTable.vue";
 import AddItemModal from "@/components/AddItemModal.vue";
 import EditItemModal from "@/components/EditItemModal.vue";
 import QuickScanModal from "@/components/QuickScanModal.vue";
+import StatsCarousel from "@/components/StatsCarousel.vue";
 import { formatCategoryName } from "@/utils/formatting";
 import type { Inventory } from "@/types";
 
@@ -60,12 +61,12 @@ const toTitleCase = (str: string): string => {
 const availableCategories = computed(() => {
   // Uncomment for debugging category loading:
   // console.log("🎯 [Dashboard] availableCategories computed triggered");
-  
+
   const categories = [{ _id: "", name: "All Categories" }];
   if (categoryStore.categories && categoryStore.categories.length > 0) {
     // Filter out tool categories and format with proper capitalization
     const productCategories = categoryStore.categories
-      .filter(cat => cat.type !== 'tool') // Exclude tool categories from products inventory
+      .filter((cat) => cat.type !== "tool") // Exclude tool categories from products inventory
       .map((cat) => {
         const rawName = cat.name || cat.displayName || "Unnamed Category";
         return {
@@ -204,7 +205,7 @@ const handleAddSuccess = () => {
 const handleEditSuccess = () => {
   showEditModal.value = false;
   itemToEdit.value = null;
-    // Reload inventory data after batch processing using manual refresh
+  // Reload inventory data after batch processing using manual refresh
   inventoryTableRef.value?.refreshInventory(getCurrentFilters());
   inventoryStore.fetchStats();
 };
@@ -268,13 +269,82 @@ const canViewCost = computed(
     authStore.hasRole(["admin", "warehouse_manager"])
 );
 
+// Computed stats for carousel
+const dashboardStatsCarousel = computed(() => {
+  const baseStats = [
+    {
+      value: dashboardStats.value.totalSKUs,
+      label: "SKUs Managed",
+      icon: "qr_code",
+      iconColor: "primary",
+      valueClass: "text-primary",
+    },
+    {
+      value: dashboardStats.value.totalItems,
+      label: "Total Items",
+      icon: "inventory",
+      iconColor: "info",
+      valueClass: "text-info",
+    },
+    {
+      value: dashboardStats.value.inStock,
+      label: "SKUs In Stock",
+      icon: "check_circle",
+      iconColor: "positive",
+      valueClass: "text-positive",
+    },
+    {
+      value: dashboardStats.value.lowStock,
+      label: "Low Stock",
+      icon: "warning",
+      iconColor: "warning",
+      valueClass: "text-warning",
+    },
+    {
+      value: dashboardStats.value.outOfStock,
+      label: "Out of Stock",
+      icon: "error",
+      iconColor: "negative",
+      valueClass: "text-negative",
+    },
+    {
+      value: dashboardStats.value.needReorder,
+      label: "Need Reorder",
+      icon: "shopping_cart",
+      iconColor: "orange",
+      valueClass: "text-orange",
+    },
+    {
+      value: formatLastUpdated(inventoryStore.stats?.lastUpdated),
+      label: "Last Updated",
+      icon: "schedule",
+      iconColor: "grey-6",
+      valueClass: "text-grey-8",
+    },
+  ];
+
+  // Add total value card if user can view costs
+  if (canViewCost.value) {
+    baseStats.splice(3, 0, {
+      value: formatTotalValue(dashboardStats.value.totalValue),
+      label: "Total Value",
+      icon: "attach_money",
+      iconColor: "accent",
+      valueClass: "text-accent",
+      cardClass: "total-value-card",
+    });
+  }
+
+  return baseStats;
+});
+
 onMounted(async () => {
   // Uncomment for debugging component lifecycle:
   // console.log("🚀 [Dashboard] onMounted called");
 
   try {
     await categoryStore.fetchCategories();
-    
+
     if (!categoryStore.categories || categoryStore.categories.length === 0) {
       console.warn(
         "⚠️ [Dashboard] No categories found in database. Categories may need to be seeded."
@@ -289,12 +359,20 @@ onMounted(async () => {
 
   // Auto-load initial inventory data (always load on mount)
   setTimeout(() => {
-    console.log('[Dashboard] Auto-loading inventory data. Current inventory length:', inventoryStore.inventory.length)
+    console.log(
+      "[Dashboard] Auto-loading inventory data. Current inventory length:",
+      inventoryStore.inventory.length
+    );
     if (inventoryTableRef.value) {
-      console.log('[Dashboard] Triggering inventory refresh with filters:', getCurrentFilters())
+      console.log(
+        "[Dashboard] Triggering inventory refresh with filters:",
+        getCurrentFilters()
+      );
       inventoryTableRef.value.refreshInventory(getCurrentFilters());
     } else {
-      console.warn('[Dashboard] inventoryTableRef not ready, retrying in 200ms')
+      console.warn(
+        "[Dashboard] inventoryTableRef not ready, retrying in 200ms"
+      );
       setTimeout(() => {
         if (inventoryTableRef.value) {
           inventoryTableRef.value.refreshInventory(getCurrentFilters());
@@ -318,20 +396,21 @@ onMounted(async () => {
         data-aos="fade-up"
       >
         <div class="row items-center">
-          <div class="col-auto q-mr-md">
+          <!-- <div class="col-auto q-mr-md">
             <img
               src="@/assets/images/Logo_V2_Gradient7_CTC.png"
               alt="Facet Renovations Logo"
               class="logo-image"
             />
-          </div>
+          </div> -->
           <div class="col">
             <h1 class="text-h5 text-dark q-mb-xs">
               <q-icon name="dashboard" class="q-mr-sm" />
               Stock Manager Dashboard
             </h1>
-            <p class="text-body2 text-dark">
-              Welcome back, {{ authStore.user?.username }}!
+            <p class="text-body2 text-grey-7">
+              Welcome back, {{ authStore.user?.username }}! Overview of
+              inventory status, recent activity, and key metrics.
             </p>
           </div>
           <div class="col-auto">
@@ -353,104 +432,10 @@ onMounted(async () => {
         data-aos="fade-up"
         data-aos-delay="100"
       >
-        <div class="stats-cards-container">
-          <!-- Total SKUs Card -->
-          <q-card class="glass-card stat-card text-center">
-            <q-card-section class="q-pa-md">
-              <q-icon name="qr_code" class="text-h4 text-primary q-mb-xs" />
-              <div class="text-h4 text-dark text-weight-bold">
-                {{ dashboardStats.totalSKUs }}
-              </div>
-              <div class="text-body2 text-dark opacity-80">SKUs Managed</div>
-            </q-card-section>
-          </q-card>
-
-          <!-- Total Items Card -->
-          <q-card class="glass-card stat-card text-center">
-            <q-card-section class="q-pa-md">
-              <q-icon name="inventory" class="text-h4 text-info q-mb-xs" />
-              <div class="text-h4 text-dark text-weight-bold">
-                {{ dashboardStats.totalItems }}
-              </div>
-              <div class="text-body2 text-dark opacity-80">Total Items</div>
-            </q-card-section>
-          </q-card>
-
-          <!-- In Stock Card -->
-          <q-card class="glass-card stat-card text-center">
-            <q-card-section class="q-pa-md">
-              <q-icon
-                name="check_circle"
-                class="text-h4 text-positive q-mb-xs"
-              />
-              <div class="text-h4 text-dark text-weight-bold">
-                {{ dashboardStats.inStock }}
-              </div>
-              <div class="text-body2 text-dark opacity-80">SKUs In Stock</div>
-            </q-card-section>
-          </q-card>
-
-          <!-- Total Value Card (only for admin/warehouse_manager) -->
-          <q-card
-            v-if="canViewCost"
-            class="glass-card stat-card text-center total-value-card"
-          >
-            <q-card-section class="q-pa-md">
-              <q-icon name="attach_money" class="text-h4 text-accent q-mb-xs" />
-              <div class="text-h4 text-dark text-weight-bold">
-                {{ formatTotalValue(dashboardStats.totalValue) }}
-              </div>
-              <div class="text-body2 text-dark opacity-80">Total Value</div>
-            </q-card-section>
-          </q-card>
-
-          <!-- Low Stock Card -->
-          <q-card class="glass-card stat-card text-center warning-card">
-            <q-card-section class="q-pa-md">
-              <q-icon name="warning" class="text-h4 text-warning q-mb-xs" />
-              <div class="text-h4 text-dark text-weight-bold">
-                {{ dashboardStats.lowStock }}
-              </div>
-              <div class="text-body2 text-dark opacity-80">Low Stock</div>
-            </q-card-section>
-          </q-card>
-
-          <!-- Out of Stock Card -->
-          <q-card class="glass-card stat-card text-center negative-card">
-            <q-card-section class="q-pa-md">
-              <q-icon name="error" class="text-h4 text-negative q-mb-xs" />
-              <div class="text-h4 text-dark text-weight-bold">
-                {{ dashboardStats.outOfStock }}
-              </div>
-              <div class="text-body2 text-dark opacity-80">Out of Stock</div>
-            </q-card-section>
-          </q-card>
-
-          <!-- Need Reorder Card -->
-          <q-card class="glass-card stat-card text-center reorder-card">
-            <q-card-section class="q-pa-md">
-              <q-icon
-                name="shopping_cart"
-                class="text-h4 text-orange q-mb-xs"
-              />
-              <div class="text-h4 text-dark text-weight-bold">
-                {{ dashboardStats.needReorder }}
-              </div>
-              <div class="text-body2 text-dark opacity-80">Need Reorder</div>
-            </q-card-section>
-          </q-card>
-
-          <!-- Last Updated Card -->
-          <q-card class="glass-card stat-card text-center">
-            <q-card-section class="q-pa-md">
-              <q-icon name="schedule" class="text-h4 text-grey-6 q-mb-xs" />
-              <div class="text-h6 text-dark text-weight-bold">
-                {{ formatLastUpdated(inventoryStore.stats?.lastUpdated) }}
-              </div>
-              <div class="text-body2 text-dark opacity-80">Last Updated</div>
-            </q-card-section>
-          </q-card>
-        </div>
+        <StatsCarousel
+          :stats="dashboardStatsCarousel"
+          :is-loading="inventoryStore.isLoading"
+        />
       </div>
 
       <!-- Controls -->
@@ -514,39 +499,39 @@ onMounted(async () => {
           </div>
 
           <!-- Action Buttons -->
-          <div class="col-auto">
-            <div class="row q-gutter-sm">
-              <q-btn
-                @click="
-                  () => inventoryTableRef?.refreshInventory(getCurrentFilters())
-                "
-                :loading="inventoryStore.isLoading"
-                color="primary"
-                icon="refresh"
-                label="Refresh Data"
-                class="action-btn"
-                no-caps
-              />
-              <q-btn
-                v-if="authStore.canWrite"
-                @click="handleQuickScan"
-                color="purple"
-                icon="qr_code_scanner"
-                label="Scan Items"
-                class="action-btn"
-                no-caps
-              />
-              <q-btn
-                v-if="authStore.canWrite"
-                @click="handleAddItem"
-                :loading="inventoryStore.isCreating"
-                color="positive"
-                icon="add"
-                label="Add Item"
-                class="action-btn"
-                no-caps
-              />
-            </div>
+        </div>
+        <div class="col-auto">
+          <div class="row q-gutter-sm justify-around btn-group">
+            <q-btn
+              @click="
+                () => inventoryTableRef?.refreshInventory(getCurrentFilters())
+              "
+              :loading="inventoryStore.isLoading"
+              color="primary"
+              icon="refresh"
+              label="Refresh Data"
+              class="action-btn"
+              no-caps
+            />
+            <q-btn
+              v-if="authStore.canWrite"
+              @click="handleQuickScan"
+              color="purple"
+              icon="qr_code_scanner"
+              label="Scan Items"
+              class="action-btn"
+              no-caps
+            />
+            <q-btn
+              v-if="authStore.canWrite"
+              @click="handleAddItem"
+              :loading="inventoryStore.isCreating"
+              color="positive"
+              icon="add"
+              label="Add Item"
+              class="action-btn"
+              no-caps
+            />
           </div>
         </div>
       </div>
@@ -854,13 +839,16 @@ onMounted(async () => {
 .search-input :deep(.q-field__native)::placeholder {
   color: rgba(0, 0, 0, 0.6);
 }
-
+.btn-group {
+  margin-top: 0.5rem;
+}
 .action-btn {
   border-radius: 15px;
   padding: 8px 16px;
   font-weight: 600;
   text-transform: none;
   min-width: 120px;
+  flex: 1 0 30%;
 }
 
 /* Tabs Section */
@@ -947,6 +935,20 @@ onMounted(async () => {
 @media (max-width: 768px) {
   .container {
     padding: 0.5rem;
+  }
+
+/* Logo */
+.logo-image {
+  display:none;
+  /* height: 60px;
+  width: auto;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+  transition: all 0.3s ease; */
+}
+
+  .action-btn {
+    margin-top: unset;
+    flex: 1 0 45%;
   }
 
   .glass-card {

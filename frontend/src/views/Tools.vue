@@ -7,6 +7,7 @@ import { debounce } from 'quasar'
 import type { Tag } from '@/types'
 import ToolsTable from '@/components/ToolsTable.vue'
 import EditToolModal from '@/components/EditToolModal.vue'
+import StatsCarousel from '@/components/StatsCarousel.vue'
 import { useToolsStore } from '@/stores/tools'
 
 // Dashboard statistics
@@ -219,6 +220,45 @@ const handleToolUpdated = async () => {
   }
 }
 
+// Computed stats for carousel
+const toolsStats = computed(() => [
+  {
+    value: dashboardStats.value.totalTools,
+    label: 'Total Tools',
+    icon: 'build',
+    iconColor: 'primary',
+    valueClass: 'text-primary'
+  },
+  {
+    value: dashboardStats.value.availableTools,
+    label: 'Available',
+    icon: 'check_circle',
+    iconColor: 'positive',
+    valueClass: 'text-positive'
+  },
+  {
+    value: dashboardStats.value.loanedTools,
+    label: 'On Loan',
+    icon: 'assignment',
+    iconColor: 'warning',
+    valueClass: 'text-warning'
+  },
+  {
+    value: dashboardStats.value.overdueLoans,
+    label: 'Overdue',
+    icon: 'error',
+    iconColor: 'negative',
+    valueClass: 'text-negative'
+  },
+  {
+    value: `$${formatCurrency(dashboardStats.value.totalValue)}`,
+    label: 'Total Value',
+    icon: 'attach_money',
+    iconColor: 'info',
+    valueClass: 'text-info'
+  }
+])
+
 // Initialize dashboard
 onMounted(async () => {
   await refreshDashboard()
@@ -234,9 +274,9 @@ onMounted(async () => {
           <div class="row items-center q-gutter-md">
             <q-icon name="build" size="48px" class="text-primary" />
             <div>
-              <h4 class="text-h4 q-ma-none text-weight-bold">Tools Management</h4>
+              <h4 class="text-h4 q-ma-none text-weight-bold text-dark">Tools Management</h4>
               <p class="text-body1 q-ma-none text-grey-7">
-                Manage tool inventory, checkouts, returns, and maintenance
+                Track tool inventory, manage loans, and monitor availability
               </p>
             </div>
           </div>
@@ -278,107 +318,7 @@ onMounted(async () => {
             <div class="row q-col-gutter-lg">
               <!-- Tools Statistics -->
               <div class="col-12">
-                <div class="row q-col-gutter-md">
-                  <!-- Total Tools -->
-                  <div class="col-12 col-sm-6 col-md">
-                    <q-card class="glass-card full-height">
-                      <q-card-section class="text-center">
-                        <q-circular-progress
-                          v-if="isLoading"
-                          indeterminate
-                          size="50px"
-                          color="primary"
-                        />
-                        <div v-else>
-                          <div class="text-h3 text-weight-bold text-primary">
-                            {{ dashboardStats.totalTools }}
-                          </div>
-                          <div class="text-subtitle1 text-grey-7">Total Tools</div>
-                        </div>
-                      </q-card-section>
-                    </q-card>
-                  </div>
-
-                  <!-- Available Tools -->
-                  <div class="col-12 col-sm-6 col-md">
-                    <q-card class="glass-card full-height">
-                      <q-card-section class="text-center">
-                        <q-circular-progress
-                          v-if="isLoading"
-                          indeterminate
-                          size="50px"
-                          color="positive"
-                        />
-                        <div v-else>
-                          <div class="text-h3 text-weight-bold text-positive">
-                            {{ dashboardStats.availableTools }}
-                          </div>
-                          <div class="text-subtitle1 text-grey-7">Available</div>
-                        </div>
-                      </q-card-section>
-                    </q-card>
-                  </div>
-
-                  <!-- Loaned Tools -->
-                  <div class="col-12 col-sm-6 col-md">
-                    <q-card class="glass-card full-height">
-                      <q-card-section class="text-center">
-                        <q-circular-progress
-                          v-if="isLoading"
-                          indeterminate
-                          size="50px"
-                          color="warning"
-                        />
-                        <div v-else>
-                          <div class="text-h3 text-weight-bold text-warning">
-                            {{ dashboardStats.loanedTools }}
-                          </div>
-                          <div class="text-subtitle1 text-grey-7">On Loan</div>
-                        </div>
-                      </q-card-section>
-                    </q-card>
-                  </div>
-
-                  <!-- Overdue Loans -->
-                  <div class="col-12 col-sm-6 col-md">
-                    <q-card class="glass-card full-height">
-                      <q-card-section class="text-center">
-                        <q-circular-progress
-                          v-if="isLoading"
-                          indeterminate
-                          size="50px"
-                          color="negative"
-                        />
-                        <div v-else>
-                          <div class="text-h3 text-weight-bold text-negative">
-                            {{ dashboardStats.overdueLoans }}
-                          </div>
-                          <div class="text-subtitle1 text-grey-7">Overdue</div>
-                        </div>
-                      </q-card-section>
-                    </q-card>
-                  </div>
-
-                  <!-- Total Value -->
-                  <div class="col-12 col-sm-6 col-md">
-                    <q-card class="glass-card full-height">
-                      <q-card-section class="text-center">
-                        <q-circular-progress
-                          v-if="isLoading"
-                          indeterminate
-                          size="50px"
-                          color="info"
-                        />
-                        <div v-else>
-                          <div class="text-h3 text-weight-bold text-info">
-                            ${{ formatCurrency(dashboardStats.totalValue) }}
-                          </div>
-                          <div class="text-subtitle1 text-grey-7">Total Value</div>
-                        </div>
-                      </q-card-section>
-                    </q-card>
-                  </div>
-                </div>
+              <StatsCarousel :stats="toolsStats" :is-loading="isLoading" />
               </div>
 
               <!-- Quick Actions -->
