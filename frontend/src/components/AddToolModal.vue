@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useInventoryStore } from '@/stores/inventory'
 import { useCategoryStore } from '@/stores/category'
 import { skuApi } from '@/utils/api'
+import { formatCategoryName } from '@/utils/formatting'
 import type { CreateSKURequest, SKU } from '@/types'
 
 interface Props {
@@ -71,8 +72,16 @@ const toolCategories = computed(() => {
     .filter(cat => cat.type === 'tool' && cat.status === 'active')
     .map(cat => ({
       value: cat._id,
-      label: cat.displayName || cat.name
+      label: formatCategoryName(cat.displayName || cat.name)
     }))
+})
+
+// Get tool type options from database categories (Category.name)
+const toolTypeOptions = computed(() => {
+  return categoryStore.categories
+    .filter(cat => cat.type === 'tool' && cat.status === 'active')
+    .map(cat => formatCategoryName(cat.name || cat.displayName || 'Unnamed'))
+    .sort()
 })
 
 // Load tool SKUs only for add_stock mode
@@ -396,13 +405,21 @@ watch(() => categoryStore.categories, () => {
                 <div class="form-row">
                   <div class="form-group">
                     <label for="tool_type" class="form-label">Tool Type</label>
-                    <input
+                    <select
                       id="tool_type"
                       v-model="formData.tool_type"
-                      type="text"
-                      class="form-control"
-                      placeholder="e.g., Power Tool, Hand Tool, Measuring Tool"
-                    />
+                      class="form-select"
+                    >
+                      <option value="">Select tool type...</option>
+                      <option 
+                        v-for="type in toolTypeOptions" 
+                        :key="type" 
+                        :value="type"
+                      >
+                        {{ type }}
+                      </option>
+                    </select>
+                    <small class="form-text text-muted">Type of tool (based on database categories)</small>
                   </div>
 
                   <div class="form-group">

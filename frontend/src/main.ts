@@ -14,12 +14,6 @@ import 'aos/dist/aos.css'
 import App from './App.vue'
 import router from './router'
 
-// Debug utilities for development
-if (import.meta.env.DEV) {
-  import('./utils/auth-debug').then(({ debugTokenRefresh }) => {
-    debugTokenRefresh()
-  })
-}
 
 const app = createApp(App)
 

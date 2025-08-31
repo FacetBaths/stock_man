@@ -3,6 +3,8 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useQuasar } from 'quasar'
 import { useAuthStore } from '@/stores/auth'
 import { useToolsStore, type ToolInventoryItem, type ToolUpdateData } from '@/stores/tools'
+import { useCategoryStore } from '@/stores/category'
+import { formatCategoryName } from '@/utils/formatting'
 
 interface Props {
   modelValue: boolean
@@ -19,6 +21,7 @@ const emit = defineEmits<{
 const $q = useQuasar()
 const authStore = useAuthStore()
 const toolsStore = useToolsStore()
+const categoryStore = useCategoryStore()
 
 const isUpdating = ref(false)
 const error = ref<string | null>(null)
@@ -52,7 +55,7 @@ const formData = ref<ToolUpdateData>({
 })
 
 // Check if user can edit cost information
-const canEditCost = computed(() => 
+const canEditCost = computed(() =>
   authStore.user?.role === 'admin' || authStore.user?.role === 'warehouse_manager'
 )
 
@@ -76,24 +79,13 @@ watch(featuresInput, (newVal) => {
   }
 })
 
-// Tool type options (for autocomplete)
-const toolTypeOptions = [
-  'Power Tool',
-  'Hand Tool', 
-  'Measuring Tool',
-  'Safety Equipment',
-  'Cutting Tool',
-  'Fastener Tool',
-  'Electrical Tool',
-  'Plumbing Tool',
-  'Pneumatic Tool',
-  'Hydraulic Tool',
-  'Drilling Tool',
-  'Grinding Tool',
-  'Sanding Tool',
-  'Welding Tool',
-  'Garden Tool'
-]
+// Get tool type options from database categories
+const toolTypeOptions = computed(() => {
+  return categoryStore.categories
+    .filter(cat => cat.type === 'tool' && cat.status === 'active')
+    .map(cat => formatCategoryName(cat.name || cat.displayName || 'Unnamed'))
+    .sort()
+})
 
 // Voltage options (for autocomplete)
 const voltageOptions = [
@@ -173,7 +165,7 @@ const handleSubmit = async () => {
 
   } catch (err: any) {
     console.error('❌ Update tool error:', err)
-    
+
     let errorMessage = 'Failed to update tool'
     if (err.message) {
       errorMessage = err.message
@@ -223,8 +215,16 @@ watch(() => props.tool, (newTool) => {
   }
 }, { deep: true })
 
-onMounted(() => {
+onMounted(async () => {
   console.log('EditToolModal mounted with tool:', props.tool)
+  
+  // Load categories for tool type options
+  try {
+    await categoryStore.fetchCategories()
+  } catch (error) {
+    console.error('Failed to load categories for tool types:', error)
+  }
+  
   if (props.tool && props.modelValue) {
     initializeForm()
   }
@@ -275,7 +275,8 @@ onMounted(() => {
                 <div class="col-12 col-sm-6">
                   <div class="text-caption text-grey-6">Total Quantity</div>
                   <div class="text-body1 text-weight-medium">
-                    {{ tool.total_quantity }} ({{ tool.available_quantity }} available)
+                    {{ tool.total_quantity }} ({{ tool.available_quantity }}
+                    available)
                   </div>
                 </div>
                 <div class="col-12 col-sm-6">
@@ -284,10 +285,16 @@ onMounted(() => {
                 </div>
                 <div class="col-12 col-sm-6">
                   <div class="text-caption text-grey-6">Condition Status</div>
-                  <q-chip 
-                    :color="toolsStore.getConditionStatus(tool) === 'available' ? 'positive' : 
-                            toolsStore.getConditionStatus(tool) === 'loaned' ? 'purple' :
-                            toolsStore.getConditionStatus(tool) === 'maintenance' ? 'negative' : 'warning'"
+                  <q-chip
+                    :color="
+                      toolsStore.getConditionStatus(tool) === 'available'
+                        ? 'positive'
+                        : toolsStore.getConditionStatus(tool) === 'loaned'
+                        ? 'purple'
+                        : toolsStore.getConditionStatus(tool) === 'maintenance'
+                        ? 'negative'
+                        : 'warning'
+                    "
                     text-color="white"
                     size="sm"
                     :label="toolsStore.getConditionDisplay(tool)"
@@ -371,7 +378,8 @@ onMounted(() => {
                 use-input
                 input-debounce="0"
                 new-value-mode="add-unique"
-                placeholder="Select or type tool type"
+                hint="Select or type tool type"
+                hide-hint
               >
                 <template v-slot:no-option>
                   <q-item>
@@ -415,7 +423,8 @@ onMounted(() => {
                 use-input
                 input-debounce="0"
                 new-value-mode="add-unique"
-                placeholder="Select or type voltage"
+                hint="Select or type voltage"
+                hide-hint
               >
                 <template v-slot:no-option>
                   <q-item>
@@ -483,7 +492,8 @@ onMounted(() => {
               <q-card flat bordered class="q-pa-md bg-grey-2">
                 <div class="text-body2 text-grey-7">
                   <q-icon name="info" class="q-mr-xs" />
-                  Cost information is restricted to administrators and warehouse managers.
+                  Cost information is restricted to administrators and warehouse
+                  managers.
                 </div>
               </q-card>
             </div>

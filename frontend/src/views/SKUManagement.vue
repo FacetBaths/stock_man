@@ -1,3 +1,651 @@
+<script setup lang="ts">
+import { ref, onMounted, computed,watch } from 'vue'
+import { useQuasar } from 'quasar'
+import { useAuthStore } from '@/stores/auth'
+import { useSKUStore } from '@/stores/sku'
+import { useCategoryStore } from '@/stores/category'
+import { useInventoryStore } from '@/stores/inventory'
+import { inventoryApi, instancesApi } from '@/utils/api'
+import { PRODUCT_TYPES, type SKU } from '@/types'
+import StockStatusChip from '@/components/StockStatusChip.vue'
+import SKUFormDialog from '@/components/SKUFormDialog.vue'
+import AddCostDialog from '@/components/AddCostDialog.vue'
+import BatchScanDialog from '@/components/BatchScanDialog.vue'
+import ExportDialog from '@/components/ExportDialog.vue'
+// In your SKU Management component (e.g., SKUManagement.vue)
+import { useRoute } from 'vue-router'
+
+
+
+
+
+const $q = useQuasar()
+const route = useRoute()
+const authStore = useAuthStore()
+const skuStore = useSKUStore()
+const categoryStore = useCategoryStore()
+const inventoryStore = useInventoryStore()
+
+// State
+const selectedSKUs = ref<SKU[]>([])
+const selectedSKU = ref<SKU | null>(null)
+const showFormDialog = ref(false)
+const showAddCostDialog = ref(false)
+const showBatchScanDialog = ref(false)
+const showExportDialog = ref(false)
+
+// Products without SKUs state
+const productsWithoutSKUs = ref<any[]>([])
+const selectedProductsWithoutSKUs = ref<any[]>([])
+const loadingProductsWithoutSKUs = ref(false)
+const productForSKUCreation = ref<any | null>(null)
+
+// Table configuration
+const columns = [
+  {
+    name: 'sku_code',
+    label: 'SKU Code',
+    field: 'sku_code',
+    align: 'left',
+    sortable: true
+  },
+  {
+    name: 'category',
+    label: 'Category',
+    field: 'category_id',
+    align: 'center',
+    sortable: true
+  },
+  {
+    name: 'barcode',
+    label: 'Barcode',
+    field: 'barcode',
+    align: 'left',
+    sortable: false
+  },
+  {
+    name: 'stock_status',
+    label: 'Stock Status',
+    field: 'stockStatus',
+    align: 'center',
+    sortable: true
+  },
+  {
+    name: 'current_cost',
+    label: 'Current Cost',
+    field: 'unit_cost',
+    align: 'right',
+    sortable: true
+  },
+  {
+    name: 'totalQuantity',
+    label: 'Total Quantity',
+    field: (row: any) => row.inventory?.total_quantity || 0,
+    align: 'right',
+    sortable: true
+  },
+  {
+    name: 'quantity_controls',
+    label: 'Quick Adjust',
+    field: '',
+    align: 'center',
+    sortable: false
+  },
+  {
+    name: 'status',
+    label: 'Status',
+    field: 'status',
+    align: 'center',
+    sortable: true
+  },
+  {
+    name: 'actions',
+    label: 'Actions',
+    field: '',
+    align: 'center',
+    sortable: false
+  }
+]
+
+const tablePagination = computed(() => ({
+  sortBy: 'sku_code',
+  descending: false,
+  page: skuStore.pagination.currentPage,
+  rowsPerPage: skuStore.pagination.limit,
+  rowsNumber: skuStore.pagination.totalSkus
+}))
+
+const formatCategoryName = (name: string) => {
+  name == 'rawmaterials'? name = 'raw Materials' : void 0
+  name == 'showerdoors'? name = 'shower Doors' : void 0
+  return name.replace(/\b\w/g, char => char.toUpperCase())
+}
+
+const categoryOptions = computed(() => {
+  return categoryStore.categories.map(category => ({
+    label: formatCategoryName(category.name),
+    value: category._id
+  }))
+})
+
+const statusOptions = [
+  { label: 'Active', value: 'active' },
+  { label: 'Pending', value: 'pending' },
+  { label: 'Discontinued', value: 'discontinued' }
+]
+
+// Methods
+const formatCurrency = (value: number) => {
+  return new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(value)
+}
+
+const formatProductType = (type: string) => {
+  const found = PRODUCT_TYPES.find(t => t.value === type)
+  return found ? found.label : type
+}
+
+const formatStatus = (status: string) => {
+  return status.charAt(0).toUpperCase() + status.slice(1)
+}
+
+const getStatusColor = (status: string) => {
+  const colors: Record<string, string> = {
+    active: 'green',
+    inactive: 'orange',
+    discontinued: 'red'
+  }
+  return colors[status] || 'grey'
+}
+
+const getCategoryName = (categoryId: string | any) => {
+  if (!categoryId) return 'Uncategorized'
+
+  // Handle case where categoryId is already populated object from backend
+  if (typeof categoryId === 'object' && categoryId.displayName) {
+    return categoryId.displayName
+  }
+  if (typeof categoryId === 'object' && categoryId.name) {
+    return categoryId.name
+  }
+
+  // Handle case where categoryId is still just an ID string
+  if (typeof categoryId === 'string') {
+    const category = categoryStore.categories.find(c => c._id === categoryId)
+    return category ? category.name : 'Unknown Category'
+  }
+
+  return 'Unknown Category'
+}
+
+const getCategoryColor = (categoryId: string | any) => {
+  if (!categoryId) return 'grey'
+
+  // Handle case where categoryId is an object (populated category)
+  let idString: string
+  if (typeof categoryId === 'object' && categoryId._id) {
+    idString = categoryId._id
+  } else if (typeof categoryId === 'string') {
+    idString = categoryId
+  } else {
+    return 'grey'
+  }
+
+  const colors: string[] = ['blue', 'green', 'orange', 'cyan', 'purple', 'teal', 'brown', 'pink', 'indigo', 'deep-purple']
+  // Use category ID to generate consistent color
+  const index = idString ? idString.charCodeAt(idString.length - 1) % colors.length : 0
+  return colors[index]
+}
+
+// Get stock status from inventory data based on backend flags
+const getStockStatus = (sku: any) => {
+  if (!sku.inventory) return 'out_of_stock'
+
+  // Use backend calculated flags first (preferred)
+  if (sku.inventory.is_out_of_stock) {
+    return 'out_of_stock'
+  }
+  if (sku.inventory.is_overstock) {
+    return 'overstocked'
+  }
+  if (sku.inventory.is_low_stock) {
+    return 'understocked'
+  }
+
+  // Fallback to manual calculation if backend flags not available
+  const totalQty = sku.inventory.total_quantity || 0
+  const availableQty = sku.inventory.available_quantity || 0
+  const thresholds = sku.stock_thresholds || { understocked: 5, overstocked: 100 }
+
+  if (totalQty === 0 || availableQty === 0) {
+    return 'out_of_stock'
+  }
+  if (totalQty >= thresholds.overstocked) {
+    return 'overstocked'
+  }
+  if (availableQty <= thresholds.understocked) {
+    return 'understocked'
+  }
+
+  return 'adequate'
+}
+
+const refreshData = async () => {
+  await skuStore.fetchSKUs({
+    include_inventory: true, // Include inventory data for stock status
+    ...skuStore.filters
+  })
+}
+
+const applyFilters = async () => {
+  await skuStore.fetchSKUs({
+    include_inventory: true,
+    ...skuStore.filters
+  })
+}
+
+const clearFilters = async () => {
+  skuStore.clearFilters()
+  await skuStore.fetchSKUs({
+    include_inventory: true
+  })
+}
+
+const onTableRequest = (props: any) => {
+  const { page, rowsPerPage, sortBy, descending } = props.pagination
+
+  skuStore.fetchSKUs({
+    page,
+    limit: rowsPerPage,
+    // Add sorting when backend supports it
+  })
+}
+
+// Dialog methods
+const openCreateDialog = () => {
+  console.log('openCreateDialog called')
+  selectedSKU.value = null
+  showFormDialog.value = true
+  console.log('showFormDialog set to:', showFormDialog.value)
+}
+
+const openEditDialog = async (sku: SKU) => {
+  try {
+    // Fetch the full SKU details with populated product_details
+    const fullSKU = await skuStore.fetchSKU(sku._id)
+    selectedSKU.value = fullSKU
+    showFormDialog.value = true
+  } catch (error: any) {
+    console.error('Error fetching SKU details:', error)
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to load SKU details'
+    })
+  }
+}
+
+const openAddCostDialog = (sku: SKU) => {
+  selectedSKU.value = sku
+  showAddCostDialog.value = true
+}
+
+const openBatchScanDialog = () => {
+  showBatchScanDialog.value = true
+}
+
+const openExportDialog = () => {
+  showExportDialog.value = true
+}
+
+// Event handlers
+const onSKUSaved = async () => {
+  showFormDialog.value = false
+  selectedSKU.value = null
+  productForSKUCreation.value = null
+
+  await Promise.all([
+    refreshData(),
+    loadProductsWithoutSKUs()
+  ])
+
+  $q.notify({
+    type: 'positive',
+    message: 'SKU saved successfully'
+  })
+}
+
+const onCostAdded = () => {
+  showAddCostDialog.value = false
+  selectedSKU.value = null
+  refreshData()
+  $q.notify({
+    type: 'positive',
+    message: 'Cost added successfully'
+  })
+}
+
+const onBatchProcessed = () => {
+  showBatchScanDialog.value = false
+  refreshData()
+}
+
+// Delete methods
+const confirmDelete = (sku: SKU) => {
+  $q.dialog({
+    title: 'Confirm Delete',
+    message: `Are you sure you want to delete SKU "${sku.sku_code}"?`,
+    cancel: true,
+    persistent: true
+  }).onOk(async () => {
+    try {
+      await skuStore.deleteSKU(sku._id)
+      $q.notify({
+        type: 'positive',
+        message: 'SKU deleted successfully'
+      })
+    } catch (error: any) {
+      $q.notify({
+        type: 'negative',
+        message: error.message || 'Failed to delete SKU'
+      })
+    }
+  })
+}
+
+const confirmDeleteSelected = () => {
+  $q.dialog({
+    title: 'Confirm Delete',
+    message: `Are you sure you want to delete ${selectedSKUs.value.length} selected SKU(s)?`,
+    cancel: true,
+    persistent: true
+  }).onOk(async () => {
+    try {
+      for (const sku of selectedSKUs.value) {
+        await skuStore.deleteSKU(sku._id)
+      }
+      selectedSKUs.value = []
+      $q.notify({
+        type: 'positive',
+        message: 'SKUs deleted successfully'
+      })
+    } catch (error: any) {
+      $q.notify({
+        type: 'negative',
+        message: error.message || 'Failed to delete SKUs'
+      })
+    }
+  })
+}
+
+// Products without SKUs table columns
+const productsWithoutSKUsColumns = [
+  {
+    name: 'product_info',
+    label: 'Product',
+    field: 'product_details',
+    align: 'left',
+    sortable: false
+  },
+  {
+    name: 'quantity',
+    label: 'Quantity',
+    field: 'quantity',
+    align: 'center',
+    sortable: true
+  },
+  {
+    name: 'location',
+    label: 'Location',
+    field: 'location',
+    align: 'left',
+    sortable: false
+  },
+  {
+    name: 'cost',
+    label: 'Cost',
+    field: 'cost',
+    align: 'right',
+    sortable: true,
+    format: (val: number) => `$${formatCurrency(val)}`
+  },
+  {
+    name: 'actions',
+    label: 'Actions',
+    field: '',
+    align: 'center',
+    sortable: false
+  }
+]
+
+// Products without SKUs methods
+const loadProductsWithoutSKUs = async () => {
+  try {
+    loadingProductsWithoutSKUs.value = true
+    // Get all items that don't have SKUs assigned
+    const response = await inventoryApi.getItems({ limit: 1000 })
+    // Handle case where response.items might be undefined
+    if (response && response.items && Array.isArray(response.items)) {
+      productsWithoutSKUs.value = response.items.filter(item => !item.sku_id)
+    } else {
+      console.warn('No items found in response or invalid response format')
+      productsWithoutSKUs.value = []
+    }
+  } catch (error) {
+    console.error('Error loading products without SKUs:', error)
+    // Set empty array on error to prevent UI issues
+    productsWithoutSKUs.value = []
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to load products without SKUs'
+    })
+  } finally {
+    loadingProductsWithoutSKUs.value = false
+  }
+}
+
+const getProductDisplayName = (item: any) => {
+  const details = item.product_details as any
+  if (details.name) {
+    return details.name
+  }
+  if (details.product_line && details.color_name) {
+    return `${details.product_line} - ${details.color_name}`
+  }
+  if (details.brand && details.model) {
+    return `${details.brand} ${details.model}`
+  }
+  return `${formatProductType(item.product_type)} Product`
+}
+
+const openCreateSKUForProduct = (item: any) => {
+  productForSKUCreation.value = item
+  selectedSKU.value = null
+  showFormDialog.value = true
+}
+
+const openBulkCreateDialog = () => {
+  if (selectedProductsWithoutSKUs.value.length === 0) {
+    $q.notify({
+      type: 'warning',
+      message: 'Please select products to create SKUs for'
+    })
+    return
+  }
+
+  $q.dialog({
+    title: 'Bulk Create SKUs',
+    message: `Create SKUs for ${selectedProductsWithoutSKUs.value.length} selected products?`,
+    cancel: true,
+    persistent: true
+  }).onOk(async () => {
+    try {
+      let created = 0
+      let failed = 0
+
+      for (const item of selectedProductsWithoutSKUs.value) {
+        try {
+          // Extract the Product ID from the item's product_details
+          const productDetailsId = typeof item.product_details === 'string' ?
+            item.product_details :
+            (item.product_details as any)?._id
+
+          if (!productDetailsId) {
+            console.error(`No product_details ID found for item ${item._id}`)
+            failed++
+            continue
+          }
+
+          // Generate SKU code
+          const skuCode = await skuStore.generateSKUCode({
+            product_type: item.product_type,
+            product_details: productDetailsId
+          })
+
+          // Create SKU
+          await skuStore.createSKU({
+            sku_code: skuCode,
+            product_type: item.product_type,
+            product_details: productDetailsId,
+            current_cost: item.cost || 0,
+            stock_thresholds: item.stock_thresholds || {
+              understocked: 5,
+              overstocked: 100
+            },
+            description: `Auto-created for ${getProductDisplayName(item)}`,
+            notes: 'Bulk created from products without SKUs'
+          })
+
+          created++
+        } catch (error) {
+          console.error(`Failed to create SKU for product ${item._id}:`, error)
+          failed++
+        }
+      }
+
+      // Refresh data
+      await Promise.all([
+        refreshData(),
+        loadProductsWithoutSKUs()
+      ])
+
+      // Clear selection
+      selectedProductsWithoutSKUs.value = []
+
+      $q.notify({
+        type: 'positive',
+        message: `Created ${created} SKUs successfully${failed > 0 ? `, ${failed} failed` : ''}`
+      })
+    } catch (error: any) {
+      $q.notify({
+        type: 'negative',
+        message: error.message || 'Failed to bulk create SKUs'
+      })
+    }
+  })
+}
+
+// Quantity adjustment methods
+const adjustQuantity = async (sku: SKU, adjustment: number) => {
+  try {
+    const response = await instancesApi.adjustQuantity({
+      sku_id: sku._id,
+      adjustment: adjustment,
+      reason: 'Quick adjustment from SKU Management'
+    })
+
+    // Update the SKU in the local store optimistically
+    const skuIndex = skuStore.skus.findIndex(s => s._id === sku._id)
+    if (skuIndex !== -1 && skuStore.skus[skuIndex].inventory) {
+      const currentAvailable = skuStore.skus[skuIndex].inventory!.available_quantity || 0
+      const currentTotal = skuStore.skus[skuIndex].inventory!.total_quantity || 0
+
+      skuStore.skus[skuIndex].inventory!.available_quantity = Math.max(0, currentAvailable + adjustment)
+      skuStore.skus[skuIndex].inventory!.total_quantity = Math.max(0, currentTotal + adjustment)
+    }
+
+    $q.notify({
+      type: 'positive',
+      message: response.message || `Successfully ${adjustment > 0 ? 'increased' : 'decreased'} quantity by ${Math.abs(adjustment)}`
+    })
+
+    // Refresh data to get accurate counts
+    await refreshData()
+  } catch (error: any) {
+    console.error('Error adjusting quantity:', error)
+    $q.notify({
+      type: 'negative',
+      message: error.response?.data?.message || error.message || 'Failed to adjust quantity'
+    })
+  }
+}
+
+const openBulkAdjustDialog = (sku: SKU) => {
+  $q.dialog({
+    title: 'Bulk Adjust Quantity',
+    message: `Current quantity: ${sku.inventory?.available_quantity || 0}`,
+    prompt: {
+      model: '',
+      type: 'number',
+      placeholder: 'Enter adjustment amount (+/-)',
+      hint: 'Positive numbers increase, negative numbers decrease'
+    },
+    cancel: true,
+    persistent: true
+  }).onOk(async (adjustmentStr: string) => {
+    const adjustment = parseInt(adjustmentStr)
+    if (isNaN(adjustment) || adjustment === 0) {
+      $q.notify({
+        type: 'warning',
+        message: 'Please enter a valid non-zero number'
+      })
+      return
+    }
+
+    const currentQuantity = sku.inventory?.available_quantity || 0
+    if (adjustment < 0 && Math.abs(adjustment) > currentQuantity) {
+      $q.notify({
+        type: 'warning',
+        message: `Cannot decrease by ${Math.abs(adjustment)}. Only ${currentQuantity} available.`
+      })
+      return
+    }
+
+    await adjustQuantity(sku, adjustment)
+  })
+}
+
+console.log({skuStore})
+console.log({categoryStore})
+console.log({inventoryStore})
+
+// Apply search from query params when component loads
+onMounted(() => {
+  const searchQuery = route.query.search as string
+  if (searchQuery) {
+    skuStore.updateFilters({ search: searchQuery })
+    // Trigger search/fetch with the filter
+    skuStore.fetchSKUs()
+  }
+})
+
+// Watch for query changes (if user navigates with different search)
+watch(() => route.query.search, (newSearch) => {
+  if (newSearch) {
+    skuStore.updateFilters({ search: newSearch as string })
+    skuStore.fetchSKUs()
+  }
+})
+// Lifecycle
+onMounted(async () => {
+  await Promise.all([
+    categoryStore.fetchCategories(),
+    refreshData(),
+    loadProductsWithoutSKUs()
+  ])
+})
+</script>
 <template>
   <div class="q-pa-md">
     <!-- Header -->
@@ -392,15 +1040,18 @@
                 icon="remove"
                 round
                 @click.stop="adjustQuantity(props.row, -1)"
-                :disable="!authStore.canWrite || (props.row.inventory?.available_quantity || 0) === 0"
+                :disable="
+                  !authStore.canWrite ||
+                  (props.row.inventory?.available_quantity || 0) === 0
+                "
               >
                 <q-tooltip>Decrease quantity by 1</q-tooltip>
               </q-btn>
-              
-              <div class="text-body2 text-center" style="min-width: 30px">
+
+              <div class="text-body2 text-center" style="min-width: 30px;">
                 {{ props.row.inventory?.available_quantity || 0 }}
               </div>
-              
+
               <q-btn
                 size="xs"
                 color="positive"
@@ -411,7 +1062,7 @@
               >
                 <q-tooltip>Increase quantity by 1</q-tooltip>
               </q-btn>
-              
+
               <q-btn
                 size="xs"
                 color="blue"
@@ -502,645 +1153,6 @@
     <ExportDialog v-model="showExportDialog" export-type="skus" />
   </div>
 </template>
-
-<script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
-import { useQuasar } from 'quasar'
-import { useAuthStore } from '@/stores/auth'
-import { useSKUStore } from '@/stores/sku'
-import { useCategoryStore } from '@/stores/category'
-import { useInventoryStore } from '@/stores/inventory'
-import { inventoryApi, instancesApi } from '@/utils/api'
-import { PRODUCT_TYPES, type SKU } from '@/types'
-import StockStatusChip from '@/components/StockStatusChip.vue'
-import SKUFormDialog from '@/components/SKUFormDialog.vue'
-import AddCostDialog from '@/components/AddCostDialog.vue'
-import BatchScanDialog from '@/components/BatchScanDialog.vue'
-import ExportDialog from '@/components/ExportDialog.vue'
-
-const $q = useQuasar()
-const authStore = useAuthStore()
-const skuStore = useSKUStore()
-const categoryStore = useCategoryStore()
-const inventoryStore = useInventoryStore()
-
-// State
-const selectedSKUs = ref<SKU[]>([])
-const selectedSKU = ref<SKU | null>(null)
-const showFormDialog = ref(false)
-const showAddCostDialog = ref(false)
-const showBatchScanDialog = ref(false)
-const showExportDialog = ref(false)
-
-// Products without SKUs state
-const productsWithoutSKUs = ref<any[]>([])
-const selectedProductsWithoutSKUs = ref<any[]>([])
-const loadingProductsWithoutSKUs = ref(false)
-const productForSKUCreation = ref<any | null>(null)
-
-// Table configuration
-const columns = [
-  {
-    name: 'sku_code',
-    label: 'SKU Code',
-    field: 'sku_code',
-    align: 'left',
-    sortable: true
-  },
-  {
-    name: 'category',
-    label: 'Category',
-    field: 'category_id',
-    align: 'center',
-    sortable: true
-  },
-  {
-    name: 'barcode',
-    label: 'Barcode',
-    field: 'barcode',
-    align: 'left',
-    sortable: false
-  },
-  {
-    name: 'stock_status',
-    label: 'Stock Status',
-    field: 'stockStatus',
-    align: 'center',
-    sortable: true
-  },
-  {
-    name: 'current_cost',
-    label: 'Current Cost',
-    field: 'unit_cost',
-    align: 'right',
-    sortable: true
-  },
-  {
-    name: 'totalQuantity',
-    label: 'Total Quantity',
-    field: (row: any) => row.inventory?.total_quantity || 0,
-    align: 'right',
-    sortable: true
-  },
-  {
-    name: 'quantity_controls',
-    label: 'Quick Adjust',
-    field: '',
-    align: 'center',
-    sortable: false
-  },
-  {
-    name: 'status',
-    label: 'Status',
-    field: 'status',
-    align: 'center',
-    sortable: true
-  },
-  {
-    name: 'actions',
-    label: 'Actions',
-    field: '',
-    align: 'center',
-    sortable: false
-  }
-]
-
-const tablePagination = computed(() => ({
-  sortBy: 'sku_code',
-  descending: false,
-  page: skuStore.pagination.currentPage,
-  rowsPerPage: skuStore.pagination.limit,
-  rowsNumber: skuStore.pagination.totalSkus
-}))
-
-// Options
-const productTypeOptions = PRODUCT_TYPES.map(type => ({
-  label: type.label,
-  value: type.value
-}))
-
-const categoryOptions = computed(() => {
-  return categoryStore.categories.map(category => ({
-    label: category.name,
-    value: category._id
-  }))
-})
-
-const statusOptions = [
-  { label: 'Active', value: 'active' },
-  { label: 'Pending', value: 'pending' },
-  { label: 'Discontinued', value: 'discontinued' }
-]
-
-// Methods
-const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(value)
-}
-
-const formatProductType = (type: string) => {
-  const found = PRODUCT_TYPES.find(t => t.value === type)
-  return found ? found.label : type
-}
-
-const getProductTypeColor = (type: string) => {
-  const colors: Record<string, string> = {
-    wall: 'blue',
-    toilet: 'green',
-    base: 'orange',
-    tub: 'cyan',
-    vanity: 'purple',
-    shower_door: 'teal',
-    raw_material: 'brown',
-    accessory: 'pink',
-    miscellaneous: 'grey'
-  }
-  return colors[type] || 'grey'
-}
-
-const formatStatus = (status: string) => {
-  return status.charAt(0).toUpperCase() + status.slice(1)
-}
-
-const getStatusColor = (status: string) => {
-  const colors: Record<string, string> = {
-    active: 'green',
-    inactive: 'orange',
-    discontinued: 'red'
-  }
-  return colors[status] || 'grey'
-}
-
-const getCategoryName = (categoryId: string | any) => {
-  if (!categoryId) return 'Uncategorized'
-  
-  // Handle case where categoryId is already populated object from backend
-  if (typeof categoryId === 'object' && categoryId.displayName) {
-    return categoryId.displayName
-  }
-  if (typeof categoryId === 'object' && categoryId.name) {
-    return categoryId.name
-  }
-  
-  // Handle case where categoryId is still just an ID string
-  if (typeof categoryId === 'string') {
-    const category = categoryStore.categories.find(c => c._id === categoryId)
-    return category ? category.name : 'Unknown Category'
-  }
-  
-  return 'Unknown Category'
-}
-
-const getCategoryColor = (categoryId: string | any) => {
-  if (!categoryId) return 'grey'
-  
-  // Handle case where categoryId is an object (populated category)
-  let idString: string
-  if (typeof categoryId === 'object' && categoryId._id) {
-    idString = categoryId._id
-  } else if (typeof categoryId === 'string') {
-    idString = categoryId
-  } else {
-    return 'grey'
-  }
-  
-  const colors: string[] = ['blue', 'green', 'orange', 'cyan', 'purple', 'teal', 'brown', 'pink', 'indigo', 'deep-purple']
-  // Use category ID to generate consistent color
-  const index = idString ? idString.charCodeAt(idString.length - 1) % colors.length : 0
-  return colors[index]
-}
-
-// Get stock status from inventory data based on backend flags
-const getStockStatus = (sku: any) => {
-  if (!sku.inventory) return 'out_of_stock'
-  
-  // Use backend calculated flags first (preferred)
-  if (sku.inventory.is_out_of_stock) {
-    return 'out_of_stock'
-  }
-  if (sku.inventory.is_overstock) {
-    return 'overstocked'
-  }
-  if (sku.inventory.is_low_stock) {
-    return 'understocked'
-  }
-  
-  // Fallback to manual calculation if backend flags not available
-  const totalQty = sku.inventory.total_quantity || 0
-  const availableQty = sku.inventory.available_quantity || 0
-  const thresholds = sku.stock_thresholds || { understocked: 5, overstocked: 100 }
-  
-  if (totalQty === 0 || availableQty === 0) {
-    return 'out_of_stock'
-  }
-  if (totalQty >= thresholds.overstocked) {
-    return 'overstocked'
-  }
-  if (availableQty <= thresholds.understocked) {
-    return 'understocked'
-  }
-  
-  return 'adequate'
-}
-
-const refreshData = async () => {
-  await skuStore.fetchSKUs({
-    include_inventory: true, // Include inventory data for stock status
-    ...skuStore.filters
-  })
-}
-
-const applyFilters = async () => {
-  await skuStore.fetchSKUs({
-    include_inventory: true,
-    ...skuStore.filters
-  })
-}
-
-const clearFilters = async () => {
-  skuStore.clearFilters()
-  await skuStore.fetchSKUs({
-    include_inventory: true
-  })
-}
-
-const onTableRequest = (props: any) => {
-  const { page, rowsPerPage, sortBy, descending } = props.pagination
-
-  skuStore.fetchSKUs({
-    page,
-    limit: rowsPerPage,
-    // Add sorting when backend supports it
-  })
-}
-
-// Dialog methods
-const openCreateDialog = () => {
-  console.log('openCreateDialog called')
-  selectedSKU.value = null
-  showFormDialog.value = true
-  console.log('showFormDialog set to:', showFormDialog.value)
-}
-
-const openEditDialog = async (sku: SKU) => {
-  try {
-    // Fetch the full SKU details with populated product_details
-    const fullSKU = await skuStore.fetchSKU(sku._id)
-    selectedSKU.value = fullSKU
-    showFormDialog.value = true
-  } catch (error: any) {
-    console.error('Error fetching SKU details:', error)
-    $q.notify({
-      type: 'negative',
-      message: 'Failed to load SKU details'
-    })
-  }
-}
-
-const openAddCostDialog = (sku: SKU) => {
-  selectedSKU.value = sku
-  showAddCostDialog.value = true
-}
-
-const openBatchScanDialog = () => {
-  showBatchScanDialog.value = true
-}
-
-const openExportDialog = () => {
-  showExportDialog.value = true
-}
-
-// Event handlers
-const onSKUSaved = async () => {
-  showFormDialog.value = false
-  selectedSKU.value = null
-  productForSKUCreation.value = null
-
-  await Promise.all([
-    refreshData(),
-    loadProductsWithoutSKUs()
-  ])
-
-  $q.notify({
-    type: 'positive',
-    message: 'SKU saved successfully'
-  })
-}
-
-const onCostAdded = () => {
-  showAddCostDialog.value = false
-  selectedSKU.value = null
-  refreshData()
-  $q.notify({
-    type: 'positive',
-    message: 'Cost added successfully'
-  })
-}
-
-const onBatchProcessed = () => {
-  showBatchScanDialog.value = false
-  refreshData()
-}
-
-// Delete methods
-const confirmDelete = (sku: SKU) => {
-  $q.dialog({
-    title: 'Confirm Delete',
-    message: `Are you sure you want to delete SKU "${sku.sku_code}"?`,
-    cancel: true,
-    persistent: true
-  }).onOk(async () => {
-    try {
-      await skuStore.deleteSKU(sku._id)
-      $q.notify({
-        type: 'positive',
-        message: 'SKU deleted successfully'
-      })
-    } catch (error: any) {
-      $q.notify({
-        type: 'negative',
-        message: error.message || 'Failed to delete SKU'
-      })
-    }
-  })
-}
-
-const confirmDeleteSelected = () => {
-  $q.dialog({
-    title: 'Confirm Delete',
-    message: `Are you sure you want to delete ${selectedSKUs.value.length} selected SKU(s)?`,
-    cancel: true,
-    persistent: true
-  }).onOk(async () => {
-    try {
-      for (const sku of selectedSKUs.value) {
-        await skuStore.deleteSKU(sku._id)
-      }
-      selectedSKUs.value = []
-      $q.notify({
-        type: 'positive',
-        message: 'SKUs deleted successfully'
-      })
-    } catch (error: any) {
-      $q.notify({
-        type: 'negative',
-        message: error.message || 'Failed to delete SKUs'
-      })
-    }
-  })
-}
-
-// Products without SKUs table columns
-const productsWithoutSKUsColumns = [
-  {
-    name: 'product_info',
-    label: 'Product',
-    field: 'product_details',
-    align: 'left',
-    sortable: false
-  },
-  {
-    name: 'quantity',
-    label: 'Quantity',
-    field: 'quantity',
-    align: 'center',
-    sortable: true
-  },
-  {
-    name: 'location',
-    label: 'Location',
-    field: 'location',
-    align: 'left',
-    sortable: false
-  },
-  {
-    name: 'cost',
-    label: 'Cost',
-    field: 'cost',
-    align: 'right',
-    sortable: true,
-    format: (val: number) => `$${formatCurrency(val)}`
-  },
-  {
-    name: 'actions',
-    label: 'Actions',
-    field: '',
-    align: 'center',
-    sortable: false
-  }
-]
-
-// Products without SKUs methods
-const loadProductsWithoutSKUs = async () => {
-  try {
-    loadingProductsWithoutSKUs.value = true
-    // Get all items that don't have SKUs assigned
-    const response = await inventoryApi.getItems({ limit: 1000 })
-    // Handle case where response.items might be undefined
-    if (response && response.items && Array.isArray(response.items)) {
-      productsWithoutSKUs.value = response.items.filter(item => !item.sku_id)
-    } else {
-      console.warn('No items found in response or invalid response format')
-      productsWithoutSKUs.value = []
-    }
-  } catch (error) {
-    console.error('Error loading products without SKUs:', error)
-    // Set empty array on error to prevent UI issues
-    productsWithoutSKUs.value = []
-    $q.notify({
-      type: 'negative',
-      message: 'Failed to load products without SKUs'
-    })
-  } finally {
-    loadingProductsWithoutSKUs.value = false
-  }
-}
-
-const getProductDisplayName = (item: any) => {
-  const details = item.product_details as any
-  if (details.name) {
-    return details.name
-  }
-  if (details.product_line && details.color_name) {
-    return `${details.product_line} - ${details.color_name}`
-  }
-  if (details.brand && details.model) {
-    return `${details.brand} ${details.model}`
-  }
-  return `${formatProductType(item.product_type)} Product`
-}
-
-const openCreateSKUForProduct = (item: any) => {
-  productForSKUCreation.value = item
-  selectedSKU.value = null
-  showFormDialog.value = true
-}
-
-const openBulkCreateDialog = () => {
-  if (selectedProductsWithoutSKUs.value.length === 0) {
-    $q.notify({
-      type: 'warning',
-      message: 'Please select products to create SKUs for'
-    })
-    return
-  }
-
-  $q.dialog({
-    title: 'Bulk Create SKUs',
-    message: `Create SKUs for ${selectedProductsWithoutSKUs.value.length} selected products?`,
-    cancel: true,
-    persistent: true
-  }).onOk(async () => {
-    try {
-      let created = 0
-      let failed = 0
-
-      for (const item of selectedProductsWithoutSKUs.value) {
-        try {
-          // Extract the Product ID from the item's product_details
-          const productDetailsId = typeof item.product_details === 'string' ?
-            item.product_details :
-            (item.product_details as any)?._id
-
-          if (!productDetailsId) {
-            console.error(`No product_details ID found for item ${item._id}`)
-            failed++
-            continue
-          }
-
-          // Generate SKU code
-          const skuCode = await skuStore.generateSKUCode({
-            product_type: item.product_type,
-            product_details: productDetailsId
-          })
-
-          // Create SKU
-          await skuStore.createSKU({
-            sku_code: skuCode,
-            product_type: item.product_type,
-            product_details: productDetailsId,
-            current_cost: item.cost || 0,
-            stock_thresholds: item.stock_thresholds || {
-              understocked: 5,
-              overstocked: 100
-            },
-            description: `Auto-created for ${getProductDisplayName(item)}`,
-            notes: 'Bulk created from products without SKUs'
-          })
-
-          created++
-        } catch (error) {
-          console.error(`Failed to create SKU for product ${item._id}:`, error)
-          failed++
-        }
-      }
-
-      // Refresh data
-      await Promise.all([
-        refreshData(),
-        loadProductsWithoutSKUs()
-      ])
-
-      // Clear selection
-      selectedProductsWithoutSKUs.value = []
-
-      $q.notify({
-        type: 'positive',
-        message: `Created ${created} SKUs successfully${failed > 0 ? `, ${failed} failed` : ''}`
-      })
-    } catch (error: any) {
-      $q.notify({
-        type: 'negative',
-        message: error.message || 'Failed to bulk create SKUs'
-      })
-    }
-  })
-}
-
-// Quantity adjustment methods
-const adjustQuantity = async (sku: SKU, adjustment: number) => {
-  try {
-    const response = await instancesApi.adjustQuantity({
-      sku_id: sku._id,
-      adjustment: adjustment,
-      reason: 'Quick adjustment from SKU Management'
-    })
-    
-    // Update the SKU in the local store optimistically
-    const skuIndex = skuStore.skus.findIndex(s => s._id === sku._id)
-    if (skuIndex !== -1 && skuStore.skus[skuIndex].inventory) {
-      const currentAvailable = skuStore.skus[skuIndex].inventory!.available_quantity || 0
-      const currentTotal = skuStore.skus[skuIndex].inventory!.total_quantity || 0
-      
-      skuStore.skus[skuIndex].inventory!.available_quantity = Math.max(0, currentAvailable + adjustment)
-      skuStore.skus[skuIndex].inventory!.total_quantity = Math.max(0, currentTotal + adjustment)
-    }
-    
-    $q.notify({
-      type: 'positive',
-      message: response.message || `Successfully ${adjustment > 0 ? 'increased' : 'decreased'} quantity by ${Math.abs(adjustment)}`
-    })
-    
-    // Refresh data to get accurate counts
-    await refreshData()
-  } catch (error: any) {
-    console.error('Error adjusting quantity:', error)
-    $q.notify({
-      type: 'negative',
-      message: error.response?.data?.message || error.message || 'Failed to adjust quantity'
-    })
-  }
-}
-
-const openBulkAdjustDialog = (sku: SKU) => {
-  $q.dialog({
-    title: 'Bulk Adjust Quantity',
-    message: `Current quantity: ${sku.inventory?.available_quantity || 0}`,
-    prompt: {
-      model: '',
-      type: 'number',
-      placeholder: 'Enter adjustment amount (+/-)',
-      hint: 'Positive numbers increase, negative numbers decrease'
-    },
-    cancel: true,
-    persistent: true
-  }).onOk(async (adjustmentStr: string) => {
-    const adjustment = parseInt(adjustmentStr)
-    if (isNaN(adjustment) || adjustment === 0) {
-      $q.notify({
-        type: 'warning',
-        message: 'Please enter a valid non-zero number'
-      })
-      return
-    }
-    
-    const currentQuantity = sku.inventory?.available_quantity || 0
-    if (adjustment < 0 && Math.abs(adjustment) > currentQuantity) {
-      $q.notify({
-        type: 'warning', 
-        message: `Cannot decrease by ${Math.abs(adjustment)}. Only ${currentQuantity} available.`
-      })
-      return
-    }
-    
-    await adjustQuantity(sku, adjustment)
-  })
-}
-
-console.log({skuStore})
-console.log({categoryStore})
-console.log({inventoryStore})
-// Lifecycle
-onMounted(async () => {
-  await Promise.all([
-    categoryStore.fetchCategories(),
-    refreshData(),
-    loadProductsWithoutSKUs()
-  ])
-})
-</script>
 
 <style scoped>
 .stat-card {

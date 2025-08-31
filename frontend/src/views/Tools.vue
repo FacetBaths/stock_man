@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import { toolsApi, categoryApi } from '@/utils/api'
 import { debounce } from 'quasar'
 import type { Tag } from '@/types'
@@ -14,9 +15,7 @@ const dashboardStats = ref({
   availableTools: 0,
   loanedTools: 0,
   overdueLoans: 0,
-  totalValue: 0,
-  lowStockTools: 0,
-  outOfStockTools: 0
+  totalValue: 0
 })
 
 // Active loans data
@@ -43,7 +42,8 @@ const router = useRouter()
 // Tab management
 const currentTab = ref('dashboard')
 
-// Tools store
+// Stores
+const authStore = useAuthStore()
 const toolsStore = useToolsStore()
 
 // Computed properties
@@ -257,6 +257,14 @@ onMounted(async () => {
           >
             <q-tab name="dashboard" icon="dashboard" label="Dashboard" />
             <q-tab name="inventory" icon="inventory" label="Inventory" />
+            <q-tab 
+              v-if="authStore.canWrite"
+              name="add-tool" 
+              icon="add" 
+              label="Add Tool" 
+              @click="navigateToToolsInventory"
+              class="add-tool-tab"
+            />
             <q-tab name="loans" icon="assignment" label="Loans" />
           </q-tabs>
         </div>

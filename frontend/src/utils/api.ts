@@ -274,22 +274,28 @@ export const inventoryApi = {
       newParams.search = params.product_type
     }
     
-    // Map in_stock_only to status filter
+    // Map in_stock_only to status filter - use correct backend status values
     if (params?.in_stock_only) {
-      newParams.status = 'available' // or however this should be mapped
+      // Don't filter by status for in_stock_only, let backend handle availability
+      // The backend will return items with their availability status
     }
     
     const response = await api.get('/inventory', { params: newParams })
     
-    // Transform response to match old InventoryResponse format
-    // The backend returns 'inventory' array, but old system expected 'items'
-    const inventoryItems = response.data.inventory || []
-    
+    // Transform response to match InventoryResponse interface exactly
     return {
-      items: inventoryItems,
-      totalItems: response.data.pagination?.total_items || 0,
-      totalPages: response.data.pagination?.total_pages || 0,
-      currentPage: response.data.pagination?.current_page || 1
+      inventory: response.data.inventory || [],
+      pagination: {
+        current_page: response.data.pagination?.current_page || 1,
+        total_pages: response.data.pagination?.total_pages || 0,
+        total_items: response.data.pagination?.total_items || 0,
+        items_per_page: response.data.pagination?.items_per_page || (params?.limit || 50)
+      },
+      filters: {
+        status: newParams.status || 'all',
+        sort_by: newParams.sort_by || 'sku_code',
+        sort_order: newParams.sort_order || 'asc'
+      }
     }
   },
 

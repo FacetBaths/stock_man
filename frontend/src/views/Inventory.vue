@@ -9,7 +9,7 @@ import { skuApi } from '@/utils/api'
 import InventoryTable from '@/components/InventoryTable.vue'
 import AddStockModal from '@/components/AddStockModal.vue'
 import AddToolModal from '@/components/AddToolModal.vue'
-import EditItemModal from '@/components/EditItemModal.vue'
+import EditToolModal from '@/components/EditToolModal.vue'
 import QuickScanModal from '@/components/QuickScanModal.vue'
 import type { Inventory } from '@/types'
 
@@ -496,10 +496,10 @@ watch([searchQuery, showInStockOnly], () => {
       @success="handleAddSuccess"
     />
 
-    <EditItemModal
+    <EditToolModal
       v-model="showEditModal"
       v-if="itemToEdit"
-      :item="itemToEdit"
+      :tool="itemToEdit"
       @success="handleEditSuccess"
     />
 

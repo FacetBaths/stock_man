@@ -7,6 +7,7 @@ import InventoryTable from "@/components/InventoryTable.vue";
 import AddItemModal from "@/components/AddItemModal.vue";
 import EditItemModal from "@/components/EditItemModal.vue";
 import QuickScanModal from "@/components/QuickScanModal.vue";
+import { formatCategoryName } from "@/utils/formatting";
 import type { Inventory } from "@/types";
 
 const authStore = useAuthStore();
@@ -55,22 +56,24 @@ const toTitleCase = (str: string): string => {
   });
 };
 
-// Available categories for filtering
+// Available categories for filtering (PRODUCTS ONLY - exclude tools)
 const availableCategories = computed(() => {
   // Uncomment for debugging category loading:
   // console.log("🎯 [Dashboard] availableCategories computed triggered");
   
   const categories = [{ _id: "", name: "All Categories" }];
   if (categoryStore.categories && categoryStore.categories.length > 0) {
-    // Handle both old and new category structures with title case formatting
-    const mappedCategories = categoryStore.categories.map((cat) => {
-      const rawName = cat.name || cat.displayName || "Unnamed Category";
-      return {
-        _id: cat._id || cat.id,
-        name: toTitleCase(rawName),
-      };
-    });
-    categories.push(...mappedCategories);
+    // Filter out tool categories and format with proper capitalization
+    const productCategories = categoryStore.categories
+      .filter(cat => cat.type !== 'tool') // Exclude tool categories from products inventory
+      .map((cat) => {
+        const rawName = cat.name || cat.displayName || "Unnamed Category";
+        return {
+          _id: cat._id || cat.id,
+          name: formatCategoryName(rawName), // Use the formatting utility
+        };
+      });
+    categories.push(...productCategories);
   }
   return categories;
 });

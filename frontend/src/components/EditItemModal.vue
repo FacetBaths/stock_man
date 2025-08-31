@@ -2,8 +2,15 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useQuasar } from 'quasar'
 import { useAuthStore } from '@/stores/auth'
+import { useCategoryStore } from '@/stores/category'
 import { skuApi } from '@/utils/api'
+import { formatCategoryName } from '@/utils/formatting'
 import type { SKU, UpdateSKURequest } from '@/types'
+import { useRouter } from 'vue-router'
+import { useSKUStore } from '@/stores/sku' // Adjust path as needed
+
+const router = useRouter()
+const skuStore = useSKUStore()
 
 interface Props {
   modelValue: boolean
@@ -19,6 +26,7 @@ const emit = defineEmits<{
 
 const $q = useQuasar()
 const authStore = useAuthStore()
+const categoryStore = useCategoryStore()
 const isUpdating = ref(false)
 const error = ref<string | null>(null)
 
@@ -68,8 +76,128 @@ const formData = ref<UpdateSKURequest>({
 const canEditCost = computed(() => authStore.user?.role === 'admin' || authStore.user?.role === 'warehouse_manager')
 const currentSkuId = ref('')
 
+// Computed property to get the SKU code from various possible locations
+const currentSKUCode = computed(() => {
+  if (!props.item) return ''
+  return (props.item.sku && props.item.sku.sku_code) ||
+         (props.item.sku_id && props.item.sku_id.sku_code) ||
+         props.item.sku_code ||
+         ''
+})
+
 // UI helper for editing features as comma-separated string
 const featuresInput = ref('')
+
+// Computed properties to ensure safe access to details properties
+const detailsProductLine = computed({
+  get: () => formData.value.details?.product_line || '',
+  set: (value: string) => {
+    if (!formData.value.details) {
+      formData.value.details = {
+        product_line: '',
+        color_name: '',
+        dimensions: '',
+        finish: '',
+        tool_type: '',
+        manufacturer: '',
+        serial_number: '',
+        voltage: '',
+        features: [],
+        weight: 0,
+        specifications: {}
+      }
+    }
+    formData.value.details.product_line = value
+  }
+})
+
+const detailsColorName = computed({
+  get: () => formData.value.details?.color_name || '',
+  set: (value: string) => {
+    if (!formData.value.details) {
+      formData.value.details = {
+        product_line: '',
+        color_name: '',
+        dimensions: '',
+        finish: '',
+        tool_type: '',
+        manufacturer: '',
+        serial_number: '',
+        voltage: '',
+        features: [],
+        weight: 0,
+        specifications: {}
+      }
+    }
+    formData.value.details.color_name = value
+  }
+})
+
+const detailsDimensions = computed({
+  get: () => formData.value.details?.dimensions || '',
+  set: (value: string) => {
+    if (!formData.value.details) {
+      formData.value.details = {
+        product_line: '',
+        color_name: '',
+        dimensions: '',
+        finish: '',
+        tool_type: '',
+        manufacturer: '',
+        serial_number: '',
+        voltage: '',
+        features: [],
+        weight: 0,
+        specifications: {}
+      }
+    }
+    formData.value.details.dimensions = value
+  }
+})
+
+const detailsFinish = computed({
+  get: () => formData.value.details?.finish || '',
+  set: (value: string) => {
+    if (!formData.value.details) {
+      formData.value.details = {
+        product_line: '',
+        color_name: '',
+        dimensions: '',
+        finish: '',
+        tool_type: '',
+        manufacturer: '',
+        serial_number: '',
+        voltage: '',
+        features: [],
+        weight: 0,
+        specifications: {}
+      }
+    }
+    formData.value.details.finish = value
+  }
+})
+
+const detailsWeight = computed({
+  get: () => formData.value.details?.weight || 0,
+  set: (value: number) => {
+    if (!formData.value.details) {
+      formData.value.details = {
+        product_line: '',
+        color_name: '',
+        dimensions: '',
+        finish: '',
+        tool_type: '',
+        manufacturer: '',
+        serial_number: '',
+        voltage: '',
+        features: [],
+        weight: 0,
+        specifications: {}
+      }
+    }
+    formData.value.details.weight = value
+  }
+})
 
 watch(() => formData.value.details?.features, (newVal) => {
   if (Array.isArray(newVal)) {
@@ -83,6 +211,7 @@ const statusOptions = [
   { label: 'Inactive', value: 'inactive' },
   { label: 'Discontinued', value: 'discontinued' }
 ]
+
 
 const initializeForm = () => {
   console.log('🔍 EditItemModal: Initializing form with item:', props.item)
@@ -195,20 +324,13 @@ const initializeForm = () => {
     brand: skuData.brand || '',
     model: skuData.model || '',
 
-    // Details object - only category-specific fields (per SKU model schema)
+    // Details object - only product-specific fields
     details: skuData.details ? {
-      // Wall-specific fields
+      // Product-specific fields
       product_line: skuData.details.product_line || '',
       color_name: skuData.details.color_name || '',
       dimensions: skuData.details.dimensions || '',
       finish: skuData.details.finish || '',
-
-      // Tool-specific fields
-      tool_type: skuData.details.tool_type || '',
-      manufacturer: skuData.details.manufacturer || '',
-      serial_number: skuData.details.serial_number || '',
-      voltage: skuData.details.voltage || '',
-      features: skuData.details.features || [],
 
       // Common fields
       weight: skuData.details.weight || 0,
@@ -219,11 +341,6 @@ const initializeForm = () => {
       color_name: '',
       dimensions: '',
       finish: '',
-      tool_type: '',
-      manufacturer: '',
-      serial_number: '',
-      voltage: '',
-      features: [],
       weight: 0,
       specifications: {}
     },
@@ -339,6 +456,26 @@ const onValidationError = () => {
   })
 }
 
+
+const handleSKUClick = (itemName: string) => {
+  console.log('Navigating to SKU Management with search:', itemName)
+  
+  // Set the search filter in the store using updateFilters
+  skuStore.updateFilters({ search: itemName })
+
+  // Navigate to SKU Management with search query parameter
+  router.push({
+    path: '/skus',
+    query: { search: itemName }
+  })
+}
+
+const formatCategoryNameLocal = (name: string) => {
+  name == 'rawmaterials'? name = 'raw Materials' : void 0
+  name == 'showerdoors'? name = 'shower Doors' : void 0
+  return formatCategoryName(name)
+}
+
 // Watch for dialog opening and item changes
 watch(() => props.modelValue, (newValue) => {
   if (newValue && props.item) {
@@ -375,7 +512,7 @@ onMounted(() => {
       <q-card-section class="row items-center">
         <div class="text-h6">
           <q-icon name="edit" class="q-mr-sm" />
-          Edit SKU
+          Edit Product Info
         </div>
         <q-space />
         <q-btn icon="close" flat round dense @click="handleClose" />
@@ -403,16 +540,21 @@ onMounted(() => {
                 <div class="row q-col-gutter-md">
                   <div class="col-12 col-sm-6">
                     <div class="text-caption text-grey-6">SKU Code</div>
-                    <q-chip
-                      :label="
-                        (item.sku && item.sku.sku_code) ||
-                        (item.sku_id && item.sku_id.sku_code) ||
-                        'No SKU'
-                      "
-                      color="primary"
+                    <q-btn
+                      :label="currentSKUCode || 'No SKU'"
+                      :color="currentSKUCode ? 'primary' : 'grey'"
                       text-color="white"
                       icon="qr_code"
-                    />
+                      :disable="!currentSKUCode"
+                      @click="handleSKUClick(currentSKUCode)"
+                    >
+                      <q-tooltip v-if="currentSKUCode">
+                        Click to view this SKU in SKU Management
+                      </q-tooltip>
+                      <q-tooltip v-else>
+                        No SKU code available
+                      </q-tooltip>
+                    </q-btn>
                   </div>
                   <div class="col-12 col-sm-6">
                     <div class="text-caption text-grey-6">Total Quantity</div>
@@ -426,7 +568,9 @@ onMounted(() => {
                   </div>
                   <div v-if="item.category" class="col-12 col-sm-6">
                     <div class="text-caption text-grey-6">Category</div>
-                    <div class="text-body1">{{ item.category.name }}</div>
+                    <div class="text-body1">
+                      {{ formatCategoryNameLocal(item.category.name) }}
+                    </div>
                   </div>
                 </div>
               </q-card>
@@ -477,56 +621,57 @@ onMounted(() => {
               />
             </div>
 
-            <!-- Tool Type -->
-            <div class="col-12">
+            <!-- Product-specific fields -->
+            <div class="col-12 col-sm-6">
               <q-input
-                v-model="formData.details.tool_type"
-                label="Tool Type"
+                v-model="detailsProductLine"
+                label="Product Line"
                 outlined
                 dense
-                placeholder="e.g., Power Tool, Hand Tool, Measuring Tool"
+                placeholder="e.g., Professional Series"
               />
             </div>
 
-            <!-- Tool-specific fields -->
-            <div class="col-12 col-sm-4">
+            <div class="col-12 col-sm-6">
               <q-input
-                v-model="formData.details.manufacturer"
-                label="Manufacturer"
+                v-model="detailsColorName"
+                label="Color"
                 outlined
                 dense
-                placeholder="e.g., Milwaukee"
+                placeholder="e.g., White, Black, Natural"
               />
             </div>
 
-            <div class="col-12 col-sm-4">
+            <div class="col-12 col-sm-6">
               <q-input
-                v-model="formData.details.serial_number"
-                label="Serial Number"
+                v-model="detailsDimensions"
+                label="Dimensions"
                 outlined
                 dense
-                placeholder="e.g., SN12345"
+                placeholder="e.g., 24x36x2 inches"
               />
             </div>
 
-            <div class="col-12 col-sm-4">
+            <div class="col-12 col-sm-6">
               <q-input
-                v-model="formData.details.voltage"
-                label="Voltage"
+                v-model="detailsFinish"
+                label="Finish"
                 outlined
                 dense
-                placeholder="e.g., 18V"
+                placeholder="e.g., Matte, Glossy, Textured"
               />
             </div>
 
-            <div class="col-12">
+            <div class="col-12 col-sm-6">
               <q-input
-                :model-value="featuresInput"
-                @update:model-value="(val: string) => { featuresInput = val; formData.details.features = val.split(',').map(v => v.trim()).filter(v => v) }"
-                label="Features (comma-separated)"
+                v-model.number="detailsWeight"
+                label="Weight (lbs)"
                 outlined
                 dense
-                placeholder="e.g., Brushless, LED Light, Keyless Blade Change"
+                type="number"
+                min="0"
+                step="0.1"
+                placeholder="0.0"
               />
             </div>
 

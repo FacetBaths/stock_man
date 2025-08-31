@@ -1,11 +1,12 @@
 {
-  "watch": ["src/", ".env"],
+  "watch": ["src/**/*"],
   "ext": "js,json",
-  "ignore": ["node_modules/", "logs/", "*.test.js"],
+  "ignore": ["node_modules/**/*", "logs/**/*", "*.test.js"],
   "env": {
     "NODE_ENV": "development"
   },
   "delay": 1000,
   "signal": "SIGTERM",
-  "verbose": true
+  "verbose": false,
+  "legacyWatch": true
 }
