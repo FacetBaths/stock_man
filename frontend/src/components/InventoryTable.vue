@@ -2,7 +2,8 @@
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useInventoryStore } from '@/stores/inventory'
-import type { Inventory, StockStatus } from '@/types'
+import { formatCurrency } from '@/utils/currency'
+import type { Inventory } from '@/types'
 import { TAG_TYPES } from '@/types'
 import StockStatusChip from '@/components/StockStatusChip.vue'
 

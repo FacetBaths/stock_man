@@ -64,7 +64,7 @@ const canEditCost = computed(
 
 // Get only product categories (exclude tools) with proper formatting
 const productCategories = computed(() => {
-  return categoryStore.categories
+  const categoryResponse = categoryStore.categories
     .filter((cat) => cat.type !== "tool" && cat.status === "active") // Exclude tool categories
     .map((cat) => ({
       _id: cat._id,
@@ -72,6 +72,9 @@ const productCategories = computed(() => {
       type: cat.type,
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
+
+  console.log(categoryResponse);
+  return categoryResponse;
 });
 
 // Load all active SKUs for add_stock mode
@@ -313,7 +316,7 @@ onMounted(() => {
                 v-model="formData.category_id"
                 :options="productCategories"
                 option-value="_id"
-                :option-label="(cat) => `${cat.name} (${cat.type})`"
+                :option-label="(cat) => cat.name ? `${cat.name}`:''"
                 label="Category *"
                 outlined
                 dense

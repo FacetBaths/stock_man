@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { onMounted, ref, onUnmounted } from "vue";
+import { onMounted, ref, onUnmounted, computed } from "vue";
 import { RouterView, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import UserProfile from "@/components/UserProfile.vue";
 import packageInfo from "../../package.json";
+import { capitalizeWords } from "./utils/formatting";
 
 const authStore = useAuthStore();
 const router = useRouter();
@@ -105,12 +106,16 @@ const forceLogout = () => {
   console.log("=== FORCE LOGOUT COMPLETED ===");
 };
 
-const navTabs = [
-  { path: "/dashboard", label: "Dashboard", icon: "dashboard" },
-  { path: "/tags", label: "Tags", icon: "local_offer" },
-  { path: "/tools", label: "Tools", icon: "build" },
-  { path: "/skus", label: "SKU Management", icon: "qr_code" },
-];
+const navTabs = computed(() => {
+  const tabs = [
+    { path: "/dashboard", label: "Dashboard", icon: "dashboard" },
+    { path: "/tags", label: "Tag Management", icon: "local_offer" },
+    { path: "/tools", label: "Tool Management", icon: "build" },
+    { path: "/skus", label: "SKU Management", icon: "qr_code" },
+  ];
+
+  return tabs;
+});
 
 // Build info (can be injected during build process)
 const buildInfo = {
@@ -143,11 +148,12 @@ const getVersionTooltip = () => {
         <q-toolbar class="q-px-lg" style="min-height: 70px;">
           <!-- Logo and Title -->
           <div class="row items-center no-wrap q-mr-lg">
-            <img
-              src="@/assets/images/Logo_V2_Gradient7_CTC.png"
-              alt="Facet Renovations Logo"
-              class="nav-logo q-mr-md"
-            />
+            <q-btn flat href="/#"
+              ><img
+                src="@/assets/images/Logo_V2_Gradient7_CTC.png"
+                alt="Facet Renovations Logo"
+                class="nav-logo q-mr-md"
+            /></q-btn>
             <div v-if="isDesktop" class="nav-title">
               <div class="row items-center q-gutter-xs">
                 <div class="title text-h6 text-weight-bold q-mb-none">
@@ -237,6 +243,20 @@ const getVersionTooltip = () => {
                     tab.label
                   }}</q-item-section>
                 </q-item>
+                <q-item
+                  v-if="authStore.isAdmin"
+                  clickable
+                  v-close-popup
+                  :to="'/users'"
+                  class="menu-item q-mb-sm"
+                >
+                  <q-item-section avatar>
+                    <q-icon name="people" class="text-primary" />
+                  </q-item-section>
+                  <q-item-section class="text-dark"
+                    >User Management</q-item-section
+                  >
+                </q-item>
                 <q-separator class="q-my-md" />
                 <q-item
                   clickable
@@ -256,13 +276,17 @@ const getVersionTooltip = () => {
           <!-- Desktop User Menu -->
           <q-btn v-else flat class="user-menu-btn" no-caps>
             <q-avatar size="36px" class="q-mr-sm user-avatar">
-              <q-icon name="account_circle" size="24px" class="text-white" />
+              <q-icon
+                name="account_circle"
+                size="24px"
+                class="text-secondary"
+              />
             </q-avatar>
             <div class="user-info">
-              <div class="text-white text-weight-medium">
-                {{ authStore.user?.username }}
+              <div class="text-black text-weight-medium">
+                {{ capitalizeWords(authStore.user!.username) }}
               </div>
-              <div class="text-caption text-white opacity-70">
+              <div class="text-caption text-grey opacity-70">
                 {{ authStore.user?.role.replace("_", " ").toUpperCase() }}
               </div>
             </div>
@@ -284,6 +308,21 @@ const getVersionTooltip = () => {
                   </q-item-section>
                   <q-item-section class="text-dark">Profile</q-item-section>
                 </q-item>
+                <q-item
+                  v-if="authStore.isAdmin"
+                  clickable
+                  v-close-popup
+                  :to="'/users'"
+                  class="menu-item"
+                >
+                  <q-item-section avatar>
+                    <q-icon name="people" class="text-primary" />
+                  </q-item-section>
+                  <q-item-section class="text-dark"
+                    >User Management</q-item-section
+                  >
+                </q-item>
+                <q-separator v-if="authStore.isAdmin" class="q-my-sm" />
                 <q-item
                   clickable
                   v-close-popup
@@ -666,7 +705,7 @@ body {
 
 /* Navigation Header Styling */
 .glass-header {
-  background: rgba(255, 255, 255, 0.1) !important;
+  background: rgba(255, 255, 255, 0.25) !important;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.2);
@@ -733,7 +772,7 @@ body {
 }
 
 .user-menu-btn {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.75);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 12px;
   padding: 8px 16px;
@@ -741,7 +780,7 @@ body {
 }
 
 .user-menu-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 1);
   transform: translateY(-1px);
 }
 

@@ -9,6 +9,7 @@ import EditItemModal from "@/components/EditItemModal.vue";
 import QuickScanModal from "@/components/QuickScanModal.vue";
 import StatsCarousel from "@/components/StatsCarousel.vue";
 import { formatCategoryName } from "@/utils/formatting";
+import { formatCurrency } from "@/utils/currency";
 import type { Inventory } from "@/types";
 
 const authStore = useAuthStore();
@@ -256,11 +257,12 @@ const formatLastUpdated = (dateString?: string) => {
 };
 
 const formatTotalValue = (value?: number) => {
-  if (!value || value === 0) return "$0.00";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(value);
+  if (!value || value === 0) return { text: "$0", tooltip: "$0" };
+  const formatted = formatCurrency(value);
+  return {
+    text: formatted.formatted,
+    tooltip: formatted.exact
+  };
 };
 
 const canViewCost = computed(
@@ -325,8 +327,10 @@ const dashboardStatsCarousel = computed(() => {
 
   // Add total value card if user can view costs
   if (canViewCost.value) {
+    const formattedValue = formatTotalValue(dashboardStats.value.totalValue);
     baseStats.splice(3, 0, {
-      value: formatTotalValue(dashboardStats.value.totalValue),
+      value: formattedValue.text,
+      tooltip: formattedValue.tooltip,
       label: "Total Value",
       icon: "attach_money",
       iconColor: "accent",

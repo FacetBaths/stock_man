@@ -3,9 +3,9 @@
     <!-- Desktop: Regular grid layout -->
     <div class="desktop-stats hidden-xs-only">
       <div class="glass-card q-pa-lg">
-        <div class="row q-col-gutter-md">
-          <div v-for="(stat, index) in stats" :key="index" :class="stat.colClass || 'col-12 col-sm-6 col-md'">
-            <q-card class="stat-card glass-stat-card">
+        <div class="row q-col-gutter-md justify-around">
+          <div v-for="(stat, index) in stats" :key="index" :class="stat.colClass || 'col-12 col-sm-6 col-md-3'">
+            <q-card class="stat-card glass-stat-card flex-grow">
               <q-card-section class="text-center q-pa-md">
                 <q-circular-progress
                   v-if="isLoading"
@@ -19,6 +19,9 @@
                   </div>
                   <div class="text-h4 text-weight-bold q-mb-xs" :class="stat.valueClass">
                     {{ stat.value }}
+                    <q-tooltip v-if="stat.tooltip" class="bg-dark text-white">
+                      {{ stat.tooltip }}
+                    </q-tooltip>
                   </div>
                   <div class="text-subtitle2 text-grey-7">{{ stat.label }}</div>
                 </div>
@@ -62,6 +65,9 @@
                 </div>
                 <div class="text-h3 text-weight-bold q-mb-xs" :class="stat.valueClass">
                   {{ stat.value }}
+                  <q-tooltip v-if="stat.tooltip" class="bg-dark text-white">
+                    {{ stat.tooltip }}
+                  </q-tooltip>
                 </div>
                 <div class="text-subtitle1 text-grey-7">{{ stat.label }}</div>
               </div>
@@ -98,6 +104,7 @@ interface StatItem {
   cardClass?: string
   cardStyle?: string | object
   colClass?: string
+  tooltip?: string
 }
 
 interface Props {
@@ -140,11 +147,40 @@ const currentSlide = ref(0)
 .stat-card {
   transition: transform 0.2s, box-shadow 0.2s;
   height: 100%;
+  min-width: 180px;
 }
 
 .stat-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
+}
+
+/* Responsive font sizing for stat values */
+@media (max-width: 1200px) {
+  .stat-card .text-h4 {
+    font-size: 1.5rem !important;
+  }
+}
+
+@media (max-width: 992px) {
+  .stat-card .text-h4 {
+    font-size: 1.3rem !important;
+  }
+  .stat-card .text-subtitle2 {
+    font-size: 0.8rem !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .stat-card {
+    min-width: 150px;
+  }
+  .stat-card .text-h4 {
+    font-size: 1.2rem !important;
+  }
+  .stat-card .text-subtitle2 {
+    font-size: 0.75rem !important;
+  }
 }
 
 /* Mobile carousel styles */

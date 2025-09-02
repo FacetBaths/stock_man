@@ -141,14 +141,14 @@ const quickLoginAsSales = async () => {
         </form>
 
         <!-- Demo Credentials -->
-        <div class="demo-section">
+        <!-- <div class="demo-section">
           <h3 class="demo-title">Demo Credentials:</h3>
           <div class="demo-creds">
             <p><strong>Admin:</strong> admin / admin123</p>
             <p><strong>Warehouse:</strong> warehouse / warehouse456</p>
             <p><strong>Sales:</strong> sales / any password</p>
           </div>
-        </div>
+        </div> -->
       </div>
     </div>
   </div>

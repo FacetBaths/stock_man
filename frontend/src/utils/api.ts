@@ -908,6 +908,92 @@ export const exportApi = {
   }
 }
 
+// User Management API (Admin only)
+export const userApi = {
+  // Get all users with filtering and pagination - GET /api/users
+  getUsers: async (params?: {
+    page?: number
+    limit?: number
+    role?: 'admin' | 'warehouse_manager' | 'sales_rep' | 'viewer'
+    search?: string
+    active?: boolean
+  }) => {
+    const response = await api.get('/users', { params })
+    return response.data
+  },
+
+  // Get user statistics - GET /api/users/stats
+  getStats: async () => {
+    const response = await api.get('/users/stats')
+    return response.data
+  },
+
+  // Get specific user - GET /api/users/:id
+  getUser: async (id: string) => {
+    const response = await api.get(`/users/${id}`)
+    return response.data
+  },
+
+  // Create new user - POST /api/users
+  createUser: async (userData: {
+    username: string
+    email: string
+    password: string
+    firstName: string
+    lastName: string
+    role: 'admin' | 'warehouse_manager' | 'sales_rep' | 'viewer'
+  }) => {
+    const response = await api.post('/users', userData)
+    return response.data
+  },
+
+  // Update user - PUT /api/users/:id
+  updateUser: async (id: string, updates: {
+    username?: string
+    email?: string
+    firstName?: string
+    lastName?: string
+    role?: 'admin' | 'warehouse_manager' | 'sales_rep' | 'viewer'
+    isActive?: boolean
+  }) => {
+    const response = await api.put(`/users/${id}`, updates)
+    return response.data
+  },
+
+  // Reset user password - PUT /api/users/:id/reset-password
+  resetPassword: async (id: string, newPassword: string) => {
+    const response = await api.put(`/users/${id}/reset-password`, { newPassword })
+    return response.data
+  },
+
+  // Unlock user account - PUT /api/users/:id/unlock
+  unlockUser: async (id: string) => {
+    const response = await api.put(`/users/${id}/unlock`)
+    return response.data
+  },
+
+  // Deactivate user (soft delete) - DELETE /api/users/:id
+  deactivateUser: async (id: string) => {
+    const response = await api.delete(`/users/${id}`)
+    return response.data
+  },
+
+  // Permanently delete user (hard delete) - DELETE /api/users/:id/hard-delete
+  deleteUser: async (id: string) => {
+    const response = await api.delete(`/users/${id}/hard-delete`)
+    return response.data
+  },
+
+  // Get user activity history - GET /api/users/:id/activity
+  getUserActivity: async (id: string, params?: {
+    limit?: number
+    days?: number
+  }) => {
+    const response = await api.get(`/users/${id}/activity`, { params })
+    return response.data
+  }
+}
+
 export const healthApi = {
   check: async (): Promise<{ status: string; timestamp: string; environment: string }> => {
     const response = await api.get('/health')

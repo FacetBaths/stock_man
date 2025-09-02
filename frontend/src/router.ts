@@ -6,6 +6,7 @@ import Inventory from '@/views/Inventory.vue'
 import Tags from '@/views/Tags.vue'
 import SKUManagement from '@/views/SKUManagement.vue'
 import Tools from '@/views/Tools.vue'
+import UserManagement from '@/views/UserManagement.vue'
 
 const routes = [
   {
@@ -47,6 +48,12 @@ const routes = [
     name: 'Tools',
     component: Tools,
     meta: { requiresAuth: true }
+  },
+  {
+    path: '/users',
+    name: 'UserManagement',
+    component: UserManagement,
+    meta: { requiresAuth: true, requiresAdmin: true }
   }
 ]
 
@@ -61,6 +68,9 @@ router.beforeEach((to, _from, next) => {
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next('/login')
   } else if (to.meta.requiresGuest && authStore.isAuthenticated) {
+    next('/dashboard')
+  } else if (to.meta.requiresAdmin && !authStore.isAdmin) {
+    // Redirect non-admin users away from admin-only routes
     next('/dashboard')
   } else {
     next()
