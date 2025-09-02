@@ -35,7 +35,7 @@ const handleLogin = async () => {
 
 const quickLoginAsSales = async () => {
   try {
-    await authStore.login({ username: "sales", password: "password" });
+    await authStore.login({ username: "sales", password: "FacetSales!" });
     $q.notify({
       type: "positive",
       message: "Logged in as Sales!",
