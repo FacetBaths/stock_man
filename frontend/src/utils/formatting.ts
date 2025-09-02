@@ -22,6 +22,7 @@ export const capitalizeWords = (text: string): string => {
  * @returns The formatted category name
  */
 export const formatCategoryName = (categoryName: string): string => {
+  categoryName == 'rawmaterials' ? categoryName = 'Raw Materials' : categoryName == 'showerdoors' ? categoryName = 'Shower Doors' : void 0;
   return capitalizeWords(categoryName)
 }
 
@@ -33,8 +34,8 @@ export const formatCategoryName = (categoryName: string): string => {
  * @returns Formatted currency string
  */
 export const formatCurrency = (
-  value: number, 
-  minimumFractionDigits: number = 0, 
+  value: number,
+  minimumFractionDigits: number = 0,
   maximumFractionDigits: number = 0
 ): string => {
   return new Intl.NumberFormat('en-US', {
@@ -50,7 +51,7 @@ export const formatCurrency = (
  * @returns Formatted date string
  */
 export const formatDate = (
-  dateString: string, 
+  dateString: string,
   options: Intl.DateTimeFormatOptions = {
     year: 'numeric',
     month: 'short',
