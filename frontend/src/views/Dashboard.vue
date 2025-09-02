@@ -290,7 +290,7 @@ const dashboardStatsCarousel = computed(() => {
     },
     {
       value: dashboardStats.value.inStock,
-      label: "SKUs In Stock",
+      label: "Available",
       icon: "check_circle",
       iconColor: "positive",
       valueClass: "text-positive",
