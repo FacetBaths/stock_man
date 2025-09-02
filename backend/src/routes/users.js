@@ -594,6 +594,82 @@ router.delete('/:id', [
   }
 });
 
+// DELETE /api/users/:id/hard-delete - Permanently delete user (admin only)
+router.delete('/:id/hard-delete', [
+  auth,
+  requireAdminAccess,
+  rateLimitAuth(60 * 60 * 1000, 3) // 3 permanent deletions per hour
+], async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({
+        message: 'User not found',
+        code: 'USER_NOT_FOUND'
+      });
+    }
+
+    // Prevent admin from deleting themselves
+    if (id === req.user.id) {
+      return res.status(400).json({
+        message: 'Cannot delete your own account',
+        code: 'CANNOT_DELETE_SELF'
+      });
+    }
+
+    // Prevent deletion of admin users
+    if (user.role === 'admin') {
+      return res.status(400).json({
+        message: 'Admin users cannot be deleted for security reasons',
+        code: 'CANNOT_DELETE_ADMIN'
+      });
+    }
+
+    // Store user info for logging before deletion
+    const deletedUserInfo = {
+      username: user.username,
+      email: user.email,
+      role: user.role,
+      isActive: user.isActive
+    };
+
+    // Hard delete - permanently remove from database
+    await User.findByIdAndDelete(id);
+
+    // Log user deletion
+    await AuditLog.logEvent({
+      event_type: 'delete',
+      entity_type: 'user',
+      entity_id: id,
+      user_id: req.user.id,
+      user_name: req.user.username,
+      action: 'User Permanently Deleted',
+      description: `Admin ${req.user.username} permanently deleted user ${deletedUserInfo.username}`,
+      metadata: {
+        ip_address: req.ip || req.connection?.remoteAddress,
+        deleted_user: deletedUserInfo,
+        deletion_type: 'hard_delete'
+      },
+      category: 'security',
+      severity: 'critical'
+    });
+
+    res.json({
+      message: 'User permanently deleted successfully',
+      deletedUser: {
+        id,
+        username: deletedUserInfo.username
+      }
+    });
+
+  } catch (error) {
+    console.error('Hard delete user error:', error);
+    res.status(500).json({ message: 'Failed to permanently delete user' });
+  }
+});
+
 // GET /api/users/:id/activity - Get user activity history (admin only)
 router.get('/:id/activity', [
   auth,
