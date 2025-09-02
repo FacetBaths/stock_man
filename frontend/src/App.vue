@@ -8,11 +8,11 @@ import { capitalizeWords } from "./utils/formatting";
 
 const authStore = useAuthStore();
 const router = useRouter();
-const isDesktop = ref(window.innerWidth >= 768);
+const isDesktop = ref(window.innerWidth >= 1200);
 const showProfileDialog = ref(false);
 
 const updateScreenSize = () => {
-  isDesktop.value = window.innerWidth >= 768;
+  isDesktop.value = window.innerWidth >= 1200;
 };
 
 onMounted(async () => {
@@ -145,7 +145,7 @@ const getVersionTooltip = () => {
   <q-app>
     <q-layout v-if="authStore.isAuthenticated" view="hHh lpR fFf">
       <q-header class="glass-header">
-        <q-toolbar class="q-px-lg" style="min-height: 70px;">
+        <q-toolbar class="q-px-lg items-center" style="min-height: 70px;">
           <!-- Logo and Title -->
           <div class="row items-center no-wrap q-mr-lg">
             <q-btn flat href="/#"
@@ -275,7 +275,7 @@ const getVersionTooltip = () => {
 
           <!-- Desktop User Menu -->
           <q-btn v-else flat class="user-menu-btn" no-caps>
-            <q-avatar size="36px" class="q-mr-sm user-avatar">
+            <q-avatar size="36px" class="q-mr-md user-avatar">
               <q-icon
                 name="account_circle"
                 size="24px"
@@ -283,14 +283,14 @@ const getVersionTooltip = () => {
               />
             </q-avatar>
             <div class="user-info">
-              <div class="text-black text-weight-medium">
+              <div class="text-black text-weight-medium user-name">
                 {{ capitalizeWords(authStore.user!.username) }}
               </div>
-              <div class="text-caption text-grey opacity-70">
+              <div class="text-caption text-grey opacity-70 user-role">
                 {{ authStore.user?.role.replace("_", " ").toUpperCase() }}
               </div>
             </div>
-            <q-icon name="expand_more" class="q-ml-sm text-white" />
+            <q-icon name="expand_more" class="q-ml-md text-grey" />
             <q-menu class="glass-menu" anchor="bottom right" self="top right">
               <q-list class="q-pa-md" style="min-width: 200px;">
                 <q-item-label header class="text-weight-bold text-dark">
@@ -762,8 +762,8 @@ body {
 
 .mobile-menu-btn {
   background: rgba(255, 255, 255, 0.15);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  color: white;
+  /* border: 1px solid rgba(255, 255, 255, 0.3); */
+  color: rgb(94, 94, 94);
   transition: all 0.3s ease;
 }
 
@@ -775,8 +775,15 @@ body {
   background: rgba(255, 255, 255, 0.75);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 12px;
-  padding: 8px 16px;
+  padding: 8px 12px;
   transition: all 0.3s ease;
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px;
+  height: fit-content;
+  align-self: center;
+  margin: 0 !important;
+  min-width: 162px;
 }
 
 .user-menu-btn:hover {
@@ -787,11 +794,30 @@ body {
 .user-avatar {
   background: rgba(255, 255, 255, 0.2);
   border: 1px solid rgba(255, 255, 255, 0.3);
+  flex-shrink: 0;
 }
 
 .user-info {
   text-align: left;
+  line-height: 1.3;
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.user-name {
+  font-size: 14px;
   line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-role {
+  font-size: 11px;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .glass-menu {
