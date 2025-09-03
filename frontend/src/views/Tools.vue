@@ -224,34 +224,37 @@ const navigateToToolsInventory = async () => {
     const toolCategories = categoriesResponse.categories.filter(cat => cat.type === 'tool')
     
     if (toolCategories.length > 0) {
-      // Navigate to inventory with tools filter
+      // Navigate to dashboard with tools filter
       // If there are multiple tool categories, we'll use the first one or implement a selection
       const primaryToolCategory = toolCategories[0]
       router.push({
-        path: '/inventory',
+        path: '/dashboard',
         query: {
           category_id: primaryToolCategory._id,
           category_name: primaryToolCategory.name,
-          filter_type: 'tools'
+          filter_type: 'tools',
+          include_tools: 'true'
         }
       })
     } else {
-      // No tool categories found, navigate to inventory with a search filter
+      // No tool categories found, navigate to dashboard with a search filter
       router.push({
-        path: '/inventory',
+        path: '/dashboard',
         query: {
           search: 'tool',
-          filter_type: 'tools'
+          filter_type: 'tools',
+          include_tools: 'true'
         }
       })
     }
   } catch (err: any) {
     console.error('Failed to navigate to tools inventory:', err)
-    // Fallback to basic inventory page with search
+    // Fallback to basic dashboard page with search
     router.push({
-      path: '/inventory',
+      path: '/dashboard',
       query: {
-        search: 'tool'
+        search: 'tool',
+        include_tools: 'true'
       }
     })
   }
