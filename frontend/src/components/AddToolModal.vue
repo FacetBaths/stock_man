@@ -46,7 +46,7 @@ const formData = ref({
   model: '',
   
   // Tool-specific details
-  tool_type: '',
+  // tool_type will be auto-set from category name
   manufacturer: '',
   serial_number: '',
   voltage: '',
@@ -76,13 +76,11 @@ const toolCategories = computed(() => {
     }))
 })
 
-// Get tool type options from database categories (Category.name)
-const toolTypeOptions = computed(() => {
-  return categoryStore.categories
-    .filter(cat => cat.type === 'tool' && cat.status === 'active')
-    .map(cat => formatCategoryName(cat.name || cat.displayName || 'Unnamed'))
-    .sort()
-})
+// Helper to get tool type from selected category
+const getToolTypeFromCategory = (categoryId: string): string => {
+  const category = categoryStore.categories.find(cat => cat._id === categoryId)
+  return category ? formatCategoryName(category.name || category.displayName || 'Tool') : ''
+}
 
 // Load tool SKUs only for add_stock mode
 const loadToolSKUs = async () => {
@@ -137,7 +135,7 @@ const handleSubmit = async () => {
     if (mode.value === 'create') {
       // Create new tool SKU with tool-specific details structure matching BACKEND_API_REFERENCE.md exactly
       const toolDetails = {
-        tool_type: formData.value.tool_type,
+        tool_type: getToolTypeFromCategory(formData.value.category_id),
         manufacturer: formData.value.manufacturer,
         serial_number: formData.value.serial_number,
         voltage: formData.value.voltage,
@@ -403,25 +401,6 @@ watch(() => categoryStore.categories, () => {
                 </h4>
                 
                 <div class="form-row">
-                  <div class="form-group">
-                    <label for="tool_type" class="form-label">Tool Type</label>
-                    <select
-                      id="tool_type"
-                      v-model="formData.tool_type"
-                      class="form-select"
-                    >
-                      <option value="">Select tool type...</option>
-                      <option 
-                        v-for="type in toolTypeOptions" 
-                        :key="type" 
-                        :value="type"
-                      >
-                        {{ type }}
-                      </option>
-                    </select>
-                    <small class="form-text text-muted">Type of tool (based on database categories)</small>
-                  </div>
-
                   <div class="form-group">
                     <label for="voltage" class="form-label">Voltage</label>
                     <input

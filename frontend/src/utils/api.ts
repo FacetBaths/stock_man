@@ -812,6 +812,9 @@ export const skuApi = {
     } catch (error: any) {
       console.error('❌ [SKU API] Create SKU failed:', error)
       console.error('❌ [SKU API] Error response data:', error.response?.data)
+      if (error.response?.data?.errors) {
+        console.error('❌ [SKU API] Detailed validation errors:', JSON.stringify(error.response.data.errors, null, 2))
+      }
       console.error('❌ [SKU API] Error status:', error.response?.status)
       console.error('❌ [SKU API] Error message:', error.message)
       throw error

@@ -7,6 +7,7 @@ import { debounce } from 'quasar'
 import type { Tag } from '@/types'
 import ToolsTable from '@/components/ToolsTable.vue'
 import EditToolModal from '@/components/EditToolModal.vue'
+import AddToolModal from '@/components/AddToolModal.vue'
 import StatsCarousel from '@/components/StatsCarousel.vue'
 import ReturnToolsDialog from '@/components/ReturnToolsDialog.vue'
 import { useToolsStore } from '@/stores/tools'
@@ -77,6 +78,7 @@ const showReturnDialog = ref(false)
 const returnReason = ref('')
 const selectedLoanForAction = ref<Tag | null>(null)
 const isProcessingAction = ref(false)
+const showAddToolModal = ref(false)
 
 // Router
 const router = useRouter()
@@ -741,7 +743,7 @@ onMounted(async () => {
               name="add-tool" 
               icon="add" 
               label="Add Tool" 
-              @click="navigateToToolsInventory"
+              @click="showAddToolModal = true"
               class="add-tool-tab"
             />
             <q-tab name="loans" icon="assignment" label="Check-outs" />
@@ -1455,6 +1457,13 @@ onMounted(async () => {
         v-model="showEditToolModal"
         :tool="selectedTool"
         @updated="handleToolUpdated"
+      />
+
+      <!-- Add Tool Modal -->
+      <AddToolModal 
+        v-if="showAddToolModal"
+        @close="showAddToolModal = false"
+        @success="async () => { showAddToolModal = false; await toolsStore.fetchToolsInventory(); await refreshDashboard(); }"
       />
 
       <!-- Loan Details Modal -->

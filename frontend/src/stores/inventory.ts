@@ -525,6 +525,7 @@ export const useInventoryStore = defineStore('inventory', () => {
     color?: string
     dimensions?: string
     finish?: string
+    details?: any // Allow custom details object for tools and other items
     unit_cost?: number
     currency?: string
     barcode?: string
@@ -539,8 +540,7 @@ export const useInventoryStore = defineStore('inventory', () => {
       error.value = null
 
       // Step 1: Create the SKU with proper structure
-      const skuPayload = {
-        sku_code: itemData.sku_code || '', // Allow custom SKU codes
+      const skuPayload: any = {
         category_id: typeof itemData.category_id === 'object' && itemData.category_id?._id 
           ? itemData.category_id._id 
           : itemData.category_id, // Extract _id if category_id is an object, otherwise use as-is
@@ -548,8 +548,8 @@ export const useInventoryStore = defineStore('inventory', () => {
         description: itemData.description || '',
         brand: itemData.brand || '',
         model: itemData.model || '',
-        details: {
-          // Structure color, dimensions, finish into details object as expected by API
+        details: itemData.details || {
+          // Default product details structure if no custom details provided
           color_name: itemData.color || '',
           dimensions: itemData.dimensions || '',
           finish: itemData.finish || ''
@@ -567,6 +567,11 @@ export const useInventoryStore = defineStore('inventory', () => {
           understocked: 5,
           overstocked: 100
         }
+      }
+      
+      // Only include sku_code if it has a value (for custom codes), otherwise omit for auto-generation
+      if (itemData.sku_code && itemData.sku_code.trim()) {
+        skuPayload.sku_code = itemData.sku_code.trim()
       }
       
       console.log('🚀 [CreateItem] Input itemData:', itemData)
