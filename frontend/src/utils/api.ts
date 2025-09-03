@@ -525,21 +525,53 @@ export const categoryApi = {
   }
 }
 
-// Tools Dashboard API - for tools-specific functionality and loan management
+// Tools Management API - Direct integration with backend /api/tools endpoints
 export const toolsApi = {
-  // Get active loans (tools currently loaned out)
+  // Get tools-only inventory - GET /api/tools/inventory
+  getInventory: async (params?: {
+    category_id?: string
+    search?: string
+    status?: 'all' | 'low_stock' | 'out_of_stock' | 'overstock'
+    page?: number
+    limit?: number
+    sort_by?: string
+    sort_order?: 'asc' | 'desc'
+  }) => {
+    const response = await api.get('/tools/inventory', { params })
+    return response.data
+  },
+
+  // Get tools-only SKUs - GET /api/tools/skus
+  getSKUs: async (params?: {
+    include_inventory?: boolean
+    category_id?: string
+    search?: string
+    status?: 'active' | 'discontinued' | 'pending'
+    is_lendable?: boolean
+    page?: number
+    limit?: number
+    sort_by?: string
+    sort_order?: 'asc' | 'desc'
+  }) => {
+    const response = await api.get('/tools/skus', { params })
+    return response.data
+  },
+
+  // Get tools-only checkout/loan tags - GET /api/tools/tags
   getActiveLoans: async (params?: {
     customer_name?: string
+    tag_type?: 'loaned' | 'reserved' | 'broken'
+    status?: 'active' | 'fulfilled' | 'cancelled'
     overdue_only?: boolean
-    project_name?: string
+    include_items?: boolean
     sort_by?: 'due_date' | 'customer_name' | 'created_at'
     sort_order?: 'asc' | 'desc'
     page?: number
     limit?: number
   }) => {
-    const response = await api.get('/tags', {
+    const response = await api.get('/tools/tags', { 
       params: {
-        tag_type: 'loaned',
+        // Default to active loans if not specified
         status: 'active',
         include_items: true,
         ...params,
@@ -550,95 +582,112 @@ export const toolsApi = {
     return response.data
   },
 
-  // Get tools inventory (tools category items with status)
-  getToolsInventory: async (params?: {
-    search?: string
-    status?: 'all' | 'low_stock' | 'out_of_stock' | 'overstock'
-    available_only?: boolean
-    sort_by?: 'sku_code' | 'name'
-    sort_order?: 'asc' | 'desc'
-    page?: number
-    limit?: number
+  // Create tool checkout - POST /api/tools/checkout
+  createCheckout: async (checkoutData: {
+    customer_name: string
+    project_name?: string
+    tag_type?: 'loaned' | 'reserved'
+    sku_items: Array<{
+      sku_id: string
+      quantity: number
+    }>
+    notes?: string
+    due_date?: string
   }) => {
-    // Get tool categories first to filter by them
-    const categoriesResponse = await categoryApi.getCategories({ active_only: true })
-    const toolCategories = categoriesResponse.categories.filter(cat => cat.type === 'tool')
-    
-    if (toolCategories.length === 0) {
-      return { inventory: [], pagination: { total_items: 0, total_pages: 0, current_page: 1, items_per_page: 50 } }
-    }
-
-    const toolCategoryIds = toolCategories.map(cat => cat._id)
-    
-    // Get inventory for tool categories
-    const response = await inventoryApi.getInventory({
-      ...params,
-      // Filter by tool categories - we'll need to make multiple calls or enhance the backend
-      // For now, get all inventory and filter client-side
+    const response = await api.post('/tools/checkout', {
+      tag_type: 'loaned', // Default to loaned
+      ...checkoutData
     })
-
-    // Filter results to only include tools
-    const toolsInventory = response.inventory.filter(item => 
-      item.sku && toolCategoryIds.includes(item.sku.category_id)
-    )
-
-    return {
-      ...response,
-      inventory: toolsInventory
-    }
+    return response.data
   },
 
-  // Get tools dashboard stats
+  // Return tools from checkout - POST /api/tools/:id/return
+  returnTools: async (tagId: string, returnData?: {
+    return_notes?: string
+    returned_condition?: 'functional' | 'needs_maintenance' | 'broken'
+  }) => {
+    const response = await api.post(`/tools/${tagId}/return`, {
+      returned_condition: 'functional', // Default to functional
+      ...returnData
+    })
+    return response.data
+  },
+
+  // Partial return - POST /api/tools/:id/partial-return
+  partialReturnTools: async (tagId: string, data: {
+    items: Array<{ sku_id: string; instance_ids: string[] }>
+    return_notes?: string
+    returned_condition?: 'functional' | 'needs_maintenance' | 'broken'
+  }) => {
+    const response = await api.post(`/tools/${tagId}/partial-return`, data)
+    return response.data
+  },
+
+  // Change tool condition - PUT /api/tools/:id/condition
+  updateCondition: async (instanceId: string, conditionData: {
+    condition: 'functional' | 'needs_maintenance' | 'broken'
+    reason?: string
+    notes?: string
+  }) => {
+    const response = await api.put(`/tools/${instanceId}/condition`, conditionData)
+    return response.data
+  },
+
+  // Return all tools and mark checkout as complete - POST /api/tools/:id/return
+  // This is the correct way to 'close' a tool checkout - return the tools
+  returnCheckout: async (tagId: string, reason?: string) => {
+    const response = await api.post(`/tools/${tagId}/return`, {
+      return_notes: reason || 'Tools returned by user',
+      returned_condition: 'functional'
+    })
+    return response.data
+  },
+
+  // Delete tool checkout - DELETE /api/tags/:id (only for non-started checkouts)
+  // NOTE: This should only be used for checkouts that were created by mistake and haven't been used
+  deleteCheckout: async (tagId: string) => {
+    const response = await api.delete(`/tags/${tagId}`)
+    return response.data
+  },
+
+  // Get tools dashboard statistics
   getDashboardStats: async () => {
     try {
-      // Use the new tools-specific stats endpoint
-      const statsResponse = await api.get('/tools/stats')
+      // Get tools inventory for statistics
+      const inventoryResponse = await toolsApi.getInventory({ limit: 100 })
       
       // Get active loans for additional context
       const loansResponse = await toolsApi.getActiveLoans({ limit: 100 })
       
+      // Calculate statistics from the data
+      const inventory = inventoryResponse.inventory || []
+      const loans = loansResponse.tags || []
+      
+      const totalTools = inventory.reduce((sum, item) => sum + (item.total_quantity || 0), 0)
+      const availableTools = inventory.reduce((sum, item) => sum + (item.available_quantity || 0), 0)
+      const loanedTools = inventory.reduce((sum, item) => sum + (item.loaned_quantity || 0), 0)
+      const overdueLoans = loans.filter(loan => loan.is_overdue).length
+      const totalValue = inventory.reduce((sum, item) => sum + ((item.total_quantity || 0) * (item.unit_cost || 0)), 0)
+      
       return {
-        stats: statsResponse.data.stats,
-        activeLoans: loansResponse.tags || [],
+        stats: {
+          totalTools,
+          availableTools,
+          loanedTools,
+          overdueLoans,
+          totalValue
+        },
+        activeLoans: loans,
         recentActivity: [], // This would need backend support for activity tracking
-        meta: statsResponse.data.meta
+        meta: {
+          lastUpdated: new Date().toISOString(),
+          totalCategories: inventory.length
+        }
       }
     } catch (error) {
       console.error('Failed to fetch tools dashboard stats:', error)
       throw error
     }
-  },
-
-  // Create new tool loan
-  createLoan: async (loanData: {
-    customer_name: string
-    sku_items: Array<{
-      sku_id: string
-      quantity: number
-      selection_method?: 'auto' | 'manual' | 'fifo'
-      selected_instance_ids?: string[]
-      notes?: string
-    }>
-    project_name?: string
-    due_date?: string
-    notes?: string
-  }) => {
-    const response = await tagApi.createTag({
-      ...loanData,
-      tag_type: 'loaned'
-    })
-    return response
-  },
-
-  // Return loaned tools
-  returnLoan: async (tagId: string, returnData?: {
-    notes?: string
-    condition_notes?: string
-  }) => {
-    const response = await tagApi.fulfillTag(tagId, {
-      fulfillment_items: [] // This would need to be populated based on the tag's items
-    })
-    return response
   }
 }
 
@@ -714,6 +763,12 @@ export const tagApi = {
 
 // Updated SKU API for new architecture
 export const skuApi = {
+  // Get total count of product SKUs (excluding tools)
+  getSKUCount: async (): Promise<{ count: number; message: string }> => {
+    const response = await api.get('/skus/count')
+    return response.data
+  },
+
   // Get SKUs with enhanced filtering
   getSKUs: async (params?: {
     category_id?: string

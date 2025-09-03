@@ -112,8 +112,12 @@ export const useSKUStore = defineStore('sku', () => {
     return result
   })
 
+  // Store accurate total count of product SKUs (excluding tools) from backend
+  const totalProductSKUCount = ref(0)
+
   const skuStats = computed(() => {
-    const total = skus.value.length
+    // Use accurate total from backend if available, otherwise fall back to loaded SKUs count
+    const total = totalProductSKUCount.value || skus.value.length
     const active = activeSKUs.value.length
     const bundles = bundleSKUs.value.length
     const withBarcodes = skus.value.filter(sku => sku.barcode).length
@@ -409,6 +413,19 @@ export const useSKUStore = defineStore('sku', () => {
     }
   }
 
+  // Fetch accurate count of product SKUs (excluding tools) from backend
+  const fetchSKUCount = async () => {
+    try {
+      const response = await skuApi.getSKUCount()
+      totalProductSKUCount.value = response.count
+      return response.count
+    } catch (err: any) {
+      console.warn('Failed to fetch SKU count:', err.response?.data?.message || err.message)
+      // Don't throw error, just return 0 as fallback
+      return 0
+    }
+  }
+
   // Helper methods
   const getSKUsByCategory = (categoryId: string) => {
     return skus.value.filter(sku => {
@@ -476,6 +493,7 @@ export const useSKUStore = defineStore('sku', () => {
     // Actions
     fetchSKUs,
     fetchSKU,
+    fetchSKUCount,
     createSKU,
     updateSKU,
     deleteSKU,

@@ -145,18 +145,20 @@ const getVersionTooltip = () => {
   <q-app>
     <q-layout v-if="authStore.isAuthenticated" view="hHh lpR fFf">
       <q-header class="glass-header">
-        <q-toolbar class="q-px-lg items-center" style="min-height: 70px;">
-          <!-- Logo and Title -->
-          <div class="row items-center no-wrap q-mr-lg">
-            <q-btn flat href="/#"
-              ><img
+        <!-- Main Navbar - Responsive Flexbox Layout -->
+        <div class="responsive-navbar">
+          <!-- Logo and Title Section -->
+          <div class="navbar-brand">
+            <q-btn flat href="/#" class="logo-btn">
+              <img
                 src="@/assets/images/Logo_V2_Gradient7_CTC.png"
                 alt="Facet Renovations Logo"
-                class="nav-logo q-mr-md"
-            /></q-btn>
-            <div v-if="isDesktop" class="nav-title">
-              <div class="row items-center q-gutter-xs">
-                <div class="title text-h6 text-weight-bold q-mb-none">
+                class="nav-logo"
+              />
+            </q-btn>
+            <div class="nav-title">
+              <div class="title-row">
+                <div class="title text-h6 text-weight-bold">
                   Stock Manager
                 </div>
                 <q-chip
@@ -171,189 +173,86 @@ const getVersionTooltip = () => {
                   </q-tooltip>
                 </q-chip>
               </div>
-              <!-- <div class="text-caption text-white opacity-80">
-                Facet Renovations
-              </div> -->
             </div>
           </div>
 
-          <!-- Desktop Navigation -->
-          <div v-if="isDesktop" class="nav-tabs q-mx-xl">
+          <!-- Navigation Links Section -->
+          <div class="navbar-nav">
             <router-link
               v-for="tab in navTabs"
               :key="tab.path"
               :to="tab.path"
-              class="nav-tab"
-              :class="{ 'nav-tab--active': $route.path === tab.path }"
+              class="nav-link"
+              :class="{ 'nav-link--active': $route.path === tab.path }"
             >
-              <q-icon :name="tab.icon" class="q-mr-sm" />
-              {{ tab.label }}
+              <q-icon :name="tab.icon" class="nav-icon" />
+              <span class="nav-label">{{ tab.label }}</span>
             </router-link>
           </div>
 
-          <q-space />
-
-          <!-- Temporary API Test Button (commented out for production) -->
-          <!-- 
-          <q-btn 
-            flat 
-            color="white"
-            label="Test API"
-            @click="testApiConnection"
-            class="q-mr-md"
-            size="sm"
-          />
-          -->
-
-          <!-- Emergency Force Logout Button (commented out for production) -->
-          <!-- 
-          <q-btn 
-            flat 
-            color="red"
-            label="Force Logout"
-            @click="forceLogout"
-            class="q-mr-md"
-            size="sm"
-            icon="logout"
-          />
-          -->
-
-          <!-- Mobile Menu Button -->
-          <q-btn
-            v-if="!isDesktop"
-            flat
-            round
-            class="mobile-menu-btn"
-            icon="menu"
-          >
-            <q-menu class="glass-menu" anchor="bottom right" self="top right">
-              <q-list class="q-pa-md" style="min-width: 220px;">
-                <q-item
-                  v-for="tab in navTabs"
-                  :key="tab.path"
-                  clickable
-                  v-close-popup
-                  :to="tab.path"
-                  class="menu-item q-mb-sm"
-                >
-                  <q-item-section avatar>
-                    <q-icon :name="tab.icon" class="text-primary" />
-                  </q-item-section>
-                  <q-item-section class="text-dark">{{
-                    tab.label
-                  }}</q-item-section>
-                </q-item>
-                <q-item
-                  v-if="authStore.isAdmin"
-                  clickable
-                  v-close-popup
-                  :to="'/users'"
-                  class="menu-item q-mb-sm"
-                >
-                  <q-item-section avatar>
-                    <q-icon name="people" class="text-primary" />
-                  </q-item-section>
-                  <q-item-section class="text-dark"
-                    >User Management</q-item-section
+          <!-- User Menu Section - Always stays on the right -->
+          <div class="navbar-user">
+            <q-btn flat round class="user-menu-btn">
+              <q-avatar size="32px" class="user-avatar">
+                <q-icon name="account_circle" size="20px" class="text-white" />
+              </q-avatar>
+              <q-menu class="glass-menu" anchor="bottom right" self="top right">
+                <q-list class="q-pa-md" style="min-width: 220px;">
+                  <!-- User Info Header -->
+                  <div class="menu-user-header q-mb-md">
+                    <q-avatar size="48px" class="menu-avatar">
+                      <q-icon name="account_circle" size="32px" class="text-white" />
+                    </q-avatar>
+                    <div class="menu-user-info">
+                      <div class="menu-user-name">
+                        {{ capitalizeWords(authStore.user!.username) }}
+                      </div>
+                      <div class="menu-user-role">
+                        {{ authStore.user?.role.replace("_", " ").toUpperCase() }}
+                      </div>
+                    </div>
+                  </div>
+                  <q-separator class="q-mb-md" />
+                  <q-item
+                    clickable
+                    v-close-popup
+                    @click="showProfileDialog = true"
+                    class="menu-item"
                   >
-                </q-item>
-                <q-separator class="q-my-md" />
-                <q-item
-                  clickable
-                  v-close-popup
-                  @click="handleLogout"
-                  class="menu-item logout-item"
-                >
-                  <q-item-section avatar>
-                    <q-icon name="logout" class="text-negative" />
-                  </q-item-section>
-                  <q-item-section class="text-dark">Logout</q-item-section>
-                </q-item>
-              </q-list>
-            </q-menu>
-          </q-btn>
-
-          <!-- Desktop User Menu -->
-          <q-btn v-else flat class="user-menu-btn" no-caps>
-            <q-avatar size="36px" class="q-mr-md user-avatar">
-              <q-icon
-                name="account_circle"
-                size="24px"
-                class="text-secondary"
-              />
-            </q-avatar>
-            <div class="user-info">
-              <div class="text-black text-weight-medium user-name">
-                {{ capitalizeWords(authStore.user!.username) }}
-              </div>
-              <div class="text-caption text-grey opacity-70 user-role">
-                {{ authStore.user?.role.replace("_", " ").toUpperCase() }}
-              </div>
-            </div>
-            <q-icon name="expand_more" class="q-ml-md text-grey" />
-            <q-menu class="glass-menu" anchor="bottom right" self="top right">
-              <q-list class="q-pa-md" style="min-width: 200px;">
-                <q-item-label header class="text-weight-bold text-dark">
-                  {{ authStore.user?.role.replace("_", " ").toUpperCase() }}
-                </q-item-label>
-                <q-separator class="q-mb-md" />
-                <q-item
-                  clickable
-                  v-close-popup
-                  @click="showProfileDialog = true"
-                  class="menu-item"
-                >
-                  <q-item-section avatar>
-                    <q-icon name="account_circle" class="text-primary" />
-                  </q-item-section>
-                  <q-item-section class="text-dark">Profile</q-item-section>
-                </q-item>
-                <q-item
-                  v-if="authStore.isAdmin"
-                  clickable
-                  v-close-popup
-                  :to="'/users'"
-                  class="menu-item"
-                >
-                  <q-item-section avatar>
-                    <q-icon name="people" class="text-primary" />
-                  </q-item-section>
-                  <q-item-section class="text-dark"
-                    >User Management</q-item-section
+                    <q-item-section avatar>
+                      <q-icon name="account_circle" class="text-primary" />
+                    </q-item-section>
+                    <q-item-section class="text-dark">Profile</q-item-section>
+                  </q-item>
+                  <q-item
+                    v-if="authStore.isAdmin"
+                    clickable
+                    v-close-popup
+                    :to="'/users'"
+                    class="menu-item"
                   >
-                </q-item>
-                <q-separator v-if="authStore.isAdmin" class="q-my-sm" />
-                <q-item
-                  clickable
-                  v-close-popup
-                  @click="handleLogout"
-                  class="menu-item logout-item"
-                >
-                  <q-item-section avatar>
-                    <q-icon name="logout" class="text-negative" />
-                  </q-item-section>
-                  <q-item-section class="text-dark">Logout</q-item-section>
-                </q-item>
-              </q-list>
-            </q-menu>
-          </q-btn>
-        </q-toolbar>
-        <q-toolbar inset v-if="!isDesktop">
-          <div class="title text-h6 text-weight-bold q-mb-none">
-            Stock Manager
+                    <q-item-section avatar>
+                      <q-icon name="people" class="text-primary" />
+                    </q-item-section>
+                    <q-item-section class="text-dark">User Management</q-item-section>
+                  </q-item>
+                  <q-separator class="q-my-sm" />
+                  <q-item
+                    clickable
+                    v-close-popup
+                    @click="handleLogout"
+                    class="menu-item logout-item"
+                  >
+                    <q-item-section avatar>
+                      <q-icon name="logout" class="text-negative" />
+                    </q-item-section>
+                    <q-item-section class="text-dark">Logout</q-item-section>
+                  </q-item>
+                </q-list>
+              </q-menu>
+            </q-btn>
           </div>
-          <q-chip
-            color="accent"
-            text-color="white"
-            size="sm"
-            class="version-chip"
-          >
-            v{{ buildInfo.version }}
-            <q-tooltip class="bg-dark text-white" :delay="500">
-              {{ getVersionTooltip() }}
-            </q-tooltip>
-          </q-chip>
-        </q-toolbar>
+        </div>
       </q-header>
 
       <q-page-container class="gradient-bg">
@@ -703,13 +602,44 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-/* Navigation Header Styling */
+/* Responsive Navigation Header Styling */
 .glass-header {
   background: rgba(255, 255, 255, 0.25) !important;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.2);
   box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+}
+
+/* Main Responsive Navbar Container */
+.responsive-navbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 24px;
+  min-height: 70px;
+  width: 100%;
+}
+
+/* Brand Section (Logo + Title) */
+.navbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  min-width: fit-content;
+}
+
+.logo-btn {
+  padding: 4px;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.logo-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .nav-logo {
@@ -727,97 +657,143 @@ body {
   line-height: 1.2;
 }
 
-.nav-tabs {
+.title-row {
   display: flex;
+  align-items: center;
   gap: 8px;
 }
 
-.nav-tab {
+/* Navigation Links Section */
+.navbar-nav {
   display: flex;
   align-items: center;
-  padding: 12px 20px;
-  border-radius: 12px;
+  gap: 6px;
+  flex: 1 1 auto;
+  justify-content: center;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border-radius: 10px;
   color: rgba(0, 0, 0, 0.8);
   text-decoration: none;
   font-weight: 500;
-  font-size: 14px;
+  font-size: 13px;
   transition: all 0.3s ease;
   background: rgba(255, 255, 255, 0.1);
-  /* border: 1px solid rgba(255, 255, 255, 0.2); */
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
-.nav-tab:hover {
+.nav-link:hover {
   color: white;
   background: rgba(255, 255, 255, 0.2);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-.nav-tab--active {
+.nav-link--active {
   color: white !important;
   background: rgba(0, 0, 0, 0.5) !important;
-  border-color: rgba(255, 255, 255, 0.4);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
 }
 
-.mobile-menu-btn {
-  background: rgba(255, 255, 255, 0.15);
-  /* border: 1px solid rgba(255, 255, 255, 0.3); */
-  color: rgb(94, 94, 94);
-  transition: all 0.3s ease;
+.nav-icon {
+  font-size: 16px;
 }
 
-.mobile-menu-btn:hover {
-  background: rgba(255, 255, 255, 0.25);
+.nav-label {
+  font-size: 13px;
+  font-weight: 500;
 }
 
-.user-menu-btn {
-  background: rgba(255, 255, 255, 0.75);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 12px;
-  padding: 8px 12px;
-  transition: all 0.3s ease;
-  display: flex !important;
-  align-items: center !important;
-  gap: 12px;
-  height: fit-content;
-  align-self: center;
-  margin: 0 !important;
-  min-width: 162px;
-}
-
-.user-menu-btn:hover {
-  background: rgba(255, 255, 255, 1);
-  transform: translateY(-1px);
-}
-
-.user-avatar {
-  background: rgba(255, 255, 255, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+/* User Menu Section */
+.navbar-user {
+  display: flex;
+  align-items: center;
   flex-shrink: 0;
 }
 
-.user-info {
-  text-align: left;
-  line-height: 1.3;
-  flex-grow: 1;
+.user-menu-btn {
+  background: rgba(255, 255, 255, 0.2) !important;
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+  transition: all 0.2s ease !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.user-menu-btn:hover {
+  background: rgba(255, 255, 255, 0.35) !important;
+  border-color: rgba(255, 255, 255, 0.5) !important;
+}
+
+.user-avatar {
+  background: rgba(103, 126, 234, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.user-avatar .q-icon {
+  margin: 0 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Menu Header Styles */
+.menu-user-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  background: rgba(103, 126, 234, 0.1);
+  border-radius: 8px;
+}
+
+.menu-avatar {
+  background: rgba(103, 126, 234, 0.8);
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.menu-avatar .q-icon {
+  margin: 0 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.menu-user-info {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
 }
 
-.user-name {
-  font-size: 14px;
+.menu-user-name {
+  color: #1a1a1a;
+  font-weight: 600;
+  font-size: 16px;
   line-height: 1.2;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  margin-bottom: 2px;
 }
 
-.user-role {
-  font-size: 11px;
-  line-height: 1.1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.menu-user-role {
+  color: #666;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .glass-menu {
@@ -868,19 +844,106 @@ body {
 }
 
 /* Responsive adjustments */
+@media (max-width: 1200px) {
+  .responsive-navbar {
+    gap: 8px;
+    padding: 12px 16px;
+  }
+  
+  .nav-link {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+  
+  .nav-label {
+    font-size: 12px;
+  }
+  
+  .nav-icon {
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 992px) {
+  .navbar-nav {
+    gap: 4px;
+  }
+  
+  .nav-link {
+    padding: 8px 10px;
+  }
+  
+  .nav-label {
+    display: none;
+  }
+  
+  .nav-icon {
+    font-size: 18px;
+  }
+  
+  .user-info {
+    display: none;
+  }
+  
+  .user-menu-btn {
+    padding: 8px;
+  }
+}
+
 @media (max-width: 768px) {
   .nav-logo {
     height: 32px;
   }
-
-  .glass-header .q-toolbar {
+  
+  .responsive-navbar {
+    padding: 8px 12px;
     min-height: 60px;
-    padding-left: 16px;
-    padding-right: 16px;
   }
-
+  
+  .navbar-brand {
+    gap: 8px;
+  }
+  
+  .nav-title {
+    font-size: 14px;
+  }
+  
   .version-chip {
     font-size: 10px;
+  }
+  
+  .title-row {
+    gap: 4px;
+  }
+  
+  .navbar-nav {
+    /* Force wrapping on mobile to keep user menu on right */
+    flex-basis: 100%;
+    justify-content: center;
+    order: 1;
+  }
+  
+  .navbar-user {
+    /* Keep user menu in top row */
+    order: 0;
+  }
+}
+
+@media (max-width: 580px) {
+  .nav-title {
+    display: none;
+  }
+  
+  .navbar-brand {
+    gap: 4px;
+  }
+  
+  .nav-link {
+    padding: 6px 8px;
+  }
+  
+  .nav-icon {
+    font-size: 16px;
   }
 }
 </style>

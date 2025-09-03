@@ -674,6 +674,7 @@ watch(() => route.query.search, (newSearch) => {
 onMounted(async () => {
   await Promise.all([
     categoryStore.fetchCategories(),
+    skuStore.fetchSKUCount(), // Fetch accurate product SKU count (excluding tools)
     refreshData(),
     loadProductsWithoutSKUs()
   ])

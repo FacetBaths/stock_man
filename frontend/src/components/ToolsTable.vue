@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useToolsStore, type ToolInventoryItem } from '@/stores/tools'
+import { capitalizeWords } from '../utils/formatting'
 
 interface Props {
   canWrite: boolean
@@ -19,6 +20,20 @@ const emit = defineEmits<{
 const showConditionDialog = ref(false)
 const selectedTool = ref<ToolInventoryItem | null>(null)
 
+// Search and filtering state
+const searchQuery = ref('')
+const selectedCategory = ref('')
+const selectedCondition = ref('')
+const selectedType = ref('')
+const sortBy = ref('name')
+const sortDescending = ref(false)
+
+// Show/hide states for filter dropdowns
+const showCategoryFilter = ref(false)
+const showTypeFilter = ref(false)
+const showConditionFilter = ref(false)
+const showSortFilter = ref(false)
+
 // Load tools inventory on component mount
 onMounted(async () => {
   console.log('ToolsTable: Component mounted, fetching tools inventory...')
@@ -30,8 +45,117 @@ onMounted(async () => {
   }
 })
 
-// Use tools from store with local filtering
-const filteredTools = computed(() => toolsStore.filteredTools)
+// Get unique filter options from tools data
+const categoryOptions = computed(() => {
+  if (!Array.isArray(toolsStore.toolsInventory)) return ['']
+  const categories = toolsStore.toolsInventory.map(tool => tool.category?.name).filter(Boolean)
+  return ['', ...new Set(categories)].sort()
+})
+
+const typeOptions = computed(() => {
+  if (!Array.isArray(toolsStore.toolsInventory)) return ['']
+  const types = toolsStore.toolsInventory.map(tool => tool.details?.tool_type).filter(Boolean)
+  return ['', ...new Set(types)].sort()
+})
+
+const conditionOptions = ['', 'available', 'loaned', 'maintenance', 'mixed']
+
+const sortOptions = [
+  { label: 'Name', value: 'name' },
+  { label: 'SKU Code', value: 'sku_code' },
+  { label: 'Brand', value: 'brand' },
+  { label: 'Total Quantity', value: 'total_quantity' },
+  { label: 'Available Quantity', value: 'available_quantity' },
+  { label: 'Cost', value: 'unit_cost' }
+]
+
+// Apply local filtering and searching
+const filteredTools = computed(() => {
+  // Safety check - ensure tools is an array
+  if (!Array.isArray(toolsStore.toolsInventory)) {
+    return []
+  }
+  
+  let filtered = [...toolsStore.toolsInventory]
+  
+  // Apply search query
+  if (searchQuery.value.trim()) {
+    const query = searchQuery.value.toLowerCase().trim()
+    filtered = filtered.filter(tool => 
+      tool.name.toLowerCase().includes(query) ||
+      tool.sku_code.toLowerCase().includes(query) ||
+      tool.brand?.toLowerCase().includes(query) ||
+      tool.model?.toLowerCase().includes(query) ||
+      tool.details?.manufacturer?.toLowerCase().includes(query) ||
+      tool.details?.serial_number?.toLowerCase().includes(query) ||
+      tool.category?.name.toLowerCase().includes(query)
+    )
+  }
+  
+  // Apply category filter
+  if (selectedCategory.value) {
+    filtered = filtered.filter(tool => tool.category?.name === selectedCategory.value)
+  }
+  
+  // Apply type filter
+  if (selectedType.value) {
+    filtered = filtered.filter(tool => tool.details?.tool_type === selectedType.value)
+  }
+  
+  // Apply condition filter
+  if (selectedCondition.value) {
+    filtered = filtered.filter(tool => {
+      const status = toolsStore.getConditionStatus(tool)
+      return status === selectedCondition.value
+    })
+  }
+  
+  // Apply sorting
+  filtered.sort((a, b) => {
+    let aVal = a[sortBy.value as keyof ToolInventoryItem]
+    let bVal = b[sortBy.value as keyof ToolInventoryItem]
+    
+    // Handle nested properties
+    if (sortBy.value.includes('.')) {
+      const keys = sortBy.value.split('.')
+      aVal = keys.reduce((obj, key) => obj?.[key], a)
+      bVal = keys.reduce((obj, key) => obj?.[key], b)
+    }
+    
+    // Handle null/undefined values
+    if (aVal === null || aVal === undefined) aVal = ''
+    if (bVal === null || bVal === undefined) bVal = ''
+    
+    // Convert to comparable values
+    if (typeof aVal === 'string' && typeof bVal === 'string') {
+      aVal = aVal.toLowerCase()
+      bVal = bVal.toLowerCase()
+    }
+    
+    let result = 0
+    if (aVal < bVal) result = -1
+    else if (aVal > bVal) result = 1
+    
+    return sortDescending.value ? -result : result
+  })
+  
+  return filtered
+})
+
+// Clear all filters
+const clearFilters = () => {
+  searchQuery.value = ''
+  selectedCategory.value = ''
+  selectedCondition.value = ''
+  selectedType.value = ''
+  sortBy.value = 'name'
+  sortDescending.value = false
+  // Close all filter dropdowns
+  showCategoryFilter.value = false
+  showTypeFilter.value = false
+  showConditionFilter.value = false
+  showSortFilter.value = false
+}
 
 // Helper functions
 const formatCost = (cost?: number) => {
@@ -85,11 +209,11 @@ const getToolTypeColor = (toolType: string) => {
     'measuring tool': 'info',
     'safety equipment': 'warning',
     'cutting tool': 'deep-orange',
-    'fastener': 'brown',
+    'general': 'brown',
     'electrical': 'purple',
     'plumbing': 'blue',
-    'pneumatic': 'cyan',
-    'hydraulic': 'amber'
+    'stand or clamp': 'cyan',
+    'finishing tool': 'amber'
   }
   return colorMap[toolType?.toLowerCase()] || 'grey'
 }
@@ -107,7 +231,7 @@ const getVoltageDisplay = (voltage?: string) => {
 }
 
 // Check if user can view cost information
-const canViewCost = computed(() => 
+const canViewCost = computed(() =>
   authStore.hasPermission('view_cost') || authStore.hasRole(['admin', 'warehouse_manager'])
 )
 
@@ -126,15 +250,190 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
       <div class="q-mt-md text-body1">Loading tools inventory...</div>
     </div>
 
+    <!-- Search and Filter Controls (always show when not loading) -->
+    <div v-if="!toolsStore.loading" class="search-filter-section glass-card q-pa-md q-mb-md">
+      <div class="row q-gutter-md">
+        <!-- Search Input -->
+        <div class="col-12 col-md-4">
+          <q-input
+            v-model="searchQuery"
+            placeholder="Search tools by name, SKU, brand, model..."
+            outlined
+            dense
+            clearable
+          >
+            <template v-slot:prepend>
+              <q-icon name="search" />
+            </template>
+          </q-input>
+        </div>
+        
+        <!-- Category Filter -->
+        <div class="col-auto">
+          <q-btn
+            @click="showCategoryFilter = !showCategoryFilter"
+            :color="selectedCategory ? 'primary' : 'grey-7'"
+            :label="selectedCategory ? capitalizeWords(selectedCategory) : 'Category'"
+            flat
+            icon="category"
+            class="filter-btn"
+          >
+            <q-menu v-model="showCategoryFilter" anchor="bottom left" self="top left">
+              <q-list style="min-width: 180px">
+                <q-item
+                  v-for="cat in categoryOptions"
+                  :key="cat"
+                  clickable
+                  @click="selectedCategory = cat; showCategoryFilter = false"
+                  :active="selectedCategory === cat"
+                >
+                  <q-item-section>
+                    {{ cat ? capitalizeWords(cat) : 'All Categories' }}
+                  </q-item-section>
+                </q-item>
+              </q-list>
+            </q-menu>
+          </q-btn>
+        </div>
+        
+        <!-- Type Filter -->
+        <div class="col-auto">
+          <q-btn
+            @click="showTypeFilter = !showTypeFilter"
+            :color="selectedType ? 'primary' : 'grey-7'"
+            :label="selectedType || 'Type'"
+            flat
+            icon="build"
+            class="filter-btn"
+          >
+            <q-menu v-model="showTypeFilter" anchor="bottom left" self="top left">
+              <q-list style="min-width: 180px">
+                <q-item
+                  v-for="type in typeOptions"
+                  :key="type"
+                  clickable
+                  @click="selectedType = type; showTypeFilter = false"
+                  :active="selectedType === type"
+                >
+                  <q-item-section>
+                    {{ type || 'All Types' }}
+                  </q-item-section>
+                </q-item>
+              </q-list>
+            </q-menu>
+          </q-btn>
+        </div>
+        
+        <!-- Condition Filter -->
+        <div class="col-auto">
+          <q-btn
+            @click="showConditionFilter = !showConditionFilter"
+            :color="selectedCondition ? 'primary' : 'grey-7'"
+            :label="selectedCondition ? selectedCondition.charAt(0).toUpperCase() + selectedCondition.slice(1) : 'Condition'"
+            flat
+            icon="assignment_turned_in"
+            class="filter-btn"
+          >
+            <q-menu v-model="showConditionFilter" anchor="bottom left" self="top left">
+              <q-list style="min-width: 180px">
+                <q-item
+                  v-for="cond in conditionOptions"
+                  :key="cond"
+                  clickable
+                  @click="selectedCondition = cond; showConditionFilter = false"
+                  :active="selectedCondition === cond"
+                >
+                  <q-item-section>
+                    {{ cond ? cond.charAt(0).toUpperCase() + cond.slice(1) : 'All Conditions' }}
+                  </q-item-section>
+                </q-item>
+              </q-list>
+            </q-menu>
+          </q-btn>
+        </div>
+        
+        <!-- Sort Options -->
+        <div class="col-auto">
+          <q-btn
+            @click="showSortFilter = !showSortFilter"
+            :color="sortBy !== 'name' || sortDescending ? 'primary' : 'grey-7'"
+            :label="sortOptions.find(opt => opt.value === sortBy)?.label || 'Sort'"
+            flat
+            :icon="sortDescending ? 'arrow_downward' : 'arrow_upward'"
+            class="filter-btn"
+          >
+            <q-menu v-model="showSortFilter" anchor="bottom left" self="top left">
+              <q-list style="min-width: 200px">
+                <q-item-label header>Sort By</q-item-label>
+                <q-item
+                  v-for="option in sortOptions"
+                  :key="option.value"
+                  clickable
+                  @click="sortBy = option.value; showSortFilter = false"
+                  :active="sortBy === option.value"
+                >
+                  <q-item-section>
+                    {{ option.label }}
+                  </q-item-section>
+                </q-item>
+                <q-separator />
+                <q-item-label header>Order</q-item-label>
+                <q-item
+                  clickable
+                  @click="sortDescending = false; showSortFilter = false"
+                  :active="!sortDescending"
+                >
+                  <q-item-section avatar>
+                    <q-icon name="arrow_upward" />
+                  </q-item-section>
+                  <q-item-section>Ascending</q-item-section>
+                </q-item>
+                <q-item
+                  clickable
+                  @click="sortDescending = true; showSortFilter = false"
+                  :active="sortDescending"
+                >
+                  <q-item-section avatar>
+                    <q-icon name="arrow_downward" />
+                  </q-item-section>
+                  <q-item-section>Descending</q-item-section>
+                </q-item>
+              </q-list>
+            </q-menu>
+          </q-btn>
+        </div>
+      </div>
+      
+      <!-- Filter Actions -->
+      <div class="row q-mt-md justify-between items-center">
+        <div class="text-body2 text-grey-7">
+          Showing {{ filteredTools.length }} of {{ Array.isArray(toolsStore.toolsInventory) ? toolsStore.toolsInventory.length : 0 }} tools
+        </div>
+        <q-btn
+          @click="clearFilters"
+          color="primary"
+          outline
+          size="sm"
+          icon="clear_all"
+          label="Clear Filters"
+        />
+      </div>
+    </div>
+
     <!-- No tools banner -->
-    <q-banner v-else-if="filteredTools.length === 0" class="no-tools-banner" rounded>
+    <q-banner
+      v-if="!toolsStore.loading && filteredTools.length === 0"
+      class="no-tools-banner"
+      rounded
+    >
       <template v-slot:avatar>
         <q-icon name="build" color="grey-6" />
       </template>
       No tools found matching your criteria.
     </q-banner>
-    
-    <div v-else>
+
+    <!-- Tools List -->
+    <div v-if="!toolsStore.loading && filteredTools.length > 0">
       <!-- Header Section -->
       <div class="table-header glass-header q-pa-md q-mb-sm">
         <div class="header-row">
@@ -168,12 +467,12 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
           </div>
         </div>
       </div>
-      
+
       <!-- Tools List -->
       <div class="tools-list">
-        <div 
-          v-for="tool in filteredTools" 
-          :key="tool._id" 
+        <div
+          v-for="tool in filteredTools"
+          :key="tool._id"
           class="tool-item"
           @click="canWrite ? emit('edit', tool) : null"
           :style="{ cursor: canWrite ? 'pointer' : 'default' }"
@@ -181,7 +480,13 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
           <div class="item-row">
             <!-- Tool Details Section -->
             <div class="item-section tool-details-section">
-              <div v-if="tool.details.tool_type" class="tool-type-banner" :class="`type-banner-${getToolTypeColor(tool.details.tool_type)}`">
+              <div
+                v-if="tool.details.tool_type"
+                class="tool-type-banner"
+                :class="`type-banner-${getToolTypeColor(
+                  tool.details.tool_type
+                )}`"
+              >
                 {{ tool.details.tool_type.toUpperCase() }}
               </div>
               <div class="tool-title">
@@ -211,7 +516,9 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
               </q-chip>
               <div v-if="tool.details.serial_number" class="serial-number">
                 <q-icon name="tag" size="xs" class="q-mr-xs" />
-                <span class="serial-text">{{ tool.details.serial_number }}</span>
+                <span class="serial-text">{{
+                  tool.details.serial_number
+                }}</span>
               </div>
             </div>
 
@@ -229,7 +536,10 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
                   <q-tooltip>Operating Voltage</q-tooltip>
                 </q-chip>
               </div>
-              <div v-if="tool.details.features && tool.details.features.length > 0" class="features">
+              <div
+                v-if="tool.details.features && tool.details.features.length > 0"
+                class="features"
+              >
                 <div class="features-text">
                   <q-icon name="stars" size="xs" class="q-mr-xs" />
                   {{ formatFeatures(tool.details.features) }}
@@ -240,17 +550,23 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
             <!-- Quantity Section -->
             <div class="item-section quantity-section">
               <div class="quantity-display">
-                <q-badge 
+                <q-badge
                   :color="tool.total_quantity > 0 ? 'primary' : 'negative'"
-                  :label="`${tool.total_quantity} Total`"
+                  :label="`  ${tool.available_quantity} Available`"
                   class="total-quantity-badge"
                 />
                 <div v-if="tool.total_quantity > 0" class="quantity-breakdown">
                   <div class="breakdown-text">
-                    {{ tool.available_quantity }} Available
-                    <span v-if="tool.loaned_quantity > 0"> • {{ tool.loaned_quantity }} Loaned</span>
-                    <span v-if="tool.reserved_quantity > 0"> • {{ tool.reserved_quantity }} Reserved</span>
-                    <span v-if="tool.broken_quantity > 0"> • {{ tool.broken_quantity }} Maintenance</span>
+                    {{ tool.total_quantity }} Total
+                    <span v-if="tool.loaned_quantity > 0">
+                      • {{ tool.loaned_quantity }} Loaned</span
+                    >
+                    <span v-if="tool.reserved_quantity > 0">
+                      • {{ tool.reserved_quantity }} Reserved</span
+                    >
+                    <span v-if="tool.broken_quantity > 0">
+                      • {{ tool.broken_quantity }} Maintenance</span
+                    >
                   </div>
                 </div>
               </div>
@@ -258,12 +574,17 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
 
             <!-- Condition Status Section -->
             <div class="item-section condition-section">
-              <q-chip 
+              <q-chip
                 :color="getConditionColor(tool)"
                 text-color="white"
                 size="sm"
                 :icon="getConditionIcon(tool)"
-                :label="toolsStore.getConditionStatus(tool).replace('_', ' ').toUpperCase()"
+                :label="
+                  toolsStore
+                    .getConditionStatus(tool)
+                    .replace('_', ' ')
+                    .toUpperCase()
+                "
                 class="condition-chip clickable"
                 clickable
                 @click.stop="handleConditionClick(tool)"
@@ -303,7 +624,7 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
 
     <!-- Condition Details Dialog -->
     <q-dialog v-model="showConditionDialog" persistent>
-      <q-card class="condition-dialog" style="min-width: 500px">
+      <q-card class="condition-dialog" style="min-width: 500px;">
         <q-card-section class="row items-center q-pb-none">
           <div class="text-h6">Tool Condition Details</div>
           <q-space />
@@ -317,7 +638,9 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
               {{ selectedTool.name }}
             </div>
             <div class="text-body2 text-grey-7">
-              {{ selectedTool.brand }} {{ selectedTool.model }} ({{ selectedTool.sku_code }})
+              {{ selectedTool.brand }} {{ selectedTool.model }} ({{
+                selectedTool.sku_code
+              }})
             </div>
           </div>
 
@@ -332,19 +655,27 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
               </div>
               <div class="col">
                 <div class="text-body2 text-grey-7">Available</div>
-                <div class="text-h6 text-positive">{{ selectedTool.available_quantity }}</div>
+                <div class="text-h6 text-positive">
+                  {{ selectedTool.available_quantity }}
+                </div>
               </div>
               <div class="col" v-if="selectedTool.loaned_quantity > 0">
-                <div class="text-body2 text-grey-7">Loaned Out</div>
-                <div class="text-h6 text-purple">{{ selectedTool.loaned_quantity }}</div>
+                <div class="text-body2 text-grey-7">Checked Out</div>
+                <div class="text-h6 text-purple">
+                  {{ selectedTool.loaned_quantity }}
+                </div>
               </div>
               <div class="col" v-if="selectedTool.reserved_quantity > 0">
                 <div class="text-body2 text-grey-7">Reserved</div>
-                <div class="text-h6 text-info">{{ selectedTool.reserved_quantity }}</div>
+                <div class="text-h6 text-info">
+                  {{ selectedTool.reserved_quantity }}
+                </div>
               </div>
               <div class="col" v-if="selectedTool.broken_quantity > 0">
                 <div class="text-body2 text-grey-7">Maintenance</div>
-                <div class="text-h6 text-negative">{{ selectedTool.broken_quantity }}</div>
+                <div class="text-h6 text-negative">
+                  {{ selectedTool.broken_quantity }}
+                </div>
               </div>
             </div>
           </div>
@@ -356,27 +687,38 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
             <div class="row q-gutter-md">
               <div class="col-12">
                 <div class="text-body2">
-                  <strong>Type:</strong> {{ selectedTool.details.tool_type || 'Not specified' }}
+                  <strong>Type:</strong>
+                  {{ selectedTool.details.tool_type || "Not specified" }}
                 </div>
               </div>
               <div class="col-12" v-if="selectedTool.details.manufacturer">
                 <div class="text-body2">
-                  <strong>Manufacturer:</strong> {{ selectedTool.details.manufacturer }}
+                  <strong>Manufacturer:</strong>
+                  {{ selectedTool.details.manufacturer }}
                 </div>
               </div>
               <div class="col-12" v-if="selectedTool.details.serial_number">
                 <div class="text-body2">
-                  <strong>Serial Number:</strong> {{ selectedTool.details.serial_number }}
+                  <strong>Serial Number:</strong>
+                  {{ selectedTool.details.serial_number }}
                 </div>
               </div>
               <div class="col-12" v-if="selectedTool.details.voltage">
                 <div class="text-body2">
-                  <strong>Voltage:</strong> {{ getVoltageDisplay(selectedTool.details.voltage) }}
+                  <strong>Voltage:</strong>
+                  {{ getVoltageDisplay(selectedTool.details.voltage) }}
                 </div>
               </div>
-              <div class="col-12" v-if="selectedTool.details.features && selectedTool.details.features.length > 0">
+              <div
+                class="col-12"
+                v-if="
+                  selectedTool.details.features &&
+                  selectedTool.details.features.length > 0
+                "
+              >
                 <div class="text-body2">
-                  <strong>Features:</strong> {{ selectedTool.details.features.join(', ') }}
+                  <strong>Features:</strong>
+                  {{ selectedTool.details.features.join(", ") }}
                 </div>
               </div>
             </div>
@@ -415,6 +757,37 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.2);
   color: rgba(33, 37, 41, 0.7);
+}
+
+/* Search and Filter Section */
+.search-filter-section {
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(15px);
+  border-radius: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  margin-bottom: 16px;
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border-radius: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* Filter Button Styling */
+.filter-btn {
+  min-width: 100px;
+  text-transform: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.filter-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-1px);
 }
 
 /* Header Section */
@@ -649,7 +1022,8 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
   backdrop-filter: blur(15px);
 }
 
-.condition-summary, .tool-details {
+.condition-summary,
+.tool-details {
   padding: 16px;
   background: rgba(255, 255, 255, 0.1);
   border-radius: 10px;
@@ -662,11 +1036,11 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
   .item-section {
     min-width: 60px;
   }
-  
+
   .tool-details-section {
     max-width: 250px;
   }
-  
+
   .specifications-section {
     max-width: 150px;
   }
@@ -678,13 +1052,13 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
     flex-wrap: wrap;
     gap: 8px;
   }
-  
+
   .header-section,
   .item-section {
     flex: 1 1 auto;
     min-width: 120px;
   }
-  
+
   .tool-item {
     padding: 12px;
   }

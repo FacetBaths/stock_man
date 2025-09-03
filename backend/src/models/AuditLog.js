@@ -8,7 +8,7 @@ const auditLogSchema = new mongoose.Schema({
     required: true,
     enum: [
       'create', 'update', 'delete', 'login', 'logout', 'authentication',
-      'inventory_movement', 'tag_created', 'tag_fulfilled', 'tag_cancelled',
+      'inventory_movement', 'tag_created', 'tag_fulfilled', 'tag_cancelled', 'tag_partial_returned',
       'item_added', 'item_removed', 'item_transferred',
       'customer_created', 'customer_updated',
       'sku_created', 'sku_updated', 'sku_deleted',
@@ -192,7 +192,7 @@ auditLogSchema.statics.logInventoryMovement = function(movementData) {
 // Static method to log tag events
 auditLogSchema.statics.logTagEvent = function(tagEventData) {
   const {
-    event_type, // 'tag_created', 'tag_fulfilled', 'tag_cancelled'
+    event_type, // 'tag_created', 'tag_fulfilled', 'tag_cancelled', 'tag_partial_returned'
     tag_id,
     customer_id,
     user_id,
@@ -206,7 +206,8 @@ auditLogSchema.statics.logTagEvent = function(tagEventData) {
   const actionMap = {
     'tag_created': 'Created',
     'tag_fulfilled': 'Fulfilled',
-    'tag_cancelled': 'Cancelled'
+    'tag_cancelled': 'Cancelled',
+    'tag_partial_returned': 'Partial Return'
   };
   
   const action = actionMap[event_type];
