@@ -355,6 +355,40 @@ router.get('/',
   }
 );
 
+// GET /api/skus/count - Get total count of product SKUs (excluding tools)
+// ⚠️ IMPORTANT: This route must come BEFORE /:id route to avoid conflicts
+router.get('/count', 
+  auth,
+  async (req, res) => {
+    try {
+      // ✅ FILTER: Get tool categories to exclude
+      const toolCategories = await Category.find({ type: 'tool' }).select('_id');
+      const toolCategoryIds = toolCategories.map(cat => cat._id.toString());
+      
+      // Build filter to exclude tools
+      const filter = {};
+      if (toolCategoryIds.length > 0) {
+        filter.category_id = { $nin: toolCategoryIds };
+      }
+      
+      // Count total product SKUs
+      const totalSkus = await SKU.countDocuments(filter);
+      
+      res.json({ 
+        count: totalSkus,
+        message: 'Product SKU count retrieved successfully'
+      });
+      
+    } catch (error) {
+      console.error('Get SKU count error:', error);
+      res.status(500).json({ 
+        message: 'Failed to get SKU count', 
+        error: error.message 
+      });
+    }
+  }
+);
+
 // GET /api/skus/:id - Get a single SKU by ID
 router.get('/:id', 
   auth,
@@ -742,8 +776,8 @@ router.delete('/:id',
   }
 );
 
-// GET /api/skus/lookup/:skuCode - Lookup SKU by code (for scanning)
-router.get('/lookup/:skuCode', 
+// GET /api/skus/lookup/:skuCode
+router.get('/lookup/:skuCode',
   auth,
   [
     param('skuCode').notEmpty().withMessage('SKU code is required')

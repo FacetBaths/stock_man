@@ -209,11 +209,11 @@ const getToolTypeColor = (toolType: string) => {
     'measuring tool': 'info',
     'safety equipment': 'warning',
     'cutting tool': 'deep-orange',
-    'fastener': 'brown',
+    'general': 'brown',
     'electrical': 'purple',
     'plumbing': 'blue',
-    'pneumatic': 'cyan',
-    'hydraulic': 'amber'
+    'stand or clamp': 'cyan',
+    'finishing tool': 'amber'
   }
   return colorMap[toolType?.toLowerCase()] || 'grey'
 }
@@ -660,7 +660,7 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
                 </div>
               </div>
               <div class="col" v-if="selectedTool.loaned_quantity > 0">
-                <div class="text-body2 text-grey-7">Loaned Out</div>
+                <div class="text-body2 text-grey-7">Checked Out</div>
                 <div class="text-h6 text-purple">
                   {{ selectedTool.loaned_quantity }}
                 </div>

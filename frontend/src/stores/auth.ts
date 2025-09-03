@@ -37,8 +37,7 @@ export const useAuthStore = defineStore('auth', () => {
   const canWrite = computed(() => {
     if (!user.value) return false
     return user.value.role === 'admin' || 
-           user.value.role === 'warehouse_manager' ||
-           user.value.role === 'sales_rep'
+           user.value.role === 'warehouse_manager'
   })
 
   const isAdmin = computed(() => user.value?.role === 'admin')
@@ -61,7 +60,7 @@ export const useAuthStore = defineStore('auth', () => {
     const rolePermissions = {
       admin: ['read', 'write', 'delete', 'manage_users', 'view_audit_logs'],
       warehouse_manager: ['read', 'write', 'delete'],
-      sales_rep: ['read', 'write'],
+      sales_rep: ['read'],
       viewer: ['read']
     }
     

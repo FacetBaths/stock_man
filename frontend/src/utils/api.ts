@@ -763,6 +763,12 @@ export const tagApi = {
 
 // Updated SKU API for new architecture
 export const skuApi = {
+  // Get total count of product SKUs (excluding tools)
+  getSKUCount: async (): Promise<{ count: number; message: string }> => {
+    const response = await api.get('/skus/count')
+    return response.data
+  },
+
   // Get SKUs with enhanced filtering
   getSKUs: async (params?: {
     category_id?: string
