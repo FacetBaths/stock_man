@@ -107,7 +107,7 @@ const getVoltageDisplay = (voltage?: string) => {
 }
 
 // Check if user can view cost information
-const canViewCost = computed(() => 
+const canViewCost = computed(() =>
   authStore.hasPermission('view_cost') || authStore.hasRole(['admin', 'warehouse_manager'])
 )
 
@@ -127,13 +127,17 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
     </div>
 
     <!-- No tools banner -->
-    <q-banner v-else-if="filteredTools.length === 0" class="no-tools-banner" rounded>
+    <q-banner
+      v-else-if="filteredTools.length === 0"
+      class="no-tools-banner"
+      rounded
+    >
       <template v-slot:avatar>
         <q-icon name="build" color="grey-6" />
       </template>
       No tools found matching your criteria.
     </q-banner>
-    
+
     <div v-else>
       <!-- Header Section -->
       <div class="table-header glass-header q-pa-md q-mb-sm">
@@ -168,12 +172,12 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
           </div>
         </div>
       </div>
-      
+
       <!-- Tools List -->
       <div class="tools-list">
-        <div 
-          v-for="tool in filteredTools" 
-          :key="tool._id" 
+        <div
+          v-for="tool in filteredTools"
+          :key="tool._id"
           class="tool-item"
           @click="canWrite ? emit('edit', tool) : null"
           :style="{ cursor: canWrite ? 'pointer' : 'default' }"
@@ -181,7 +185,13 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
           <div class="item-row">
             <!-- Tool Details Section -->
             <div class="item-section tool-details-section">
-              <div v-if="tool.details.tool_type" class="tool-type-banner" :class="`type-banner-${getToolTypeColor(tool.details.tool_type)}`">
+              <div
+                v-if="tool.details.tool_type"
+                class="tool-type-banner"
+                :class="`type-banner-${getToolTypeColor(
+                  tool.details.tool_type
+                )}`"
+              >
                 {{ tool.details.tool_type.toUpperCase() }}
               </div>
               <div class="tool-title">
@@ -211,7 +221,9 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
               </q-chip>
               <div v-if="tool.details.serial_number" class="serial-number">
                 <q-icon name="tag" size="xs" class="q-mr-xs" />
-                <span class="serial-text">{{ tool.details.serial_number }}</span>
+                <span class="serial-text">{{
+                  tool.details.serial_number
+                }}</span>
               </div>
             </div>
 
@@ -229,7 +241,10 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
                   <q-tooltip>Operating Voltage</q-tooltip>
                 </q-chip>
               </div>
-              <div v-if="tool.details.features && tool.details.features.length > 0" class="features">
+              <div
+                v-if="tool.details.features && tool.details.features.length > 0"
+                class="features"
+              >
                 <div class="features-text">
                   <q-icon name="stars" size="xs" class="q-mr-xs" />
                   {{ formatFeatures(tool.details.features) }}
@@ -240,17 +255,23 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
             <!-- Quantity Section -->
             <div class="item-section quantity-section">
               <div class="quantity-display">
-                <q-badge 
+                <q-badge
                   :color="tool.total_quantity > 0 ? 'primary' : 'negative'"
-                  :label="`${tool.total_quantity} Total`"
+                  :label="`  ${tool.available_quantity} Available`"
                   class="total-quantity-badge"
                 />
                 <div v-if="tool.total_quantity > 0" class="quantity-breakdown">
                   <div class="breakdown-text">
-                    {{ tool.available_quantity }} Available
-                    <span v-if="tool.loaned_quantity > 0"> • {{ tool.loaned_quantity }} Loaned</span>
-                    <span v-if="tool.reserved_quantity > 0"> • {{ tool.reserved_quantity }} Reserved</span>
-                    <span v-if="tool.broken_quantity > 0"> • {{ tool.broken_quantity }} Maintenance</span>
+                    {{ tool.total_quantity }} Total
+                    <span v-if="tool.loaned_quantity > 0">
+                      • {{ tool.loaned_quantity }} Loaned</span
+                    >
+                    <span v-if="tool.reserved_quantity > 0">
+                      • {{ tool.reserved_quantity }} Reserved</span
+                    >
+                    <span v-if="tool.broken_quantity > 0">
+                      • {{ tool.broken_quantity }} Maintenance</span
+                    >
                   </div>
                 </div>
               </div>
@@ -258,12 +279,17 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
 
             <!-- Condition Status Section -->
             <div class="item-section condition-section">
-              <q-chip 
+              <q-chip
                 :color="getConditionColor(tool)"
                 text-color="white"
                 size="sm"
                 :icon="getConditionIcon(tool)"
-                :label="toolsStore.getConditionStatus(tool).replace('_', ' ').toUpperCase()"
+                :label="
+                  toolsStore
+                    .getConditionStatus(tool)
+                    .replace('_', ' ')
+                    .toUpperCase()
+                "
                 class="condition-chip clickable"
                 clickable
                 @click.stop="handleConditionClick(tool)"
@@ -303,7 +329,7 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
 
     <!-- Condition Details Dialog -->
     <q-dialog v-model="showConditionDialog" persistent>
-      <q-card class="condition-dialog" style="min-width: 500px">
+      <q-card class="condition-dialog" style="min-width: 500px;">
         <q-card-section class="row items-center q-pb-none">
           <div class="text-h6">Tool Condition Details</div>
           <q-space />
@@ -317,7 +343,9 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
               {{ selectedTool.name }}
             </div>
             <div class="text-body2 text-grey-7">
-              {{ selectedTool.brand }} {{ selectedTool.model }} ({{ selectedTool.sku_code }})
+              {{ selectedTool.brand }} {{ selectedTool.model }} ({{
+                selectedTool.sku_code
+              }})
             </div>
           </div>
 
@@ -332,19 +360,27 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
               </div>
               <div class="col">
                 <div class="text-body2 text-grey-7">Available</div>
-                <div class="text-h6 text-positive">{{ selectedTool.available_quantity }}</div>
+                <div class="text-h6 text-positive">
+                  {{ selectedTool.available_quantity }}
+                </div>
               </div>
               <div class="col" v-if="selectedTool.loaned_quantity > 0">
                 <div class="text-body2 text-grey-7">Loaned Out</div>
-                <div class="text-h6 text-purple">{{ selectedTool.loaned_quantity }}</div>
+                <div class="text-h6 text-purple">
+                  {{ selectedTool.loaned_quantity }}
+                </div>
               </div>
               <div class="col" v-if="selectedTool.reserved_quantity > 0">
                 <div class="text-body2 text-grey-7">Reserved</div>
-                <div class="text-h6 text-info">{{ selectedTool.reserved_quantity }}</div>
+                <div class="text-h6 text-info">
+                  {{ selectedTool.reserved_quantity }}
+                </div>
               </div>
               <div class="col" v-if="selectedTool.broken_quantity > 0">
                 <div class="text-body2 text-grey-7">Maintenance</div>
-                <div class="text-h6 text-negative">{{ selectedTool.broken_quantity }}</div>
+                <div class="text-h6 text-negative">
+                  {{ selectedTool.broken_quantity }}
+                </div>
               </div>
             </div>
           </div>
@@ -356,27 +392,38 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
             <div class="row q-gutter-md">
               <div class="col-12">
                 <div class="text-body2">
-                  <strong>Type:</strong> {{ selectedTool.details.tool_type || 'Not specified' }}
+                  <strong>Type:</strong>
+                  {{ selectedTool.details.tool_type || "Not specified" }}
                 </div>
               </div>
               <div class="col-12" v-if="selectedTool.details.manufacturer">
                 <div class="text-body2">
-                  <strong>Manufacturer:</strong> {{ selectedTool.details.manufacturer }}
+                  <strong>Manufacturer:</strong>
+                  {{ selectedTool.details.manufacturer }}
                 </div>
               </div>
               <div class="col-12" v-if="selectedTool.details.serial_number">
                 <div class="text-body2">
-                  <strong>Serial Number:</strong> {{ selectedTool.details.serial_number }}
+                  <strong>Serial Number:</strong>
+                  {{ selectedTool.details.serial_number }}
                 </div>
               </div>
               <div class="col-12" v-if="selectedTool.details.voltage">
                 <div class="text-body2">
-                  <strong>Voltage:</strong> {{ getVoltageDisplay(selectedTool.details.voltage) }}
+                  <strong>Voltage:</strong>
+                  {{ getVoltageDisplay(selectedTool.details.voltage) }}
                 </div>
               </div>
-              <div class="col-12" v-if="selectedTool.details.features && selectedTool.details.features.length > 0">
+              <div
+                class="col-12"
+                v-if="
+                  selectedTool.details.features &&
+                  selectedTool.details.features.length > 0
+                "
+              >
                 <div class="text-body2">
-                  <strong>Features:</strong> {{ selectedTool.details.features.join(', ') }}
+                  <strong>Features:</strong>
+                  {{ selectedTool.details.features.join(", ") }}
                 </div>
               </div>
             </div>
@@ -649,7 +696,8 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
   backdrop-filter: blur(15px);
 }
 
-.condition-summary, .tool-details {
+.condition-summary,
+.tool-details {
   padding: 16px;
   background: rgba(255, 255, 255, 0.1);
   border-radius: 10px;
@@ -662,11 +710,11 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
   .item-section {
     min-width: 60px;
   }
-  
+
   .tool-details-section {
     max-width: 250px;
   }
-  
+
   .specifications-section {
     max-width: 150px;
   }
@@ -678,13 +726,13 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
     flex-wrap: wrap;
     gap: 8px;
   }
-  
+
   .header-section,
   .item-section {
     flex: 1 1 auto;
     min-width: 120px;
   }
-  
+
   .tool-item {
     padding: 12px;
   }

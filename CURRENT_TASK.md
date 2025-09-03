@@ -4,19 +4,24 @@
 **Branch:** `feature/tools-management`  
 **Phase:** Frontend (Phase 2)  
 **Estimated Time:** 3 hours  
-**Status:** ❌ PENDING
+**Status:** 🔄 IN PROGRESS
 
 ---
 
 ## 🎯 **TASK OVERVIEW**
-Enhance the existing Tools.vue placeholder view to create a fully functional tools dashboard that displays real-time tool inventory data, active checkouts/loans, and provides quick action buttons for tool management operations.
+Complete the implementation of Tools.vue by:
+1. ✅ **COMPLETED**: Updated UI terminology from "Loan" to "Check-out/Check-in" throughout the interface
+2. **IN PROGRESS**: Fully implement the Tool Checkout Modal with complete functionality
+3. **PENDING**: Fully implement the Tool Check-in/Return Modal with complete functionality  
+4. **PENDING**: Wire up backend API calls for the checkout/checkin workflow
+5. **PENDING**: Test and validate the complete workflow
 
 ## ✅ **SUCCESS CRITERIA**
-- [ ] Show tools-only inventory summary with real-time data
-- [ ] Display tool checkout status (available, loaned, maintenance)
-- [ ] Show active tool loans/checkouts
-- [ ] Include quick actions (checkout, return, condition change)
-- [ ] Use consistent styling with existing dashboard
+- [✅] Update UI terminology from "Loan" to "Check-out/Check-in" throughout Tools.vue
+- [ ] Fully implement Tool Checkout Modal (replace placeholder with functioning modal)
+- [ ] Fully implement Tool Check-in/Return Modal (replace placeholder with functioning modal)
+- [ ] Connect both modals with backend API calls for checkout/checkin workflow
+- [ ] Test dashboard with real backend data and ensure UI reflects current state accurately
 
 ## 🔧 **TECHNICAL REQUIREMENTS**
 

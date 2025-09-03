@@ -130,15 +130,14 @@ Implement a completely separate tools management system alongside the existing p
 ---
 
 ### **Task 6: Create Tools Dashboard View**
-**Status:** ❌ Pending  
+**Status:** 🔄 IN PROGRESS  
 **Estimated Time:** 3 hours  
 **Success Criteria:**
-- [ ] Create `frontend/src/views/Tools.vue`
-- [ ] Show tools-only inventory summary
-- [ ] Display tool checkout status (available, loaned, maintenance)
-- [ ] Show active tool loans/checkouts
-- [ ] Include quick actions (checkout, return, condition change)
-- [ ] Use consistent styling with existing dashboard
+- [✅] Update UI terminology from "Loan" to "Check-out/Check-in" throughout Tools.vue
+- [ ] Fully implement Tool Checkout Modal (replace placeholder with functioning modal)
+- [ ] Fully implement Tool Check-in/Return Modal (replace placeholder with functioning modal) 
+- [ ] Connect both modals with backend API calls for checkout/checkin workflow
+- [ ] Test dashboard with real backend data and ensure UI reflects current state accurately
 
 **Dependencies:** Task 2 (needs tool API endpoints)  
 **Files to Create:**

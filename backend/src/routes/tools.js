@@ -31,14 +31,21 @@ const validateToolCheckout = [
   body('sku_items')
     .isArray({ min: 1 })
     .withMessage('SKU items array is required and must contain at least one item'),
-  body('sku_items.*.sku_id')
-    .notEmpty()
-    .withMessage('SKU ID is required')
-    .isMongoId()
-    .withMessage('SKU ID must be a valid MongoDB ID'),
-  body('sku_items.*.quantity')
-    .isInt({ min: 1 })
-    .withMessage('SKU quantity must be a positive integer'),
+  body('sku_items').custom((skuItems) => {
+    if (!Array.isArray(skuItems)) {
+      throw new Error('sku_items must be an array');
+    }
+    for (let i = 0; i < skuItems.length; i++) {
+      const item = skuItems[i];
+      if (!item.sku_id || typeof item.sku_id !== 'string' || !/^[0-9a-fA-F]{24}$/.test(item.sku_id)) {
+        throw new Error(`sku_items[${i}].sku_id must be a valid MongoDB ID`);
+      }
+      if (!item.quantity || typeof item.quantity !== 'number' || item.quantity < 1 || !Number.isInteger(item.quantity)) {
+        throw new Error(`sku_items[${i}].quantity must be a positive integer`);
+      }
+    }
+    return true;
+  }),
   body('notes')
     .optional()
     .trim()
@@ -589,6 +596,24 @@ router.get('/tags',
 
       const tags = await query;
       
+      // Debug: Log the first tag's structure to see what data we're returning
+      if (tags.length > 0) {
+        console.log('🔍 [Tools Tags API Debug] First tag structure:', {
+          _id: tags[0]._id,
+          customer_name: tags[0].customer_name,
+          sku_items: tags[0].sku_items.map(item => ({
+            sku_id: item.sku_id ? {
+              _id: item.sku_id._id,
+              name: item.sku_id.name,
+              category_type: item.sku_id.category_id?.type
+            } : 'NOT_POPULATED',
+            selected_instance_ids: item.selected_instance_ids,
+            quantity: item.quantity,
+            remaining_quantity: item.remaining_quantity
+          }))
+        });
+      }
+      
       console.log(`✅ [Tools Tags API] Found ${tags.length} tool tags out of ${totalTags} total`);
 
       // Enrich tags with calculated fields
@@ -700,6 +725,7 @@ router.post('/checkout',
       // ✅ ASSIGN INSTANCES: Automatically assign available instances to the tag
       try {
         await tag.assignInstances();
+        await tag.save(); // Save the tag to persist selected_instance_ids changes
         console.log(`✅ Assigned instances to tool checkout tag ${tag._id}`);
       } catch (error) {
         console.error('Failed to assign instances to tag:', error);
@@ -772,15 +798,18 @@ router.post('/:id/return',
     try {
       console.log(`🔧 [Tools Return API] Processing tool return for tag: ${req.params.id}`);
       console.log('Request body:', JSON.stringify(req.body, null, 2));
+      console.log('Auth user:', req.user ? { id: req.user._id, username: req.user.username } : 'No user');
       
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        console.log('Validation errors:', errors.array());
+        console.log('🚨 [Tools Return API] Validation errors:', errors.array());
         return res.status(400).json({ 
           message: 'Validation failed', 
           errors: errors.array() 
         });
       }
+      
+      console.log('✅ [Tools Return API] Validation passed');
 
       const tagId = req.params.id;
       const { return_notes, returned_condition } = req.body;
@@ -944,6 +973,195 @@ router.post('/:id/return',
 );
 
 // PUT /api/tools/:id/condition - Change tool condition status
+// POST /api/tools/:id/partial-return - Return a subset of instances from a loan
+router.post('/:id/partial-return',
+  auth,
+  requireWriteAccess,
+  [
+    param('id').isMongoId().withMessage('Invalid tag ID format'),
+    body('items').isArray({ min: 1 }).withMessage('items is required and must be a non-empty array'),
+    body('items').custom((items) => {
+      if (!Array.isArray(items)) {
+        throw new Error('items must be an array');
+      }
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (!item.sku_id || typeof item.sku_id !== 'string' || !/^[0-9a-fA-F]{24}$/.test(item.sku_id)) {
+          throw new Error(`items[${i}].sku_id must be a valid MongoDB ID`);
+        }
+        if (!item.instance_ids || !Array.isArray(item.instance_ids) || item.instance_ids.length === 0) {
+          throw new Error(`items[${i}].instance_ids must be a non-empty array`);
+        }
+        for (let j = 0; j < item.instance_ids.length; j++) {
+          const instanceId = item.instance_ids[j];
+          if (!instanceId || typeof instanceId !== 'string' || !/^[0-9a-fA-F]{24}$/.test(instanceId)) {
+            throw new Error(`items[${i}].instance_ids[${j}] must be a valid MongoDB ID`);
+          }
+        }
+      }
+      return true;
+    }),
+    body('return_notes').optional().isString().trim().isLength({ max: 500 })
+      .withMessage('Return notes must be a string with maximum 500 characters'),
+    body('returned_condition')
+      .optional()
+      .isIn(['functional', 'needs_maintenance', 'broken'])
+      .withMessage('Returned condition must be functional, needs_maintenance, or broken')
+  ],
+  async (req, res) => {
+    try {
+      console.log('🔧 [Partial Return] Request received');
+      console.log('Request body:', JSON.stringify(req.body, null, 2));
+      console.log('Request params:', req.params);
+      console.log('Auth user:', req.user ? { id: req.user._id, username: req.user.username } : 'No user');
+      
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        console.log('🚨 [Partial Return] Validation failed:', errors.array());
+        return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
+      }
+      
+      console.log('✅ [Partial Return] Validation passed');
+
+      const tagId = req.params.id;
+      const { items, return_notes, returned_condition } = req.body;
+
+      const tag = await Tag.findById(tagId)
+        .populate({ path: 'sku_items.sku_id', populate: { path: 'category_id' } });
+      if (!tag) {
+        return res.status(404).json({ message: 'Tag not found' });
+      }
+      if (tag.status !== 'active') {
+        return res.status(400).json({ message: `Cannot return tools from a ${tag.status} tag` });
+      }
+
+      // Validate items against tag contents
+      let totalToReturn = 0;
+      const instanceIdsToFree = [];
+
+      for (const reqItem of items) {
+        const tagItem = tag.sku_items.find(si => si.sku_id._id.toString() === reqItem.sku_id);
+        if (!tagItem) {
+          return res.status(400).json({ message: `SKU ${reqItem.sku_id} not found in this tag` });
+        }
+        const availableIds = (tagItem.selected_instance_ids || []).map(id => id.toString());
+        const invalid = reqItem.instance_ids.filter(id => !availableIds.includes(id));
+        if (invalid.length > 0) {
+          return res.status(400).json({ message: `One or more provided instance IDs are not part of this tag` });
+        }
+        totalToReturn += reqItem.instance_ids.length;
+        instanceIdsToFree.push(...reqItem.instance_ids);
+      }
+
+      if (totalToReturn === 0) {
+        return res.status(400).json({ message: 'No instances selected for return' });
+      }
+
+      // Free or reassign instances based on condition
+      if (!returned_condition || returned_condition === 'functional') {
+        await Instance.updateMany({ _id: { $in: instanceIdsToFree } }, { tag_id: null });
+      } else {
+        // Build a condition tag with the returned instances
+        const conditionTagData = {
+          customer_name: `Maintenance - ${tag.customer_name}`,
+          tag_type: returned_condition === 'broken' ? 'broken' : 'reserved',
+          project_name: `Tool condition: ${returned_condition}`,
+          sku_items: items.map(reqItem => ({
+            sku_id: reqItem.sku_id,
+            selected_instance_ids: reqItem.instance_ids,
+            selection_method: 'manual',
+            quantity: reqItem.instance_ids.length,
+            remaining_quantity: reqItem.instance_ids.length,
+            notes: `Returned with condition: ${returned_condition}`
+          })),
+          notes: return_notes || `Tools returned with condition: ${returned_condition}`,
+          status: 'active',
+          created_by: req.user.username,
+          last_updated_by: req.user.username
+        };
+        const conditionTag = new Tag(conditionTagData);
+        await conditionTag.save();
+        await Instance.updateMany({ _id: { $in: instanceIdsToFree } }, { tag_id: conditionTag._id });
+      }
+
+      // Remove returned instances from original tag items and filter out empty SKUs
+      const updatedSkuItems = [];
+      
+      tag.sku_items.forEach(item => {
+        const matched = items.find(reqItem => reqItem.sku_id === item.sku_id._id.toString());
+        if (matched) {
+          const removeSet = new Set(matched.instance_ids.map(id => id.toString()));
+          item.selected_instance_ids = (item.selected_instance_ids || []).filter(id => !removeSet.has(id.toString()));
+          item.remaining_quantity = item.selected_instance_ids.length;
+          item.quantity = item.selected_instance_ids.length;
+          
+          // Only keep SKU items that still have instances
+          if (item.selected_instance_ids.length > 0) {
+            updatedSkuItems.push(item);
+          }
+        } else {
+          // Keep SKU items that weren't part of this return
+          updatedSkuItems.push(item);
+        }
+      });
+      
+      // Update the tag's sku_items array
+      tag.sku_items = updatedSkuItems;
+
+      // Append return notes
+      if (return_notes) {
+        tag.notes = tag.notes ? `${tag.notes}\n\nPartial return: ${return_notes}` : `Partial return: ${return_notes}`;
+      }
+
+      // If no more instances left, fulfill the tag
+      const totalRemaining = tag.sku_items.reduce((sum, it) => sum + (it.selected_instance_ids ? it.selected_instance_ids.length : 0), 0);
+      if (totalRemaining === 0) {
+        tag.status = 'fulfilled';
+        tag.fulfilled_date = new Date();
+        tag.fulfilled_by = req.user.username;
+      }
+      tag.last_updated_by = req.user.username;
+      await tag.save();
+
+      // Audit log
+      await AuditLog.create({
+        event_type: 'tag_partial_returned',
+        entity_type: 'tag',
+        entity_id: tag._id,
+        user_id: req.user._id.toString(),
+        user_name: req.user.username,
+        action: 'PARTIAL_RETURN_TOOLS',
+        description: `Partial return from ${tag.customer_name}: ${totalToReturn} instance(s)`,
+        metadata: {
+          customer_name: tag.customer_name,
+          project_name: tag.project_name,
+          instances_returned: totalToReturn,
+          returned_condition: returned_condition || 'functional',
+          return_notes: return_notes || ''
+        },
+        category: 'business',
+        severity: 'low'
+      });
+
+      const updatedTag = await Tag.findById(tagId)
+        .populate({ path: 'sku_items.sku_id', populate: { path: 'category_id' } });
+      const tagObj = updatedTag.toObject();
+      tagObj.total_quantity = updatedTag.getTotalQuantity();
+      tagObj.remaining_quantity = updatedTag.getTotalRemainingQuantity();
+
+      return res.json({
+        message: 'Partial return processed successfully',
+        tag: tagObj,
+        instances_returned: totalToReturn,
+        condition: returned_condition || 'functional'
+      });
+    } catch (error) {
+      console.error('Tools partial return error:', error);
+      res.status(500).json({ message: 'Failed to process partial return', error: error.message });
+    }
+  }
+);
+
 router.put('/:id/condition',
   auth,
   requireWriteAccess,

@@ -155,6 +155,30 @@ Authorization: Bearer <your-jwt-token>
 }
 ```
 
+### POST /api/tools/:id/partial-return
+Purpose: Partial return of selected tool instances from a loan
+
+Request Body:
+```json
+{
+  "items": [
+    { "sku_id": "<skuId>", "instance_ids": ["<instId1>", "<instId2>"] }
+  ],
+  "return_notes": "Returned some tools",
+  "returned_condition": "functional|needs_maintenance|broken"
+}
+```
+
+Response:
+```json
+{
+  "message": "Partial return processed successfully",
+  "tag": { ... },
+  "instances_returned": 2,
+  "condition": "functional"
+}
+```
+
 ### PUT /api/tools/:id/condition
 **Purpose**: Change tool condition status independently
 

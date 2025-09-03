@@ -15,7 +15,7 @@ const props = defineProps<Props>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
-  success: []
+  updated: []
 }>()
 
 const $q = useQuasar()
@@ -160,7 +160,7 @@ const handleSubmit = async () => {
     await toolsStore.updateTool(props.tool._id, formData.value)
 
     console.log('✅ Tool updated successfully')
-    emit('success')
+    emit('updated')
     showDialog.value = false
 
   } catch (err: any) {
@@ -256,7 +256,7 @@ onMounted(async () => {
           </div>
 
           <!-- Tool Information Card -->
-          <div v-if="tool" class="q-mb-lg">
+          <div v-if="props.tool" class="q-mb-lg">
             <q-card flat bordered class="q-pa-md bg-grey-1">
               <div class="text-subtitle2 text-weight-medium q-mb-sm">
                 <q-icon name="build" class="q-mr-xs" />
@@ -266,7 +266,7 @@ onMounted(async () => {
                 <div class="col-12 col-sm-6">
                   <div class="text-caption text-grey-6">SKU Code</div>
                   <q-chip
-                    :label="tool.sku_code"
+                    :label="props.tool.sku_code"
                     color="primary"
                     text-color="white"
                     icon="qr_code"
@@ -275,29 +275,29 @@ onMounted(async () => {
                 <div class="col-12 col-sm-6">
                   <div class="text-caption text-grey-6">Total Quantity</div>
                   <div class="text-body1 text-weight-medium">
-                    {{ tool.total_quantity }} ({{ tool.available_quantity }}
+                    {{ props.tool.total_quantity }} ({{ props.tool.available_quantity }}
                     available)
                   </div>
                 </div>
                 <div class="col-12 col-sm-6">
                   <div class="text-caption text-grey-6">Category</div>
-                  <div class="text-body1">{{ tool.category.name }}</div>
+                  <div class="text-body1">{{ props.tool.category.name }}</div>
                 </div>
                 <div class="col-12 col-sm-6">
                   <div class="text-caption text-grey-6">Condition Status</div>
                   <q-chip
                     :color="
-                      toolsStore.getConditionStatus(tool) === 'available'
+                      toolsStore.getConditionStatus(props.tool) === 'available'
                         ? 'positive'
-                        : toolsStore.getConditionStatus(tool) === 'loaned'
+                        : toolsStore.getConditionStatus(props.tool) === 'loaned'
                         ? 'purple'
-                        : toolsStore.getConditionStatus(tool) === 'maintenance'
+                        : toolsStore.getConditionStatus(props.tool) === 'maintenance'
                         ? 'negative'
                         : 'warning'
                     "
                     text-color="white"
                     size="sm"
-                    :label="toolsStore.getConditionDisplay(tool)"
+                    :label="toolsStore.getConditionDisplay(props.tool)"
                   />
                 </div>
               </div>
@@ -514,7 +514,7 @@ onMounted(async () => {
             label="Update Tool"
             color="primary"
             :loading="isUpdating"
-            :disable="!tool"
+            :disable="!props.tool"
           >
             <template v-slot:loading>
               <q-spinner-hourglass class="on-left" />
