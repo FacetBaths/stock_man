@@ -123,7 +123,7 @@ const canViewCost = computed(() => authStore.hasPermission('view_cost') || authS
 const getTagStatusBadges = (item: any) => {
   const tagSummary = item.tag_summary || item.tagSummary
   if (!tagSummary) return []
-  
+
   const badges = []
   if (tagSummary.reserved > 0) {
     badges.push({
@@ -173,21 +173,21 @@ const hasQualityIssues = (item: any) => {
 const getPrimaryTagStatus = (item: any) => {
   // Get the total quantity - handle both new and legacy structures
   const totalQty = getQuantity(item)
-  
+
   // First check if item is actually out of stock
   if (totalQty === 0) {
     return { text: 'None Available', color: 'negative', clickable: false }
   }
-  
+
   // Check if we have tag data - use tag_summary from API response
   const tagSummary = item.tag_summary
   if (!tagSummary || tagSummary.totalTagged === 0) {
     return { text: 'Available', color: 'positive', clickable: false }
   }
-  
+
   // Calculate available quantity
   const availableQty = getAvailableQuantity(item)
-  
+
   if (availableQty === 0) {
     // All items are tagged - no "Partially" prefix
     if (tagSummary.broken > 0) {
@@ -217,7 +217,7 @@ const getPrimaryTagStatus = (item: any) => {
       return { text: 'Partially Loaned', color: 'purple', clickable: true }
     }
   }
-  
+
 // Default fallback - some items available
   return { text: 'Available', color: 'positive', clickable: false }
 }
@@ -233,7 +233,7 @@ const getProductType = (item: any) => {
       'walls': 'wall',
       'accessories': 'accessory',
       'toilets': 'toilet',
-      'bases': 'base', 
+      'bases': 'base',
       'tubs': 'tub',
       'vanities': 'vanity',
       'shower doors': 'shower_door',
@@ -244,7 +244,7 @@ const getProductType = (item: any) => {
     const mappedType = categoryToTypeMap[categoryName] || categoryName.replace(/s$/, '') // remove plural 's'
     if (mappedType !== categoryName) return mappedType
   }
-  
+
   // Fallback to SKU code analysis if category isn't available or mapped
   if (item.sku && item.sku.sku_code) {
     const skuCode = item.sku.sku_code.toLowerCase()
@@ -260,7 +260,7 @@ const getProductType = (item: any) => {
     if (skuCode.includes('raw')) return 'raw_material'
     if (skuCode.includes('material')) return 'raw_material'
   }
-  
+
   // Check description if available
   if (item.sku && item.sku.description) {
     const desc = item.sku.description.toLowerCase()
@@ -275,12 +275,12 @@ const getProductType = (item: any) => {
     if (desc.includes('raw')) return 'raw_material'
     if (desc.includes('material')) return 'raw_material'
   }
-  
+
   // Handle legacy item structure
   if (item.product_type) {
     return item.product_type
   }
-  
+
   // Fallback
   return 'miscellaneous'
 }
@@ -314,7 +314,7 @@ const formatProductDetailsNew = (item: any) => {
     const productName = item.sku.name || item.sku.description || 'Unknown Product'
     const brandPrefix = item.sku.brand ? `${item.sku.brand} ` : ''
     const modelSuffix = item.sku.model ? ` ${item.sku.model}` : ''
-    
+
     return {
       primary: `${brandPrefix}${productName}${modelSuffix}`,
       secondary: item.sku.sku_code || ''
@@ -401,22 +401,22 @@ const getStockStatusForChip = (item: any): StockStatus => {
   const thresholds = item.sku?.stock_thresholds || { understocked: 5, overstocked: 100 }
   const availableQty = getAvailableQuantityNew(item)
   const totalQty = getQuantity(item)
-  
+
   // Check for out of stock first (zero quantity)
   if (item.is_out_of_stock || availableQty === 0 || totalQty === 0) {
     return 'out'
   }
-  
+
   // Check for overstock (if available)
   if (item.is_overstock || (thresholds.overstocked && totalQty >= thresholds.overstocked)) {
     return 'overstocked'
   }
-  
+
   // Check for understocked (low stock but not out)
   if (item.is_low_stock || (thresholds.understocked && availableQty <= thresholds.understocked)) {
     return 'understocked'
   }
-  
+
   // Default to adequate stock
   return 'adequate'
 }
@@ -429,7 +429,6 @@ const handleTagStatusClick = (item: Inventory) => {
     showTagDialog.value = true
   }
 }
-
 </script>
 
 <template>
@@ -440,7 +439,7 @@ const handleTagStatusClick = (item: Inventory) => {
       </template>
       No items found matching your criteria.
     </q-banner>
-    
+
     <div v-else>
       <!-- Header Section -->
       <div class="list-header glass-header q-pa-md q-mb-sm">
@@ -475,32 +474,143 @@ const handleTagStatusClick = (item: Inventory) => {
           </div>
         </div>
       </div>
-      
+
       <div class="inventory-list">
-        <div 
-          v-for="item in items" 
-          :key="item._id" 
+        <q-card
+          v-for="item in items"
+          :key="item._id"
           class="inventory-item"
           :class="`type-${getProductType(item)}`"
           @click="canWrite ? emit('edit', item) : null"
           :style="{ cursor: canWrite ? 'pointer' : 'default' }"
+          flat
+          bordered
         >
-          <div class="item-row">
+          <q-card-section class="item-row">
             <!-- Details Section -->
             <div class="item-section details-section">
-              <div class="product-type-banner" :class="`type-banner-${getProductType(item)}`">
-                {{ getProductType(item).replace('_', ' ').toUpperCase() }}
+              <div
+                class="product-type-banner"
+                :class="`type-banner-${getProductType(item)}`"
+              >
+                {{ getProductType(item).replace("_", " ").toUpperCase() }}
               </div>
               <div class="item-title">
                 {{ formatProductDetailsNew(item).primary }}
               </div>
-              <div v-if="formatProductDetailsNew(item).secondary" class="item-subtitle">
+              <div
+                v-if="formatProductDetailsNew(item).secondary"
+                class="item-subtitle"
+              >
                 {{ formatProductDetailsNew(item).secondary }}
               </div>
               <div v-if="item.notes" class="item-notes">
                 <q-icon name="note" size="xs" class="q-mr-xs" />{{ item.notes }}
               </div>
             </div>
+
+            <!-- Mobile Metrics Row (only visible on mobile) -->
+            <q-card class="mobile-metrics-row" flat>
+              <q-card-section class="metrics-container">
+                <!-- Cost Metric (if can view cost) -->
+                <q-card v-if="canViewCost" class="mobile-cost-metric" flat>
+                  <q-card-section class="metric-content">
+                    <div
+                      class="mobile-metric-value"
+                      style="color: rgba(40, 167, 69, 0.9);"
+                    >
+                      {{ formatCost(getCost(item)) }}
+                    </div>
+                    <div class="mobile-metric-label">Unit Cost</div>
+                    <div
+                      class="mobile-metric-label"
+                      style="font-size: 0.6rem; margin-top: 2px;"
+                    >
+                      {{ formatCost(getCost(item) * getQuantity(item)) }} total
+                    </div>
+                  </q-card-section>
+                </q-card>
+
+                <!-- Status Metric -->
+                <q-card class="mobile-status-metric" flat>
+                  <q-card-section class="metric-content">
+                    <StockStatusChip
+                      :status="getStockStatusForChip(item)"
+                      :quantity="getAvailableQuantityNew(item)"
+                      :thresholds="item.sku?.stock_thresholds"
+                      style="margin-bottom: 0.25rem;"
+                    />
+                    <div class="mobile-metric-label">Stock Status</div>
+                    <div
+                      v-if="item.location"
+                      class="mobile-metric-label"
+                      style="font-size: 0.6rem; margin-top: 2px;"
+                    >
+                      📍 {{ item.location }}
+                    </div>
+                  </q-card-section>
+                </q-card>
+              </q-card-section>
+              <!-- Total Quantity -->
+              <q-card-section>
+                <q-card
+                  class="mobile-quantity-metric"
+                  flat
+                  v-if="item.tag_summary?.totalTagged == 0"
+                >
+                  <q-card-section class="metric-content">
+                    <div
+                      class="mobile-metric-value"
+                      :style="{ color: getStockStatusNew(item).color }"
+                    >
+                      {{ getQuantity(item) }}
+                    </div>
+                    <div class="mobile-metric-label">Total Qty</div>
+                    <div
+                      v-if="
+                        item.tag_summary && item.tag_summary.totalTagged > 0
+                      "
+                      class="mobile-metric-label"
+                      style="font-size: 0.6rem; margin-top: 2px;"
+                    >
+                      {{ getAvailableQuantity(item) }} available
+                    </div>
+                  </q-card-section>
+                </q-card>
+
+                <!-- Available Quantity (if different from total) -->
+                <q-card
+                  v-if="item.tag_summary && item.tag_summary.totalTagged > 0"
+                  class="mobile-available-metric tagged"
+                  flat
+                >
+                  <q-card-section
+                    class="metric-content"
+                    v-if="item.tag_summary && item.tag_summary.totalTagged > 0"
+                    flat
+                  >
+                    <div
+                      class="mobile-metric-value"
+                      :style="{
+                        color:
+                          getAvailableQuantity(item) === 0
+                            ? '#dc3545'
+                            : '#FFFFFF',
+                      }"
+                    >
+                      {{ getAvailableQuantity(item) }}
+                    </div>
+                    <div class="mobile-metric-label text-white">Available</div>
+                    <div
+                      class="mobile-metric-label text-white"
+                      style="font-size: 0.6rem; margin-top: 2px;"
+                    >
+                      {{ item.tag_summary.totalTagged }} tagged
+                    </div>
+                  </q-card-section>
+                </q-card>
+              </q-card-section>
+            </q-card>
 
             <!-- SKU Section -->
             <div class="item-section sku-section">
@@ -538,17 +648,21 @@ const handleTagStatusClick = (item: Inventory) => {
             <div class="item-section quantity-section">
               <div class="quantity-display">
                 <!-- Total Quantity Badge -->
-                <q-badge 
-                  :color="getStockStatusNew(item).color" 
+                <q-badge
+                  :color="getStockStatusNew(item).color"
                   :label="getQuantity(item).toString()"
                   class="total-quantity-badge"
                   :title="`Total: ${getQuantity(item)} items`"
                 />
-                
+
                 <!-- Reserved/Available Breakdown -->
-                <div v-if="item.tag_summary && item.tag_summary.totalTagged > 0" class="quantity-breakdown">
+                <div
+                  v-if="item.tag_summary && item.tag_summary.totalTagged > 0"
+                  class="quantity-breakdown"
+                >
                   <div class="breakdown-text">
-                    {{ item.tag_summary.totalTagged }} tagged / {{ getAvailableQuantity(item) }} free
+                    {{ item.tag_summary.totalTagged }} tagged /
+                    {{ getAvailableQuantity(item) }} free
                   </div>
                 </div>
               </div>
@@ -556,14 +670,14 @@ const handleTagStatusClick = (item: Inventory) => {
 
             <!-- Tag Status Section -->
             <div class="item-section tag-section">
-              <q-chip 
+              <q-chip
                 :color="getPrimaryTagStatus(item).color"
                 text-color="white"
                 size="sm"
                 :label="getPrimaryTagStatus(item).text"
                 :class="[
                   'tag-status-chip',
-                  { 'clickable': getPrimaryTagStatus(item).clickable }
+                  { clickable: getPrimaryTagStatus(item).clickable },
                 ]"
                 :clickable="getPrimaryTagStatus(item).clickable"
                 @click="handleTagStatusClick(item)"
@@ -591,7 +705,7 @@ const handleTagStatusClick = (item: Inventory) => {
               />
               <div class="location-label">
                 <q-icon name="place" size="xs" class="q-mr-xs" />
-                {{ item.location || 'No location' }}
+                {{ item.location || "No location" }}
               </div>
               <div class="date-label">
                 {{ formatDate(item.updatedAt) }}
@@ -625,14 +739,14 @@ const handleTagStatusClick = (item: Inventory) => {
                 </q-btn>
               </div>
             </div>
-          </div>
-        </div>
+          </q-card-section>
+        </q-card>
       </div>
     </div>
 
     <!-- Tag Details Dialog -->
     <q-dialog v-model="showTagDialog" persistent>
-      <q-card class="tag-details-dialog" style="min-width: 500px">
+      <q-card class="tag-details-dialog" style="min-width: 500px;">
         <q-card-section class="row items-center q-pb-none">
           <div class="text-h6">Tag Details</div>
           <q-space />
@@ -645,7 +759,10 @@ const handleTagStatusClick = (item: Inventory) => {
             <div class="text-subtitle1 text-weight-bold">
               {{ formatProductDetails(selectedItem).primary }}
             </div>
-            <div class="text-body2 text-grey-7" v-if="formatProductDetails(selectedItem).secondary">
+            <div
+              class="text-body2 text-grey-7"
+              v-if="formatProductDetails(selectedItem).secondary"
+            >
               {{ formatProductDetails(selectedItem).secondary }}
             </div>
           </div>
@@ -660,34 +777,53 @@ const handleTagStatusClick = (item: Inventory) => {
               </div>
               <div class="col" v-if="selectedItem.tagSummary">
                 <div class="text-body2 text-grey-7">Total Tagged</div>
-                <div class="text-h6 text-negative">{{ selectedItem.tagSummary.totalTagged }}</div>
+                <div class="text-h6 text-negative">
+                  {{ selectedItem.tagSummary.totalTagged }}
+                </div>
               </div>
               <div class="col">
                 <div class="text-body2 text-grey-7">Available</div>
-                <div class="text-h6 text-positive">{{ getAvailableQuantity(selectedItem) }}</div>
+                <div class="text-h6 text-positive">
+                  {{ getAvailableQuantity(selectedItem) }}
+                </div>
               </div>
             </div>
           </div>
 
           <!-- Tag Breakdown -->
-          <div v-if="selectedItem.tagSummary && selectedItem.tagSummary.totalTagged > 0">
+          <div
+            v-if="
+              selectedItem.tagSummary && selectedItem.tagSummary.totalTagged > 0
+            "
+          >
             <q-separator class="q-mb-md" />
             <div class="text-subtitle2 q-mb-md">Tag Breakdown:</div>
-            
+
             <!-- Reserved Items -->
-            <div v-if="selectedItem.tagSummary.reserved > 0" class="tag-detail-section q-mb-md">
-              <q-chip color="info" text-color="white" icon="bookmark" class="q-mr-sm">
+            <div
+              v-if="selectedItem.tagSummary.reserved > 0"
+              class="tag-detail-section q-mb-md"
+            >
+              <q-chip
+                color="info"
+                text-color="white"
+                icon="bookmark"
+                class="q-mr-sm"
+              >
                 Reserved: {{ selectedItem.tagSummary.reserved }}
               </q-chip>
               <div class="q-mt-sm">
                 <div v-if="selectedItem.tags" class="reservation-details">
-                  <div 
-                    v-for="tag in selectedItem.tags.filter(tag => tag.tag_type === 'reserved')"
+                  <div
+                    v-for="tag in selectedItem.tags.filter(
+                      (tag) => tag.tag_type === 'reserved'
+                    )"
                     :key="tag._id"
                     class="reservation-item q-mb-xs"
                   >
                     <div class="text-body2">
-                      <strong>{{ tag.customer_name }}</strong> - {{ tag.quantity }} item{{ tag.quantity !== 1 ? 's' : '' }}
+                      <strong>{{ tag.customer_name }}</strong> -
+                      {{ tag.quantity }} item{{ tag.quantity !== 1 ? "s" : "" }}
                     </div>
                     <div v-if="tag.due_date" class="text-caption text-grey-6">
                       Due: {{ new Date(tag.due_date).toLocaleDateString() }}
@@ -704,8 +840,16 @@ const handleTagStatusClick = (item: Inventory) => {
             </div>
 
             <!-- Broken Items -->
-            <div v-if="selectedItem.tagSummary.broken > 0" class="tag-detail-section q-mb-md">
-              <q-chip color="negative" text-color="white" icon="broken_image" class="q-mr-sm">
+            <div
+              v-if="selectedItem.tagSummary.broken > 0"
+              class="tag-detail-section q-mb-md"
+            >
+              <q-chip
+                color="negative"
+                text-color="white"
+                icon="broken_image"
+                class="q-mr-sm"
+              >
                 Broken: {{ selectedItem.tagSummary.broken }}
               </q-chip>
               <div class="q-mt-sm text-body2 text-grey-7">
@@ -714,8 +858,16 @@ const handleTagStatusClick = (item: Inventory) => {
             </div>
 
             <!-- Imperfect Items -->
-            <div v-if="selectedItem.tagSummary.imperfect > 0" class="tag-detail-section q-mb-md">
-              <q-chip color="warning" text-color="white" icon="warning" class="q-mr-sm">
+            <div
+              v-if="selectedItem.tagSummary.imperfect > 0"
+              class="tag-detail-section q-mb-md"
+            >
+              <q-chip
+                color="warning"
+                text-color="white"
+                icon="warning"
+                class="q-mr-sm"
+              >
                 Imperfect: {{ selectedItem.tagSummary.imperfect }}
               </q-chip>
               <div class="q-mt-sm text-body2 text-grey-7">
@@ -857,7 +1009,6 @@ const handleTagStatusClick = (item: Inventory) => {
 .inventory-item.type-misc {
   border-left: 5px solid #616161;
 }
-
 
 /* Item Row Layout */
 .item-row {
@@ -1180,79 +1331,340 @@ const handleTagStatusClick = (item: Inventory) => {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
 }
 
+/* Hide mobile metrics row on desktop by default */
+.mobile-metrics-row {
+  display: none;
+}
+
+/* Hide mobile quantity card on desktop by default */
+.mobile-quantity-card {
+  display: none;
+}
+
 /* Responsive Design */
 @media (max-width: 1024px) {
   .cost-section {
     min-width: 100px;
   }
-  
+
   .status-section {
     min-width: 120px;
   }
 }
 
+/* Mobile Card Layout - Complete Revamp */
 @media (max-width: 768px) {
+  /* Hide desktop table header on mobile */
+  .list-header {
+    display: none;
+  }
+
+  /* Transform items into mobile cards */
   .inventory-item {
-    padding: 12px;
-    flex-wrap: wrap;
+    padding: 1.25rem;
+    border-radius: 16px;
+    margin-bottom: 1.25rem;
+    background: rgba(255, 255, 255, 0.18);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    position: relative;
+    overflow: hidden;
   }
-  
+
+  .inventory-item:hover {
+    background: rgba(255, 255, 255, 0.28);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  }
+
+  /* Add subtle gradient overlay */
+  .inventory-item::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 60%;
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.1) 0%,
+      rgba(255, 255, 255, 0.05) 100%
+    );
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* Ensure content is above overlay */
+  .item-row {
+    position: relative;
+    z-index: 2;
+  }
+
+  /* Mobile card row - vertical stack */
+  .item-row {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0;
+    gap: 0.75rem;
+  }
+
+  /* All sections become full-width blocks */
+  .item-section {
+    width: 100%;
+    flex: none;
+    align-items: stretch;
+    min-width: auto;
+  }
+
+  /* HEADER SECTION - Product info with type banner */
+  .details-section {
+    max-width: none;
+    align-items: flex-start;
+    order: 1;
+  }
+
+  .product-type-banner {
+    opacity: 1;
+    transform: translateY(0);
+    font-size: 9px;
+    padding: 3px 8px;
+    margin-bottom: 0.5rem;
+    display: inline-block;
+  }
+
   .item-title {
-    font-size: 14px;
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.3;
+    margin-bottom: 0.25rem;
   }
-  
+
   .item-subtitle {
-    font-size: 13px;
+    font-size: 0.85rem;
+    opacity: 0.8;
+    margin-bottom: 0.25rem;
   }
-  
+
+  .item-notes {
+    font-size: 0.8rem;
+    margin-top: 0.25rem;
+  }
+
+  /* Show mobile metrics row only on mobile */
+  .mobile-metrics-row {
+    display: block;
+    background: rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    margin: 0.75rem 0;
+    order: 2;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  }
+
+  .metrics-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: stretch;
+    padding: 1rem;
+    gap: 0.75rem;
+  }
+
+  .metric-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem 0.25rem;
+  }
+
+  /* SKU Section - Horizontal chips */
+  .sku-section {
+    order: 3;
+    align-items: flex-start;
+  }
+
+  .sku-display {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+  }
+
+  .sku-chip {
+    font-size: 0.8rem;
+    padding: 0.375rem 0.75rem;
+  }
+
+  .barcode-display {
+    flex: 1;
+    justify-content: flex-end;
+    margin-top: 0;
+  }
+
+  .barcode-text {
+    font-size: 0.75rem;
+  }
+
+  /* Tag Status - Full width chip */
+  .tag-section {
+    order: 4;
+    align-items: stretch;
+  }
+
+  .tag-status-chip {
+    width: 100%;
+    justify-content: center;
+    padding: 0.5rem;
+    font-size: 0.85rem;
+  }
+
+  /* Actions - Full width buttons */
+  .actions-section {
+    order: 5;
+    align-items: stretch;
+    margin-top: 0.5rem;
+  }
+
+  .action-buttons {
+    width: 100%;
+    justify-content: space-around;
+    gap: 0.75rem;
+  }
+
+  .action-btn {
+    flex: 1;
+    padding: 0.5rem;
+    border-radius: 8px;
+  }
+
+  /* Quantity metrics in mobile row */
+  .mobile-quantity-metric {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    padding: 0.75rem 0.5rem;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    min-height: 65px;
+  }
+
+  .mobile-metric-value {
+    font-size: 1.25rem;
+    font-weight: 800;
+    margin-bottom: 0.25rem;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+
+  .mobile-metric-label {
+    font-size: 0.65rem;
+    opacity: 0.75;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    font-weight: 600;
+    color: rgba(33, 37, 41, 0.7);
+    text-align: center;
+    line-height: 1.2;
+  }
+
+  /* Cost metrics in mobile row */
+  .mobile-cost-metric {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    padding: 0.75rem 0.5rem;
+    background: rgba(40, 167, 69, 0.1);
+    border-radius: 10px;
+    border: 1px solid rgba(40, 167, 69, 0.2);
+    min-height: 65px;
+  }
+
+  /* Available quantity metrics in mobile row */
+  .mobile-available-metric {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    padding: 0.75rem 0.5rem;
+    background: #28a74514;
+    border-radius: 10px;
+    border: 1px solid rgba(40, 167, 69, 0.15);
+    min-height: 65px;
+  }
+
+  .tagged {
+    background: #14F195;
+  }
+
+  /* Status metrics in mobile row */
+  .mobile-status-metric {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    padding: 0.75rem 0.5rem;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    min-height: 65px;
+  }
+
+  /* Hide desktop-only sections on mobile */
   .quantity-section,
   .cost-section,
-  .status-section,
-  .actions-section {
-    min-width: auto;
-    flex-basis: 50%;
-    margin-top: 8px;
-  }
-  
-  .action-buttons {
-    flex-direction: column;
-    gap: 4px;
-  }
-  
-  .tag-badges-container {
-    max-width: none;
-    justify-content: flex-start;
+  .status-section {
+    display: none;
   }
 }
 
 @media (max-width: 480px) {
   .inventory-item {
-    padding: 8px;
+    padding: 0.75rem;
+    margin-bottom: 0.75rem;
   }
-  
-  .type-chip {
-    font-size: 10px;
-    padding: 4px 8px;
-  }
-  
+
   .item-title {
-    font-size: 13px;
+    font-size: 0.9rem;
   }
-  
+
   .item-subtitle {
-    font-size: 12px;
+    font-size: 0.8rem;
   }
-  
-  .quantity-badge {
-    font-size: 14px;
+
+  .mobile-metrics-row {
+    padding: 0.5rem;
+    gap: 0.5rem;
   }
-  
-  .cost-label {
-    font-size: 14px;
+
+  .mobile-metric-value {
+    font-size: 1rem;
   }
-  
-  .status-chip {
-    font-size: 11px;
+
+  .mobile-metric-label {
+    font-size: 0.65rem;
+  }
+
+  .sku-chip {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+  }
+
+  .action-btn {
+    padding: 0.4rem;
+    font-size: 0.8rem;
+  }
+
+  .tag-status-chip {
+    padding: 0.4rem;
+    font-size: 0.8rem;
   }
 }
 

@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { useCategoryStore } from '@/stores/category'
 import { tagApi, inventoryApi, skuApi } from '@/utils/api'
 import { TAG_TYPES } from '@/types'
+import { formatCategoryName } from '@/utils/formatting'
 import type { SKU, CreateTagRequest } from '@/types'
 
 const emit = defineEmits<{
@@ -11,6 +13,7 @@ const emit = defineEmits<{
 }>()
 
 const authStore = useAuthStore()
+const categoryStore = useCategoryStore()
 
 interface TaggedSKU {
   sku: SKU
@@ -126,9 +129,18 @@ const totalTaggedQuantity = computed(() => taggedSKUs.value.reduce((sum, ts) => 
 const filteredSKUs = computed(() => {
   let filtered = availableSKUs.value
   
-  // Filter by type
+  // Filter out tool categories by default (products only like Dashboard)
+  filtered = filtered.filter(item => {
+    const category = getCategoryFromId(item.sku.category_id)
+    return category?.type !== 'tool'
+  })
+  
+  // Filter by type (using category name)
   if (productTypeFilter.value !== 'all') {
-    filtered = filtered.filter(item => item.sku.product_type === productTypeFilter.value)
+    filtered = filtered.filter(item => {
+      const categoryName = getSKUCategoryName(item.sku)
+      return categoryName === productTypeFilter.value
+    })
   }
   
   // Filter by search query
@@ -138,23 +150,33 @@ const filteredSKUs = computed(() => {
       const skuName = getSKUDisplayName(item.sku).toLowerCase()
       const location = item.primary_location?.toLowerCase() || ''
       const skuCode = item.sku.sku_code?.toLowerCase() || ''
-      return skuName.includes(query) || location.includes(query) || skuCode.includes(query)
+      const categoryName = getSKUCategoryName(item.sku)?.toLowerCase() || ''
+      return skuName.includes(query) || location.includes(query) || skuCode.includes(query) || categoryName.includes(query)
     })
   }
   
   return filtered
 })
 
-// Product types for filter
+// Product types for filter (exclude tools like Dashboard does) - Use categoryStore like Dashboard
 const productTypeOptions = computed(() => {
-  const uniqueTypes = [...new Set(availableSKUs.value.map(item => item.sku.product_type))]
-  return [
-    { label: 'All Types', value: 'all' },
-    ...uniqueTypes.map(type => ({ 
-      label: type ? type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ') : 'Unknown', 
-      value: type || 'unknown'
-    }))
-  ]
+  const options = [{ label: 'All Types', value: 'all' }]
+  
+  if (categoryStore.categories && categoryStore.categories.length > 0) {
+    // Filter out tool categories and format with proper capitalization (same as Dashboard)
+    const productCategories = categoryStore.categories
+      .filter((cat) => cat.type !== 'tool') // Exclude tool categories from products inventory
+      .map((cat) => {
+        const rawName = cat.name || cat.displayName || 'Unnamed Category'
+        return {
+          label: formatCategoryName(rawName), // Use the formatting utility
+          value: rawName // Use the raw name as value for filtering
+        }
+      })
+    options.push(...productCategories)
+  }
+  
+  return options
 })
 
 // Helper methods
@@ -165,17 +187,39 @@ const getSKUDisplayName = (sku: SKU): string => {
   return sku.sku_code || 'Unknown SKU'
 }
 
+// Helper to get category from categoryStore by ID
+const getCategoryFromId = (categoryId: string) => {
+  return categoryStore.categories.find(cat => cat._id === categoryId || cat.id === categoryId)
+}
+
+// Helper to get category name from SKU
+const getSKUCategoryName = (sku: SKU): string | null => {
+  // Try populated category first
+  if (sku.category?.name) {
+    return sku.category.name
+  }
+  
+  // Fall back to looking up category by ID
+  if (sku.category_id) {
+    const category = getCategoryFromId(sku.category_id)
+    return category?.name || null
+  }
+  
+  return null
+}
+
 const getTagTypeColor = (tagType: string) => {
   const type = TAG_TYPES.find(t => t.value === tagType)
   return type?.color || '#6c757d'
 }
 
 const getSKUProductTypeClass = (sku: SKU) => {
-  if (!sku.product_type) {
+  const categoryName = getSKUCategoryName(sku)
+  if (!categoryName) {
     return 'product-unknown'
   }
   
-  const normalizedType = sku.product_type
+  const normalizedType = categoryName
     .toLowerCase()
     .replace(/[\s_]+/g, '-')
     .replace(/[^a-z0-9-]/g, '')
@@ -247,15 +291,32 @@ const loadAvailableSKUs = async () => {
     isLoadingSKUs.value = true
     error.value = null
     
+    console.log('🏷️ [CreateTagModal] Loading available SKUs for tagging...')
+    
     // Use inventory API to get SKUs with available inventory
     const response = await inventoryApi.getInventory({
       status: 'available',
-      limit: 1000
+      limit: 1000,
+      include_tools: 'false' // Explicitly exclude tools like Dashboard does
     })
+    
+    console.log('🏷️ [CreateTagModal] Inventory API response:', response)
     
     if (response.inventory && Array.isArray(response.inventory)) {
       // Filter to only SKUs with available quantity > 0
       const availableInventory = response.inventory.filter(inv => inv.available_quantity > 0)
+      
+      console.log('🏷️ [CreateTagModal] Available inventory items:', availableInventory.length)
+      console.log('🏷️ [CreateTagModal] Sample inventory item full structure:', availableInventory[0])
+      console.log('🏷️ [CreateTagModal] Sample SKU structure:', availableInventory[0]?.sku)
+      console.log('🏷️ [CreateTagModal] Sample SKU category:', availableInventory[0]?.sku?.category)
+      console.log('🏷️ [CreateTagModal] Sample SKU category_id:', availableInventory[0]?.sku?.category_id)
+      
+      // Check category data across all items
+      const itemsWithCategories = availableInventory.filter(inv => inv.sku?.category)
+      const itemsWithCategoryIds = availableInventory.filter(inv => inv.sku?.category_id)
+      console.log('🏷️ [CreateTagModal] Items with populated category:', itemsWithCategories.length)
+      console.log('🏷️ [CreateTagModal] Items with category_id only:', itemsWithCategoryIds.length)
       
       availableSKUs.value = availableInventory.map(inv => ({
         sku: inv.sku,
@@ -270,12 +331,15 @@ const loadAvailableSKUs = async () => {
           totalTagged: 0
         }
       }))
+      
+      console.log('🏷️ [CreateTagModal] Processed available SKUs:', availableSKUs.value.length)
     } else {
       availableSKUs.value = []
+      console.log('🏷️ [CreateTagModal] No inventory data received')
     }
     
   } catch (err: any) {
-    console.error('Load available SKUs error:', err)
+    console.error('🏷️ [CreateTagModal] Load available SKUs error:', err)
     error.value = `Failed to load SKUs: ${err.message}`
   } finally {
     isLoadingSKUs.value = false
@@ -381,8 +445,12 @@ const clearError = () => {
   error.value = null
 }
 
-onMounted(() => {
-  loadAvailableSKUs()
+onMounted(async () => {
+  // Load categories first (like Dashboard does)
+  if (categoryStore.categories.length === 0) {
+    await categoryStore.fetchCategories()
+  }
+  await loadAvailableSKUs()
 })
 </script>
 
@@ -1527,5 +1595,358 @@ onMounted(() => {
 .btn-sm {
   padding: 0.5rem 0.75rem;
   font-size: 0.875rem;
+}
+
+/* Mobile Responsive Design */
+@media (max-width: 768px) {
+  .modal-dialog {
+    max-width: 95vw;
+    max-height: 98vh;
+    margin: 1vh auto;
+  }
+  
+  .modal-header {
+    padding: 1rem;
+  }
+  
+  .header-content h3 {
+    font-size: 1.25rem;
+  }
+  
+  .modal-body {
+    padding: 1rem;
+    min-height: auto;
+  }
+  
+  .step-content h4 {
+    font-size: 1.1rem;
+    margin-bottom: 1rem;
+  }
+  
+  /* Step 1 Mobile Improvements */
+  .form-group {
+    margin-bottom: 1.25rem;
+  }
+  
+  .form-control, .form-select {
+    padding: 0.875rem 0.75rem;
+    font-size: 1rem;
+  }
+  
+  /* Step 2 Mobile Layout - Stack Panels */
+  .step-2-content {
+    max-height: none;
+  }
+  
+  .two-panel-layout {
+    flex-direction: column;
+    height: auto;
+    gap: 1rem;
+    margin-top: 1rem;
+  }
+  
+  .sku-browser-panel {
+    flex: none;
+    height: auto;
+    min-height: 350px;
+    max-height: 400px;
+  }
+  
+  .selected-skus-panel {
+    flex: none;
+    height: auto;
+    min-height: 200px;
+    max-height: 300px;
+  }
+  
+  .panel-header {
+    padding: 0.75rem 1rem;
+    background: rgba(255, 255, 255, 0.1);
+  }
+  
+  .panel-header h5 {
+    font-size: 0.9rem;
+  }
+  
+  .panel-stats {
+    font-size: 0.8rem;
+  }
+  
+  /* Scanner Section Mobile */
+  .scanner-section {
+    padding: 1rem;
+    margin-bottom: 1rem;
+  }
+  
+  .sku-input-container {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  
+  .sku-input {
+    font-size: 1rem;
+    padding: 0.875rem;
+  }
+  
+  .add-sku-btn {
+    width: 100%;
+    padding: 0.875rem;
+    font-size: 1rem;
+  }
+  
+  /* Browser Controls Mobile */
+  .browser-controls {
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.75rem;
+  }
+  
+  .search-control,
+  .filter-control {
+    flex: none;
+  }
+  
+  .search-input,
+  .filter-select {
+    width: 100%;
+    font-size: 1rem;
+    padding: 0.875rem 0.75rem;
+  }
+  
+  /* SKU Cards Mobile */
+  .sku-card {
+    padding: 0.75rem;
+    border-radius: 8px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    min-height: 80px;
+  }
+  
+  .sku-info {
+    width: 100%;
+    margin-bottom: 0.5rem;
+  }
+  
+  .sku-info strong {
+    font-size: 0.9rem;
+    line-height: 1.4;
+    display: block;
+    margin-bottom: 0.25rem;
+  }
+  
+  .sku-meta {
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.8rem;
+  }
+  
+  .add-icon {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    width: 32px;
+    height: 32px;
+  }
+  
+  /* Selected SKUs Mobile */
+  .selected-sku {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 1rem 0.75rem;
+    gap: 0.75rem;
+  }
+  
+  .selected-sku .sku-info {
+    margin-bottom: 0;
+  }
+  
+  .sku-controls {
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+  
+  .quantity-controls {
+    order: 1;
+    flex: 1;
+    min-width: 120px;
+  }
+  
+  .qty-btn {
+    width: 36px;
+    height: 36px;
+    font-size: 1rem;
+  }
+  
+  .qty-input {
+    width: 60px;
+    padding: 0.5rem 0.25rem;
+    font-size: 1rem;
+    text-align: center;
+  }
+  
+  .method-select {
+    order: 2;
+    flex: 1;
+    min-width: 120px;
+    font-size: 0.875rem;
+    padding: 0.5rem;
+  }
+  
+  .remove-btn {
+    order: 3;
+    width: 36px;
+    height: 36px;
+  }
+  
+  /* Step 3 Mobile Improvements */
+  .tag-summary {
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border-radius: 12px;
+  }
+  
+  .summary-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+  
+  .tag-badge {
+    padding: 0.5rem 1rem;
+    font-size: 0.8rem;
+    border-radius: 8px;
+  }
+  
+  .summary-stats {
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.9rem;
+  }
+  
+  .summary-details {
+    gap: 0.75rem;
+  }
+  
+  .detail-row {
+    font-size: 0.9rem;
+    line-height: 1.4;
+  }
+  
+  /* Review SKUs Mobile */
+  .review-skus h5 {
+    font-size: 1rem;
+    margin-bottom: 0.75rem;
+  }
+  
+  .review-sku {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 0.75rem;
+    gap: 0.5rem;
+  }
+  
+  .review-sku .sku-details {
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.85rem;
+  }
+  
+  .review-sku .sku-quantity {
+    align-self: flex-end;
+  }
+  
+  .quantity-badge {
+    font-size: 0.8rem;
+    padding: 0.375rem 0.75rem;
+  }
+  
+  /* Modal Footer Mobile */
+  .modal-footer {
+    padding: 1rem;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  
+  .modal-footer .btn {
+    padding: 0.875rem 1.5rem;
+    font-size: 1rem;
+    border-radius: 8px;
+  }
+  
+  .flex-spacer {
+    display: none;
+  }
+  
+  .modal-footer {
+    justify-content: space-between;
+  }
+  
+  .modal-footer .btn:last-child {
+    margin-left: auto;
+  }
+  
+  /* Touch-friendly improvements */
+  .sku-card,
+  .selected-sku,
+  .qty-btn,
+  .add-sku-btn,
+  .remove-btn,
+  .btn {
+    min-height: 44px;
+  }
+  
+  /* Loading and empty states */
+  .loading-state,
+  .no-selection-message,
+  .no-results {
+    padding: 1.5rem;
+  }
+  
+  /* Hide/show elements for mobile */
+  .panel-header-controls {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .modal-dialog {
+    max-width: 98vw;
+    margin: 1vh auto;
+  }
+  
+  .modal-header,
+  .modal-body,
+  .modal-footer {
+    padding: 0.75rem;
+  }
+  
+  .header-content h3 {
+    font-size: 1.1rem;
+  }
+  
+  .step-content h4 {
+    font-size: 1rem;
+  }
+  
+  .sku-browser-panel {
+    min-height: 300px;
+    max-height: 350px;
+  }
+  
+  .selected-skus-panel {
+    min-height: 180px;
+    max-height: 220px;
+  }
+  
+  .form-control,
+  .form-select,
+  .sku-input,
+  .search-input,
+  .filter-select {
+    font-size: 16px; /* Prevent zoom on iOS */
+  }
 }
 </style>

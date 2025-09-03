@@ -1222,3 +1222,216 @@ watch(() => props.modelValue, (newValue) => {
   }
 })
 </script>
+
+<style scoped>
+/* Mobile Responsive Dialog Fixes */
+@media (max-width: 768px) {
+  /* Dialog Card Mobile Overrides */
+  .q-card {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    min-width: auto !important;
+    height: auto !important;
+    max-height: 95vh !important;
+    margin: 0 !important;
+    border-radius: 16px !important;
+  }
+  
+  /* Dialog Header */
+  .q-card__section {
+    padding: 1rem !important;
+  }
+  
+  .text-h6 {
+    font-size: 1.125rem !important;
+  }
+  
+  /* Form Layout Improvements */
+  .q-form .row.q-col-gutter-md {
+    margin: -0.5rem !important;
+  }
+  
+  .q-form .row.q-col-gutter-md > div {
+    padding: 0.5rem !important;
+  }
+  
+  .q-form .row.q-col-gutter-sm {
+    margin: -0.25rem !important;
+  }
+  
+  .q-form .row.q-col-gutter-sm > div {
+    padding: 0.25rem !important;
+  }
+  
+  /* All columns full width on mobile */
+  .col-12.col-sm-6,
+  .col-sm-6,
+  .col-md-6 {
+    width: 100% !important;
+    flex: 0 0 100% !important;
+    max-width: 100% !important;
+  }
+  
+  /* Form Fields */
+  .q-field {
+    margin-bottom: 1rem !important;
+  }
+  
+  .q-input,
+  .q-select {
+    font-size: 1rem !important;
+  }
+  
+  .q-field__label {
+    font-size: 0.875rem !important;
+  }
+  
+  .q-field__control {
+    min-height: 48px !important;
+  }
+  
+  /* Generate button full width on mobile */
+  .row.q-col-gutter-sm .col-auto {
+    width: 100% !important;
+    flex: 0 0 100% !important;
+    margin-top: 0.5rem !important;
+  }
+  
+  .row.q-col-gutter-sm .col-auto .q-btn {
+    width: 100% !important;
+    padding: 0.75rem 1rem !important;
+    font-size: 0.875rem !important;
+  }
+  
+  /* Form Buttons */
+  .q-card-actions {
+    padding: 1rem !important;
+    flex-wrap: wrap !important;
+    gap: 0.75rem !important;
+  }
+  
+  .q-card-actions .q-btn {
+    flex: 1 !important;
+    min-width: auto !important;
+    padding: 0.75rem 1rem !important;
+    font-size: 0.875rem !important;
+  }
+  
+  /* Cancel buttons smaller */
+  .q-card-actions .q-btn[color="grey-7"],
+  .q-card-actions .q-btn.q-btn--flat {
+    flex: 0 0 auto !important;
+    min-width: 100px !important;
+  }
+  
+  /* Checkbox and Radio Groups */
+  .q-checkbox,
+  .q-radio {
+    font-size: 0.875rem !important;
+  }
+  
+  .q-option-group {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+  }
+  
+  .q-option-group .q-radio {
+    margin-bottom: 0.5rem !important;
+  }
+  
+  /* Textarea */
+  .q-input[type="textarea"] .q-field__control {
+    min-height: 120px !important;
+  }
+  
+  /* Number inputs */
+  .q-input[type="number"] .q-field__control {
+    min-height: 48px !important;
+  }
+  
+  /* Select dropdowns */
+  .q-select .q-field__control {
+    min-height: 48px !important;
+  }
+  
+  /* Loading states */
+  .q-btn .q-spinner {
+    width: 16px !important;
+    height: 16px !important;
+  }
+  
+  /* Separators */
+  .q-separator {
+    margin: 0.5rem 0 !important;
+  }
+  
+  /* Text content */
+  .text-caption {
+    font-size: 0.75rem !important;
+    line-height: 1.3 !important;
+  }
+  
+  .text-subtitle2 {
+    font-size: 0.875rem !important;
+    margin-bottom: 0.75rem !important;
+  }
+  
+  /* Icons */
+  .q-icon {
+    font-size: 1.25rem !important;
+  }
+  
+  /* Close button */
+  .q-btn[icon="close"] {
+    width: 40px !important;
+    height: 40px !important;
+  }
+  
+  /* Focus states */
+  .q-field--focused .q-field__control {
+    box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2) !important;
+  }
+  
+  /* Error states */
+  .q-field--error .q-field__control {
+    border-color: #f44336 !important;
+  }
+  
+  /* Success states */
+  .q-field--success .q-field__control {
+    border-color: #4caf50 !important;
+  }
+  
+  /* Disabled states */
+  .q-field--disabled {
+    opacity: 0.6 !important;
+  }
+  
+  /* Product type specific sections */
+  .text-primary {
+    color: #1976d2 !important;
+  }
+  
+  /* Bundle/Kit toggles */
+  .q-checkbox__label {
+    font-size: 0.875rem !important;
+    line-height: 1.4 !important;
+  }
+  
+  /* Spacing fixes for complex forms */
+  .col-12:not(:last-child) {
+    margin-bottom: 0.5rem !important;
+  }
+  
+  /* Validation Messages */
+  .q-field__messages {
+    font-size: 0.75rem !important;
+    padding: 0.25rem 0 !important;
+  }
+  
+  /* Hint Text */
+  .q-field__bottom {
+    font-size: 0.75rem !important;
+  }
+}
+</style>

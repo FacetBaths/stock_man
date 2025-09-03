@@ -2391,30 +2391,520 @@ onMounted(async () => {
   font-size: 0.875rem;
 }
 
-/* Responsive adjustments */
+/* Mobile Responsiveness - Comprehensive */
 @media (max-width: 768px) {
+  /* Page Layout Adjustments */
+  .q-page {
+    padding: 0.75rem !important;
+  }
+  
+  .row.q-col-gutter-lg {
+    margin: 0 !important;
+  }
+  
+  .row.q-col-gutter-lg > div {
+    padding: 0.375rem !important;
+    width: 100% !important;
+  }
+  
+  /* Page Header Mobile Fixes */
+  .glass-card {
+    width: 100% !important;
+    margin: 0 0 1rem 0 !important;
+  }
+  
+  .glass-card .row.items-center {
+    width: 100% !important;
+    margin: 0 !important;
+  }
+  
+  .glass-card .row.items-center.q-gutter-md {
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center !important;
+    gap: 1rem !important;
+  }
+  
+  .glass-card .row.items-center.q-gutter-md > * {
+    margin: 0 !important;
+  }
+  
+  /* Tab Navigation */
+  .q-tabs {
+    font-size: 0.875rem;
+  }
+  
+  .q-tab {
+    padding: 0.5rem 0.75rem;
+    min-width: auto;
+  }
+  
+  /* Search Input in Loans Tab */
+  .q-input[style*="width: 250px"] {
+    width: 100% !important;
+    max-width: none !important;
+    margin-right: 0 !important;
+    margin-bottom: 1rem;
+  }
+  
+  /* Loan Cards Grid - Stack Vertically */
+  .row.q-col-gutter-md > .col-12.col-md-6.col-lg-4 {
+    padding: 0.25rem !important;
+  }
+  
+  .loan-card {
+    margin-bottom: 0.75rem;
+  }
+  
+  .loan-card .q-card__section {
+    padding: 1rem;
+  }
+  
+  .loan-card .q-card__actions {
+    padding: 0.5rem 1rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  
+  .loan-card .q-btn {
+    font-size: 0.75rem;
+    padding: 0.375rem 0.75rem;
+    flex: 1;
+    min-width: auto;
+  }
+  
+  /* Tools Table Container */
+  .glass-card .q-pa-lg {
+    padding: 1rem !important;
+  }
+  
+  /* Quick Actions Buttons */
+  .row.q-col-gutter-md .col-12.col-sm-6.col-md-4 {
+    padding: 0.25rem !important;
+    margin-bottom: 0.5rem;
+  }
+  
+  .q-btn.full-width.size-lg {
+    font-size: 0.875rem;
+    padding: 0.75rem;
+  }
+  
+  /* MODAL IMPROVEMENTS */
+  
+  /* Modal Overlay - Full Screen on Mobile */
+  .modal-overlay {
+    padding: 0;
+    align-items: stretch;
+  }
+  
+  .modal-dialog {
+    margin: 0;
+    max-width: none;
+    width: 100vw;
+    height: 100vh;
+    max-height: 100vh;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .modal-content {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+  }
+  
+  /* Modal Header - Compact */
+  .modal-header {
+    padding: 1rem;
+    flex-shrink: 0;
+    border-radius: 0;
+  }
+  
+  .header-content h3 {
+    font-size: 1.25rem;
+  }
+  
+  .step-indicator {
+    font-size: 0.75rem;
+  }
+  
+  /* Progress Bar */
+  .progress-container {
+    padding: 0.75rem 1rem 0;
+  }
+  
+  .step-labels {
+    font-size: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+  
+  /* Modal Body - Scrollable */
+  .modal-body {
+    padding: 1rem;
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+  }
+  
+  /* Step Content */
+  .step-content h4 {
+    font-size: 1.125rem;
+    margin-bottom: 1rem;
+  }
+  
+  .step-description {
+    font-size: 0.875rem;
+    margin-bottom: 1rem;
+  }
+  
+  /* Form Improvements */
+  .form-group {
+    margin-bottom: 1rem;
+  }
+  
+  .form-label {
+    font-size: 0.875rem;
+    margin-bottom: 0.375rem;
+  }
+  
+  .form-control, .form-select {
+    padding: 0.75rem;
+    font-size: 1rem;
+    border-radius: 0.375rem;
+  }
+  
+  .form-text {
+    font-size: 0.75rem;
+  }
+  
+  /* Scanner Section */
+  .scanner-section {
+    padding: 1rem;
+    margin-bottom: 1rem;
+  }
+  
+  .sku-input-container {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .sku-input {
+    font-size: 1.1rem;
+    padding: 0.875rem;
+  }
+  
+  .add-sku-btn {
+    width: 100%;
+    padding: 0.875rem;
+    font-size: 1rem;
+  }
+  
+  /* Two Panel Layout - Stack Vertically */
   .two-panel-layout {
     flex-direction: column;
+    gap: 1rem;
     height: auto;
+    margin-top: 1rem;
   }
   
   .sku-browser-panel,
   .selected-skus-panel {
-    max-height: 300px;
+    max-height: none;
+    min-height: 250px;
   }
   
-  .modal-dialog {
-    margin: 0.5rem;
-    max-height: 90vh;
+  .sku-browser-panel {
+    order: 2;
   }
   
+  .selected-skus-panel {
+    order: 1;
+    max-height: 200px;
+  }
+  
+  /* Panel Headers */
+  .panel-header {
+    padding: 0.75rem 1rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  
+  .panel-header h5 {
+    font-size: 0.875rem;
+  }
+  
+  .panel-stats {
+    font-size: 0.75rem;
+  }
+  
+  .panel-header-controls .btn {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.75rem;
+  }
+  
+  /* Browser Controls */
   .browser-controls {
     flex-direction: column;
+    padding: 0.75rem;
+    gap: 0.5rem;
   }
   
   .search-control,
   .filter-control {
     flex: none;
+  }
+  
+  .search-input {
+    padding-right: 2.5rem;
+    font-size: 1rem;
+  }
+  
+  /* Tool Cards - Better Organization */
+  .sku-card {
+    padding: 1rem;
+    border-left-width: 4px;
+    border-radius: 8px;
+    margin-bottom: 0.5rem;
+    background: rgba(255, 255, 255, 0.08);
+    transition: all 0.2s ease;
+  }
+  
+  .sku-card:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateX(2px);
+  }
+  
+  .sku-info {
+    flex: 1;
+    min-width: 0; /* Prevent text overflow */
+  }
+  
+  .sku-info strong {
+    font-size: 0.9rem;
+    line-height: 1.3;
+    display: block;
+    margin-bottom: 0.25rem;
+    color: #1a1a1a;
+    font-weight: 700;
+  }
+  
+  .sku-meta {
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    flex-wrap: wrap;
+    margin-top: 0.25rem;
+  }
+  
+  .sku-meta span {
+    background: rgba(255, 255, 255, 0.8);
+    padding: 0.125rem 0.375rem;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+  
+  .add-icon {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  }
+  
+  /* Selected Tools List */
+  .selected-sku {
+    padding: 0.75rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  
+  .sku-controls {
+    gap: 0.5rem;
+    width: 100%;
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+  
+  .quantity-controls {
+    gap: 0.375rem;
+  }
+  
+  .qty-btn {
+    width: 32px;
+    height: 32px;
+  }
+  
+  .qty-input {
+    width: 60px;
+    padding: 0.5rem 0.25rem;
+  }
+  
+  .remove-btn {
+    width: 32px;
+    height: 32px;
+  }
+  
+  /* Review Step */
+  .tag-summary {
+    padding: 1rem;
+    margin-bottom: 1rem;
+  }
+  
+  .summary-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+  
+  .summary-stats {
+    gap: 1rem;
+    font-size: 0.8rem;
+  }
+  
+  .tag-badge {
+    font-size: 0.75rem;
+    padding: 0.375rem 0.75rem;
+  }
+  
+  .review-skus h5 {
+    font-size: 1rem;
+    margin-bottom: 0.75rem;
+  }
+  
+  .review-sku {
+    padding: 0.75rem;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  
+  .review-sku .sku-details {
+    gap: 0.75rem;
+    font-size: 0.8rem;
+    flex-wrap: wrap;
+  }
+  
+  .quantity-badge {
+    font-size: 0.8rem;
+    padding: 0.25rem 0.6rem;
+  }
+  
+  /* Modal Footer */
+  .modal-footer {
+    padding: 1rem;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    border-radius: 0;
+  }
+  
+  .modal-footer .btn {
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    min-width: auto;
+  }
+  
+  .btn-primary, .btn-success {
+    order: 1;
+    flex: 1;
+  }
+  
+  .btn-secondary {
+    order: 2;
+    flex: 1;
+  }
+  
+  .flex-spacer {
+    display: none;
+  }
+  
+  /* DIALOG IMPROVEMENTS */
+  
+  /* Quasar Dialog Mobile Improvements */
+  .q-dialog__inner {
+    padding: 0.5rem !important;
+  }
+  
+  .q-card {
+    max-height: 90vh !important;
+    width: 100% !important;
+    max-width: none !important;
+  }
+  
+  .q-card[style*="min-width: 600px"] {
+    min-width: auto !important;
+    width: 100% !important;
+    max-width: none !important;
+  }
+  
+  .q-card[style*="min-width: 400px"] {
+    min-width: auto !important;
+    width: 100% !important;
+    max-width: none !important;
+  }
+  
+  .q-card__section {
+    padding: 1rem !important;
+  }
+  
+  .q-card__actions {
+    padding: 0.75rem 1rem !important;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  
+  .q-card__actions .q-btn {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.875rem;
+  }
+  
+  /* Loan Details Table */
+  .row.q-pa-sm {
+    padding: 0.5rem !important;
+    font-size: 0.875rem;
+  }
+  
+  .row.text-caption.text-grey-7 {
+    font-size: 0.75rem !important;
+    font-weight: 600;
+  }
+  
+  /* Stats Row in Dialogs */
+  .row.q-col-gutter-md.text-center .col {
+    padding: 0.25rem !important;
+  }
+  
+  .text-h6 {
+    font-size: 1.25rem !important;
+  }
+  
+  /* Loading States */
+  .loading-state {
+    padding: 1.5rem;
+  }
+  
+  .no-selection-message,
+  .no-results {
+    padding: 1.5rem;
+  }
+  
+  /* Alert Messages */
+  .alert {
+    padding: 0.75rem;
+    font-size: 0.875rem;
+  }
+  
+  .btn-close {
+    font-size: 1rem;
+  }
+  
+  /* Pagination */
+  .q-pagination {
+    font-size: 0.875rem;
+  }
+  
+  .text-caption {
+    font-size: 0.75rem !important;
   }
 }
 </style>

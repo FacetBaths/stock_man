@@ -908,7 +908,205 @@ onMounted(async () => {
         </div>
       </q-card-section>
 
+      <!-- Mobile Card Layout -->
+      <div class="mobile-sku-cards q-pa-md" v-if="$q.screen.lt.md">
+        <div 
+          v-for="sku in skuStore.skus" 
+          :key="sku._id" 
+          class="mobile-sku-card q-mb-md"
+          @click="openEditDialog(sku)"
+        >
+          <q-card class="sku-mobile-card" :class="{ 'selected': selectedSKUs.includes(sku) }">
+            <!-- Header Row -->
+            <q-card-section class="sku-card-header">
+              <div class="row items-center justify-between no-wrap">
+                <div class="sku-main-info">
+                  <div class="text-weight-bold text-body1">{{ sku.sku_code }}</div>
+                  <q-chip
+                    :label="getCategoryName(sku.category_id)"
+                    :color="getCategoryColor(sku.category_id)"
+                    text-color="white"
+                    size="sm"
+                    class="q-mt-xs"
+                  />
+                </div>
+                <div class="selection-checkbox">
+                  <q-checkbox 
+                    v-model="selectedSKUs" 
+                    :val="sku" 
+                    @click.stop
+                    size="sm"
+                  />
+                </div>
+              </div>
+            </q-card-section>
+            
+            <!-- Details Grid -->
+            <q-card-section class="sku-card-details q-pt-none">
+              <div class="row q-col-gutter-sm">
+                <!-- Stock Status -->
+                <div class="col-6">
+                  <div class="detail-label">Stock Status</div>
+                  <StockStatusChip
+                    :status="getStockStatus(sku)"
+                    :quantity="sku.inventory?.total_quantity || 0"
+                    :thresholds="sku.stock_thresholds"
+                    size="sm"
+                  />
+                </div>
+                
+                <!-- Current Cost -->
+                <div class="col-6">
+                  <div class="detail-label">Current Cost</div>
+                  <div class="detail-value">
+                    ${{ formatCurrency(sku.unit_cost || 0) }}
+                  </div>
+                </div>
+                
+                <!-- Status -->
+                <div class="col-6">
+                  <div class="detail-label">Status</div>
+                  <q-chip
+                    :label="formatStatus(sku.status)"
+                    :color="getStatusColor(sku.status)"
+                    text-color="white"
+                    size="sm"
+                  />
+                </div>
+                
+                <!-- Total Quantity -->
+                <div class="col-6">
+                  <div class="detail-label">Total Quantity</div>
+                  <div class="detail-value">{{ sku.inventory?.total_quantity || 0 }}</div>
+                </div>
+              </div>
+              
+              <!-- Barcode (if available) -->
+              <div v-if="sku.barcode" class="row q-mt-sm">
+                <div class="col-12">
+                  <div class="detail-label">Barcode</div>
+                  <div class="detail-value">
+                    <q-icon name="qr_code" class="q-mr-xs" />
+                    {{ sku.barcode }}
+                  </div>
+                </div>
+              </div>
+            </q-card-section>
+            
+            <!-- Quick Actions Row -->
+            <q-card-section class="sku-card-actions q-pt-none">
+              <div class="row q-col-gutter-xs items-center">
+                <!-- Quantity Controls -->
+                <div class="col-12 col-sm-6">
+                  <div class="quantity-controls-mobile">
+                    <q-btn
+                      size="sm"
+                      color="negative"
+                      icon="remove"
+                      round
+                      @click.stop="adjustQuantity(sku, -1)"
+                      :disable="
+                        !authStore.canWrite ||
+                        (sku.inventory?.available_quantity || 0) === 0
+                      "
+                    />
+                    
+                    <div class="current-quantity">
+                      {{ sku.inventory?.available_quantity || 0 }}
+                    </div>
+                    
+                    <q-btn
+                      size="sm"
+                      color="positive"
+                      icon="add"
+                      round
+                      @click.stop="adjustQuantity(sku, 1)"
+                      :disable="!authStore.canWrite"
+                    />
+                    
+                    <q-btn
+                      size="sm"
+                      color="blue"
+                      icon="tune"
+                      round
+                      @click.stop="openBulkAdjustDialog(sku)"
+                      :disable="!authStore.canWrite"
+                    />
+                  </div>
+                </div>
+                
+                <!-- Action Buttons -->
+                <div class="col-12 col-sm-6">
+                  <div class="action-buttons-mobile">
+                    <q-btn
+                      size="sm"
+                      color="primary"
+                      icon="edit"
+                      round
+                      @click.stop="openEditDialog(sku)"
+                      :disable="!authStore.canWrite"
+                    >
+                      <q-tooltip>Edit SKU</q-tooltip>
+                    </q-btn>
+                    
+                    <q-btn
+                      size="sm"
+                      color="green"
+                      icon="attach_money"
+                      round
+                      @click.stop="openAddCostDialog(sku)"
+                      :disable="!authStore.canWrite"
+                    >
+                      <q-tooltip>Add Cost</q-tooltip>
+                    </q-btn>
+                    
+                    <q-btn
+                      size="sm"
+                      color="negative"
+                      icon="delete"
+                      round
+                      @click.stop="confirmDelete(sku)"
+                      :disable="!authStore.canWrite"
+                    >
+                      <q-tooltip>Delete SKU</q-tooltip>
+                    </q-btn>
+                  </div>
+                </div>
+              </div>
+            </q-card-section>
+          </q-card>
+        </div>
+        
+        <!-- Loading State -->
+        <div v-if="skuStore.isLoading" class="text-center q-py-xl">
+          <q-circular-progress
+            indeterminate
+            size="50px"
+            color="primary"
+            class="q-mb-md"
+          />
+          <div class="text-body1 text-grey-7">Loading SKUs...</div>
+        </div>
+        
+        <!-- Empty State -->
+        <div v-else-if="skuStore.skus.length === 0" class="text-center q-py-xl">
+          <q-icon name="inventory" size="64px" class="text-grey-5 q-mb-md" />
+          <div class="text-h6 text-grey-6 q-mb-sm">No SKUs Found</div>
+          <div class="text-body2 text-grey-7 q-mb-md">
+            No SKUs match your current filters.
+          </div>
+          <q-btn
+            color="primary"
+            @click="openCreateDialog"
+            label="Create First SKU"
+            icon="add"
+          />
+        </div>
+      </div>
+      
+      <!-- Desktop Table Layout -->
       <q-table
+        v-else
         :rows="skuStore.skus"
         :columns="columns"
         :loading="skuStore.isLoading"
@@ -1188,5 +1386,935 @@ onMounted(async () => {
 
 .stat-card:hover {
   transform: translateY(-2px);
+}
+
+/* Mobile Responsiveness - Comprehensive */
+@media (max-width: 768px) {
+  /* Page Layout */
+  .q-pa-md {
+    padding: 0.75rem !important;
+  }
+  
+  /* Glass Cards Mobile */
+  .glass-card {
+    margin-bottom: 1rem;
+    padding: 1rem !important;
+    border-radius: 12px;
+  }
+  
+  .glass-card .row.items-center {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 1rem;
+  }
+  
+  .glass-card .q-gutter-md > * {
+    margin: 0.5rem 0 !important;
+  }
+  
+  /* Page Header */
+  .glass-card h4 {
+    font-size: 1.5rem !important;
+    margin-bottom: 0.5rem !important;
+  }
+  
+  .glass-card p {
+    font-size: 0.875rem !important;
+  }
+  
+  /* Filter Section */
+  .q-card .row.q-col-gutter-md {
+    margin: -0.25rem !important;
+  }
+  
+  .q-card .row.q-col-gutter-md > div {
+    padding: 0.25rem !important;
+  }
+  
+  .q-card .col-xs-12 {
+    width: 100% !important;
+    margin-bottom: 0.5rem;
+  }
+  
+  .q-input, .q-select {
+    font-size: 1rem;
+  }
+  
+  .q-field__label {
+    font-size: 0.875rem;
+  }
+  
+  /* Filter Buttons */
+  .col-xs-12.col-sm-6.col-md-3:last-child {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .col-xs-12.col-sm-6.col-md-3:last-child .q-btn {
+    width: 100%;
+    margin: 0 !important;
+    margin-bottom: 0.5rem !important;
+  }
+  
+  /* Action Buttons Section */
+  .glass-card .row.items-center.justify-between {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 1rem;
+  }
+  
+  .glass-card .col-auto {
+    width: 100% !important;
+  }
+  
+  .glass-card .col-auto:first-child {
+    text-align: left;
+  }
+  
+  .glass-card .col-auto:last-child {
+    text-align: center;
+  }
+  
+  .action-btn {
+    width: 100% !important;
+    margin-bottom: 0.5rem !important;
+    padding: 0.75rem 1rem !important;
+    font-size: 0.875rem !important;
+    min-width: auto !important;
+  }
+  
+  .row.q-gutter-sm {
+    flex-direction: column !important;
+    gap: 0.5rem !important;
+  }
+  
+  .row.q-gutter-sm > * {
+    margin: 0 !important;
+  }
+  
+  /* Products Without SKUs Section */
+  .q-card .row.items-center.q-mb-md {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 1rem;
+  }
+  
+  .text-h6 {
+    font-size: 1.125rem !important;
+  }
+  
+  /* Table Improvements */
+  .q-table {
+    font-size: 0.875rem;
+  }
+  
+  .q-table__container {
+    max-height: 70vh;
+  }
+  
+  .q-table .q-table__top {
+    padding: 0.75rem !important;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  
+  .q-table .text-h6 {
+    font-size: 1rem !important;
+    margin-bottom: 0.5rem;
+  }
+  
+  .q-table .text-caption {
+    font-size: 0.75rem !important;
+  }
+  
+  /* Table Header Actions */
+  .q-table .row.q-gutter-sm {
+    width: 100% !important;
+    flex-direction: row !important;
+    flex-wrap: wrap;
+    gap: 0.5rem !important;
+  }
+  
+  .q-table .row.q-gutter-sm .q-btn {
+    flex: 1 !important;
+    min-width: auto !important;
+    font-size: 0.8rem !important;
+    padding: 0.5rem 0.75rem !important;
+  }
+  
+  /* Table Cells */
+  .q-td {
+    padding: 0.5rem 0.25rem !important;
+    font-size: 0.8rem !important;
+    min-width: auto !important;
+  }
+  
+  .q-th {
+    padding: 0.75rem 0.25rem !important;
+    font-size: 0.75rem !important;
+    font-weight: 600;
+  }
+  
+  /* Table Row Actions - Better Organization */
+  .q-td .row.q-gutter-xs {
+    gap: 0.25rem !important;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  
+  .q-td .row.q-gutter-xs .q-btn {
+    margin: 0 !important;
+    width: 32px !important;
+    height: 32px !important;
+    min-width: auto !important;
+    border-radius: 6px !important;
+  }
+  
+  /* Quantity Controls - Cleaner Layout */
+  .q-td .row.q-gutter-xs.no-wrap.items-center.justify-center {
+    flex-wrap: nowrap !important;
+    gap: 0.375rem !important;
+    padding: 0.5rem 0.25rem;
+    background: rgba(0, 0, 0, 0.02);
+    border-radius: 8px;
+    margin: 0.25rem 0;
+  }
+  
+  .q-td .row.q-gutter-xs.no-wrap.items-center.justify-center .q-btn {
+    width: 28px !important;
+    height: 28px !important;
+    font-size: 0.8rem !important;
+    border-radius: 4px !important;
+  }
+  
+  .q-td .text-body2 {
+    font-size: 0.9rem !important;
+    min-width: 32px !important;
+    text-align: center;
+    font-weight: 700;
+    color: #1976d2;
+    background: rgba(25, 118, 210, 0.1);
+    border-radius: 4px;
+    padding: 0.125rem 0.25rem;
+  }
+  
+  /* Chips */
+  .q-chip {
+    font-size: 0.7rem !important;
+    padding: 0.125rem 0.5rem !important;
+    height: auto !important;
+    min-height: 24px !important;
+  }
+  
+  .q-chip .q-icon {
+    font-size: 0.8rem !important;
+  }
+  
+  /* Table Content Responsive */
+  .q-table .text-weight-medium {
+    font-size: 0.8rem !important;
+    line-height: 1.2;
+  }
+  
+  .q-table .text-caption {
+    font-size: 0.7rem !important;
+    line-height: 1.1;
+  }
+  
+  /* Hide less important columns on mobile */
+  .q-table th:nth-child(3),
+  .q-table td:nth-child(3) {
+    display: none; /* Hide barcode column */
+  }
+  
+  .q-table th:nth-child(6),
+  .q-table td:nth-child(6) {
+    display: none; /* Hide total quantity column */
+  }
+  
+  /* Keep only essential columns visible */
+  .q-table th:nth-child(1),
+  .q-table td:nth-child(1) {
+    min-width: 100px; /* SKU Code */
+  }
+  
+  .q-table th:nth-child(2),
+  .q-table td:nth-child(2) {
+    min-width: 80px; /* Category */
+  }
+  
+  .q-table th:nth-child(4),
+  .q-table td:nth-child(4) {
+    min-width: 80px; /* Stock Status */
+  }
+  
+  .q-table th:nth-child(7),
+  .q-table td:nth-child(7) {
+    min-width: 100px; /* Quick Adjust */
+  }
+  
+  .q-table th:nth-child(9),
+  .q-table td:nth-child(9) {
+    min-width: 90px; /* Actions */
+  }
+  
+  /* Products without SKUs table */
+  .products-without-skus-table .q-table__container {
+    max-height: 40vh;
+  }
+  
+  .products-without-skus-table .q-td {
+    padding: 0.5rem 0.25rem !important;
+  }
+  
+  .products-without-skus-table .text-weight-medium {
+    font-size: 0.8rem !important;
+    line-height: 1.2;
+  }
+  
+  .products-without-skus-table .text-caption {
+    font-size: 0.7rem !important;
+  }
+  
+  .products-without-skus-table .q-btn {
+    padding: 0.375rem 0.75rem !important;
+    font-size: 0.75rem !important;
+  }
+  
+  /* Pagination */
+  .q-table .q-table__bottom {
+    padding: 0.5rem !important;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  
+  .q-pagination {
+    font-size: 0.8rem !important;
+  }
+  
+  .q-pagination .q-btn {
+    min-width: 32px !important;
+    height: 32px !important;
+    font-size: 0.8rem !important;
+  }
+  
+  /* Loading States */
+  .q-inner-loading {
+    background: rgba(255, 255, 255, 0.9) !important;
+  }
+  
+  .q-spinner {
+    width: 40px !important;
+    height: 40px !important;
+  }
+  
+  /* No Data Messages */
+  .full-width.row.flex-center {
+    padding: 2rem 1rem !important;
+  }
+  
+  .full-width.row.flex-center .q-icon {
+    font-size: 1.5rem !important;
+  }
+  
+  .full-width.row.flex-center span {
+    font-size: 0.875rem !important;
+    text-align: center;
+  }
+  
+  /* Stats Carousel - handled by component */
+  
+  /* Dialog Improvements */
+  .q-dialog__inner {
+    padding: 0.5rem !important;
+  }
+  
+  .q-card {
+    margin: 0.5rem !important;
+  }
+  
+  /* Selection indicators */
+  .q-table .q-checkbox {
+    transform: scale(0.9);
+  }
+  
+  /* Toolbar spacing */
+  .q-toolbar {
+    padding: 0.5rem !important;
+    min-height: auto !important;
+  }
+  
+  /* Card sections */
+  .q-card__section {
+    padding: 1rem !important;
+  }
+  
+  /* Icons in table cells */
+  .q-td .q-icon {
+    font-size: 1rem !important;
+  }
+  
+  /* Tooltips */
+  .q-tooltip {
+    font-size: 0.75rem !important;
+    padding: 0.25rem 0.5rem !important;
+  }
+  
+  /* Status indicators */
+  .q-badge {
+    font-size: 0.7rem !important;
+    padding: 0.125rem 0.375rem !important;
+  }
+  
+  /* Form elements in dialogs */
+  .q-dialog .q-field {
+    margin-bottom: 1rem !important;
+  }
+  
+  .q-dialog .q-btn {
+    padding: 0.75rem 1rem !important;
+    font-size: 0.875rem !important;
+  }
+}
+
+/* Mobile SKU Card Layout Styles */
+.mobile-sku-cards {
+  /* Container styles handled by q-pa-md */
+}
+
+.mobile-sku-card {
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.mobile-sku-card:hover {
+  transform: translateY(-2px);
+}
+
+.sku-mobile-card {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 12px;
+  border: 2px solid transparent;
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.sku-mobile-card:hover {
+  border-color: rgba(25, 118, 210, 0.3);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+}
+
+.sku-mobile-card.selected {
+  border-color: #1976d2;
+  background: rgba(25, 118, 210, 0.05);
+  transform: translateY(-1px);
+}
+
+.sku-card-header {
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  padding: 1rem !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.sku-main-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.sku-main-info .text-body1 {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  color: #1a202c;
+  margin-bottom: 0.5rem;
+  font-size: 1.1rem;
+}
+
+.selection-checkbox {
+  flex-shrink: 0;
+}
+
+.sku-card-details {
+  padding: 1rem !important;
+}
+
+.detail-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  margin-bottom: 0.25rem;
+}
+
+.detail-value {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #1a202c;
+  display: flex;
+  align-items: center;
+}
+
+.sku-card-actions {
+  background: rgba(248, 250, 252, 0.5);
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+  padding: 1rem !important;
+}
+
+.quantity-controls-mobile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 8px;
+  padding: 0.5rem;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.current-quantity {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1976d2;
+  background: rgba(25, 118, 210, 0.1);
+  border-radius: 6px;
+  padding: 0.25rem 0.75rem;
+  min-width: 40px;
+  text-align: center;
+  border: 1px solid rgba(25, 118, 210, 0.2);
+}
+
+.action-buttons-mobile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.action-buttons-mobile .q-btn {
+  min-width: 44px !important;
+  height: 44px !important;
+  border-radius: 8px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  transition: all 0.2s ease;
+}
+
+.action-buttons-mobile .q-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.quantity-controls-mobile .q-btn {
+  min-width: 36px !important;
+  height: 36px !important;
+  border-radius: 6px !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+}
+
+.quantity-controls-mobile .q-btn:hover {
+  transform: scale(1.05);
+}
+
+/* Mobile Card Details Responsive Spacing */
+@media (max-width: 768px) {
+  .sku-card-header {
+    padding: 0.75rem !important;
+  }
+  
+  .sku-card-details {
+    padding: 0.75rem !important;
+  }
+  
+  .sku-card-actions {
+    padding: 0.75rem !important;
+  }
+  
+  .sku-main-info .text-body1 {
+    font-size: 1rem;
+  }
+  
+  .detail-value {
+    font-size: 0.85rem;
+  }
+  
+  .quantity-controls-mobile {
+    padding: 0.375rem;
+    gap: 0.375rem;
+  }
+  
+  .current-quantity {
+    font-size: 0.9rem;
+    padding: 0.125rem 0.5rem;
+    min-width: 36px;
+  }
+  
+  .action-buttons-mobile .q-btn {
+    min-width: 40px !important;
+    height: 40px !important;
+  }
+  
+  .quantity-controls-mobile .q-btn {
+    min-width: 32px !important;
+    height: 32px !important;
+  }
+  
+  /* Adjust grid spacing on mobile */
+  .sku-card-details .row.q-col-gutter-sm {
+    margin: -0.25rem !important;
+  }
+  
+  .sku-card-details .row.q-col-gutter-sm > div {
+    padding: 0.25rem !important;
+  }
+  
+  .sku-card-actions .row.q-col-gutter-xs {
+    margin: -0.125rem !important;
+  }
+  
+  .sku-card-actions .row.q-col-gutter-xs > div {
+    padding: 0.125rem !important;
+  }
+
+  /* Better chip sizing for mobile */
+  .sku-mobile-card .q-chip {
+    font-size: 0.7rem !important;
+    padding: 0.125rem 0.5rem !important;
+    height: 20px !important;
+    line-height: 1.2;
+  }
+  
+  /* Loading and empty states */
+  .mobile-sku-cards .text-center.q-py-xl {
+    padding: 3rem 1rem !important;
+  }
+  
+  .mobile-sku-cards .text-h6 {
+    font-size: 1.125rem !important;
+  }
+  
+  .mobile-sku-cards .text-body1,
+  .mobile-sku-cards .text-body2 {
+    font-size: 0.875rem !important;
+  }
+  
+  /* MODAL & DIALOG RESPONSIVE FIXES */
+  
+  /* Global Dialog Improvements */
+  .q-dialog__inner {
+    padding: 0.5rem !important;
+  }
+  
+  /* All Dialog Cards Mobile */
+  .q-dialog .q-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: auto !important;
+    height: auto !important;
+    max-height: 95vh !important;
+    margin: 0 !important;
+    border-radius: 16px !important;
+  }
+  
+  /* Override specific dialog inline styles */
+  .q-card[style*="min-width: 700px"],
+  .q-card[style*="min-width: 400px"],
+  .q-card[style*="min-width: 900px"] {
+    min-width: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  
+  /* Dialog Headers */
+  .q-dialog .q-card__section {
+    padding: 1rem !important;
+  }
+  
+  .q-dialog .text-h6 {
+    font-size: 1.125rem !important;
+  }
+  
+  /* Form Improvements */
+  .q-dialog .q-form .row.q-col-gutter-md {
+    margin: -0.5rem !important;
+  }
+  
+  .q-dialog .q-form .row.q-col-gutter-md > div {
+    padding: 0.5rem !important;
+  }
+  
+  .q-dialog .q-form .row.q-col-gutter-sm {
+    margin: -0.25rem !important;
+  }
+  
+  .q-dialog .q-form .row.q-col-gutter-sm > div {
+    padding: 0.25rem !important;
+  }
+  
+  /* All columns full width on mobile */
+  .q-dialog .col-12.col-sm-6,
+  .q-dialog .col-sm-6,
+  .q-dialog .col-md-6 {
+    width: 100% !important;
+    flex: 0 0 100% !important;
+    max-width: 100% !important;
+  }
+  
+  /* Form Fields */
+  .q-dialog .q-field {
+    margin-bottom: 1rem !important;
+  }
+  
+  .q-dialog .q-input,
+  .q-dialog .q-select {
+    font-size: 1rem !important;
+  }
+  
+  .q-dialog .q-field__label {
+    font-size: 0.875rem !important;
+  }
+  
+  .q-dialog .q-field__control {
+    min-height: 48px !important;
+  }
+  
+  /* Form Buttons */
+  .q-dialog .q-card-actions {
+    padding: 1rem !important;
+    flex-wrap: wrap !important;
+    gap: 0.75rem !important;
+  }
+  
+  .q-dialog .q-card-actions .q-btn {
+    flex: 1 !important;
+    min-width: auto !important;
+    padding: 0.75rem 1rem !important;
+    font-size: 0.875rem !important;
+  }
+  
+  /* Cancel buttons smaller */
+  .q-dialog .q-card-actions .q-btn[color="grey-7"],
+  .q-dialog .q-card-actions .q-btn.q-btn--flat {
+    flex: 0 0 auto !important;
+    min-width: 100px !important;
+  }
+  
+  /* Inline button rows */
+  .q-dialog .row .col-auto .q-btn {
+    padding: 0.75rem 1rem !important;
+    font-size: 0.875rem !important;
+    min-width: auto !important;
+  }
+  
+  /* Generate button full width on mobile */
+  .q-dialog .row.q-col-gutter-sm .col-auto {
+    width: 100% !important;
+    flex: 0 0 100% !important;
+    margin-top: 0.5rem !important;
+  }
+  
+  .q-dialog .row.q-col-gutter-sm .col-auto .q-btn {
+    width: 100% !important;
+  }
+  
+  /* Checkbox and Radio Groups */
+  .q-dialog .q-checkbox,
+  .q-dialog .q-radio {
+    font-size: 0.875rem !important;
+  }
+  
+  .q-dialog .q-option-group {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+  }
+  
+  .q-dialog .q-option-group .q-radio {
+    margin-bottom: 0.5rem !important;
+  }
+  
+  /* Textarea */
+  .q-dialog .q-input[type="textarea"] .q-field__control {
+    min-height: 120px !important;
+  }
+  
+  /* Number inputs */
+  .q-dialog .q-input[type="number"] .q-field__control {
+    min-height: 48px !important;
+  }
+  
+  /* Select dropdowns */
+  .q-dialog .q-select .q-field__control {
+    min-height: 48px !important;
+  }
+  
+  /* Chips in dialogs */
+  .q-dialog .q-chip {
+    font-size: 0.75rem !important;
+    padding: 0.25rem 0.5rem !important;
+    margin: 0.125rem !important;
+  }
+  
+  /* Loading states */
+  .q-dialog .q-btn .q-spinner {
+    width: 16px !important;
+    height: 16px !important;
+  }
+  
+  /* Separators */
+  .q-dialog .q-separator {
+    margin: 0.5rem 0 !important;
+  }
+  
+  /* Text content */
+  .q-dialog .text-caption {
+    font-size: 0.75rem !important;
+    line-height: 1.3 !important;
+  }
+  
+  .q-dialog .text-subtitle2 {
+    font-size: 0.875rem !important;
+    margin-bottom: 0.75rem !important;
+  }
+  
+  /* Icons in dialogs */
+  .q-dialog .q-icon {
+    font-size: 1.25rem !important;
+  }
+  
+  /* BATCH SCAN DIALOG SPECIFIC FIXES */
+  
+  /* Maximized dialogs */
+  .q-dialog--maximized .q-card {
+    width: 100% !important;
+    height: 100% !important;
+    max-height: 100vh !important;
+    border-radius: 0 !important;
+  }
+  
+  /* Batch scan layout stacking */
+  .q-dialog--maximized .row.q-col-gutter-md > .col-12.col-md-4,
+  .q-dialog--maximized .row.q-col-gutter-md > .col-12.col-md-8 {
+    width: 100% !important;
+    flex: 0 0 100% !important;
+    max-width: 100% !important;
+  }
+  
+  /* Batch scan cards */
+  .q-dialog .q-card.flat.bordered {
+    border-radius: 8px !important;
+    margin-bottom: 1rem !important;
+  }
+  
+  /* Batch scan table */
+  .q-dialog .q-table {
+    font-size: 0.875rem !important;
+  }
+  
+  .q-dialog .q-table .q-td {
+    padding: 0.5rem 0.25rem !important;
+    font-size: 0.8rem !important;
+  }
+  
+  .q-dialog .q-table .q-th {
+    padding: 0.75rem 0.25rem !important;
+    font-size: 0.75rem !important;
+  }
+  
+  /* Batch scan action buttons */
+  .q-dialog .q-btn-dropdown {
+    font-size: 0.875rem !important;
+  }
+  
+  /* Stats chips in batch scan */
+  .q-dialog .q-chip[color="blue"],
+  .q-dialog .q-chip[color="green"],
+  .q-dialog .q-chip[color="red"] {
+    margin: 0.25rem 0.25rem 0.25rem 0 !important;
+    font-size: 0.7rem !important;
+  }
+  
+  /* Input with append buttons */
+  .q-dialog .q-field--with-bottom {
+    padding-bottom: 0 !important;
+  }
+  
+  .q-dialog .q-input .q-field__append {
+    padding-left: 0.5rem !important;
+  }
+  
+  .q-dialog .q-input .q-field__append .q-btn {
+    min-width: 40px !important;
+    width: 40px !important;
+    height: 40px !important;
+  }
+  
+  /* Full width buttons in cards */
+  .q-dialog .q-card-section .q-btn.full-width {
+    width: 100% !important;
+    margin-top: 0.75rem !important;
+    padding: 0.75rem !important;
+  }
+  
+  /* EXPORT DIALOG & OTHER SMALL DIALOGS */
+  
+  /* Keep smaller dialogs reasonably sized */
+  .q-dialog .q-card[style*="min-width: 400px"] {
+    min-width: auto !important;
+    width: calc(100vw - 2rem) !important;
+    max-width: 500px !important;
+  }
+  
+  /* Validation Messages */
+  .q-dialog .q-field__messages {
+    font-size: 0.75rem !important;
+    padding: 0.25rem 0 !important;
+  }
+  
+  /* Hint Text */
+  .q-dialog .q-field__bottom {
+    font-size: 0.75rem !important;
+  }
+  
+  /* Close button */
+  .q-dialog .q-btn[icon="close"] {
+    width: 40px !important;
+    height: 40px !important;
+  }
+  
+  /* Focus states */
+  .q-dialog .q-field--focused .q-field__control {
+    box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2) !important;
+  }
+  
+  /* Error states */
+  .q-dialog .q-field--error .q-field__control {
+    border-color: #f44336 !important;
+  }
+  
+  /* Success states */
+  .q-dialog .q-field--success .q-field__control {
+    border-color: #4caf50 !important;
+  }
+  
+  /* Disabled states */
+  .q-dialog .q-field--disabled {
+    opacity: 0.6 !important;
+  }
+  
+  /* Product type specific sections */
+  .q-dialog .text-primary {
+    color: #1976d2 !important;
+  }
+  
+  /* Bundle/Kit toggles */
+  .q-dialog .q-checkbox__label {
+    font-size: 0.875rem !important;
+    line-height: 1.4 !important;
+  }
+  
+  /* Spacing fixes for complex forms */
+  .q-dialog .col-12:not(:last-child) {
+    margin-bottom: 0.5rem !important;
+  }
 }
 </style>

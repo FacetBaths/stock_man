@@ -1,5 +1,11 @@
 <template>
-  <q-dialog v-model="showDialog" persistent maximized transition-show="slide-up" transition-hide="slide-down">
+  <q-dialog
+    v-model="showDialog"
+    persistent
+    maximized
+    transition-show="slide-up"
+    transition-hide="slide-down"
+  >
     <q-card>
       <q-card-section class="row items-center q-pb-none">
         <div class="text-h6">
@@ -9,15 +15,14 @@
         <q-space />
         <q-btn icon="close" flat round dense v-close-popup />
       </q-card-section>
-
       <q-card-section>
         <div class="row q-col-gutter-md">
           <!-- Scanner Input Section -->
           <div class="col-12 col-md-4">
-            <q-card flat bordered>
+            <q-card flat bordered class="section-card">
               <q-card-section>
                 <div class="text-h6 q-mb-md">Scanner Input</div>
-                
+
                 <!-- Barcode Input -->
                 <q-input
                   v-model="currentBarcode"
@@ -39,26 +44,26 @@
                     />
                   </template>
                 </q-input>
-
-                <div class="q-mt-md">
-                  <q-btn
-                    color="secondary"
-                    label="Clear All"
-                    icon="clear_all"
-                    @click="clearAllScans"
-                    :disable="scannedItems.length === 0"
-                    class="q-mr-sm"
-                  />
-                  <q-btn
-                    color="positive"
-                    label="Process All"
-                    icon="check_circle"
-                    @click="processAllScans"
-                    :disable="scannedItems.length === 0"
-                    :loading="processing"
-                  />
-                </div>
-
+              </q-card-section>
+              <q-card-section class="flex justify-around">
+                <q-btn
+                  color="secondary"
+                  label="Clear All"
+                  icon="clear_all"
+                  @click="clearAllScans"
+                  :disable="scannedItems.length === 0"
+                  class="q-mr-sm"
+                />
+                <q-btn
+                  color="positive"
+                  label="Process All"
+                  icon="check_circle"
+                  @click="processAllScans"
+                  :disable="scannedItems.length === 0"
+                  :loading="processing"
+                />
+              </q-card-section>
+              <q-card-section class="flex justify-around">
                 <!-- Stats -->
                 <div class="q-mt-md">
                   <q-chip
@@ -84,10 +89,10 @@
             </q-card>
 
             <!-- Tag Management -->
-            <q-card flat bordered class="q-mt-md">
+            <q-card flat bordered class="q-mt-md section-card">
               <q-card-section>
                 <div class="text-h6 q-mb-md">Tag Assignment</div>
-                
+
                 <q-input
                   v-model="tagName"
                   label="Tag Name"
@@ -111,7 +116,7 @@
 
           <!-- Scanned Items List -->
           <div class="col-12 col-md-8">
-            <q-card flat bordered>
+            <q-card flat bordered class="section-card">
               <q-card-section>
                 <div class="row items-center q-mb-md">
                   <div class="text-h6">Scanned Items ({{ scannedItems.length }})</div>
@@ -653,7 +658,256 @@ watch(() => props.modelValue, (newVal) => {
 </script>
 
 <style scoped>
+/* Mobile Responsive Dialog Fixes - Targeting section-card structure */
+@media (max-width: 768px) {
+  /* Maximized dialogs - Full screen */
+  .q-dialog--maximized .q-card {
+    width: 100% !important;
+    height: 100% !important;
+    max-height: 100vh !important;
+    border-radius: 0 !important;
+  }
+  
+  /* Compact Header */
+  .q-card__section {
+    padding: 0.5rem !important;
+  }
+  
+  .text-h6 {
+    font-size: 0.9rem !important;
+  }
+  
+  /* MAIN LAYOUT - Stack vertically with minimal gaps */
+  .row.q-col-gutter-md {
+    margin: -0.25rem !important;
+  }
+  
+  .row.q-col-gutter-md > div {
+    padding: 0.25rem !important;
+  }
+  
+  /* Layout stacking - Scanner section first, table second */
+  .row.q-col-gutter-md > .col-12.col-md-4,
+  .row.q-col-gutter-md > .col-12.col-md-8 {
+    width: 100% !important;
+    flex: 0 0 auto !important;
+    max-width: 100% !important;
+  }
+  
+  /* Scanner input section should be compact at top */
+  .row.q-col-gutter-md > .col-12.col-md-4 {
+    order: 1;
+    flex: 0 0 auto !important;
+  }
+  
+  /* Table section should only grow if needed */
+  .row.q-col-gutter-md > .col-12.col-md-8 {
+    order: 2;
+    flex: 0 1 auto !important;
+  }
+  
+  /* TARGET SECTION CARDS - Much more compact and natural height */
+  .section-card {
+    border-radius: 6px !important;
+    margin-bottom: 0.5rem !important;
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+  }
+  
+  .section-card .q-card-section {
+    padding: 0.5rem !important;
+    height: auto !important;
+    min-height: auto !important;
+    flex: none !important;
+  }
+  
+  .section-card .text-h6 {
+    font-size: 0.8rem !important;
+    margin-bottom: 0.5rem !important;
+    font-weight: 600;
+  }
+  
+  /* Form Fields - Compact */
+  .section-card .q-field {
+    margin-bottom: 0.5rem !important;
+  }
+  
+  .section-card .q-input {
+    font-size: 0.9rem !important;
+  }
+  
+  .section-card .q-field__label {
+    font-size: 0.75rem !important;
+  }
+  
+  .section-card .q-field__control {
+    min-height: 40px !important;
+  }
+  
+  /* Input with append buttons - make compact */
+  .section-card .q-input .q-field__append {
+    padding-left: 0.25rem !important;
+  }
+  
+  .section-card .q-input .q-field__append .q-btn {
+    min-width: 32px !important;
+    width: 32px !important;
+    height: 32px !important;
+  }
+  
+  /* SECTION-SPECIFIC BUTTON FIXES */
+  /* Button sections with flex justify-around */
+  .section-card .q-card-section.flex.justify-around {
+    padding: 0.25rem 0.5rem !important;
+    gap: 0.5rem !important;
+  }
+  
+  .section-card .q-card-section.flex.justify-around .q-btn {
+    flex: 1 !important;
+    padding: 0.375rem 0.5rem !important;
+    font-size: 0.75rem !important;
+    min-width: auto !important;
+  }
+  
+  /* Remove problematic margins on buttons */
+  .section-card .q-btn.q-mr-sm {
+    margin-right: 0 !important;
+  }
+  
+  /* Stats chips - make more compact and organized */
+  .section-card .q-mt-md {
+    margin-top: 0.25rem !important;
+  }
+  
+  .section-card .q-chip {
+    font-size: 0.65rem !important;
+    margin: 0.125rem !important;
+    padding: 0.125rem 0.375rem !important;
+    height: auto !important;
+    min-height: 20px !important;
+  }
+  
+  /* Full width buttons in section cards */
+  .section-card .q-btn.full-width {
+    width: 100% !important;
+    margin-top: 0.5rem !important;
+    padding: 0.375rem !important;
+    font-size: 0.75rem !important;
+  }
+  
+  /* TABLE SECTION - Natural sizing, no forced height */
+  .section-card:has(.q-table) {
+    /* Let it size naturally to content */
+  }
+  
+  .section-card:has(.q-table) .q-card-section {
+    /* No forced flexing - let content determine size */
+  }
+  
+  /* Table header - compact */
+  .section-card .row.items-center.q-mb-md {
+    margin-bottom: 0.25rem !important;
+    flex-wrap: wrap !important;
+    gap: 0.25rem !important;
+  }
+  
+  /* Button dropdown in table */
+  .section-card .q-btn-dropdown {
+    font-size: 0.7rem !important;
+    padding: 0.25rem 0.5rem !important;
+  }
+  
+  /* Table itself */
+  .section-card .q-table {
+    font-size: 0.7rem !important;
+    flex: 1 !important;
+  }
+  
+  .section-card .q-table .q-td {
+    padding: 0.25rem 0.125rem !important;
+    font-size: 0.65rem !important;
+  }
+  
+  .section-card .q-table .q-th {
+    padding: 0.375rem 0.125rem !important;
+    font-size: 0.65rem !important;
+    font-weight: 600;
+  }
+  
+  /* Table action buttons */
+  .section-card .q-table .q-btn {
+    width: 24px !important;
+    height: 24px !important;
+    min-width: 24px !important;
+  }
+  
+  /* Text content */
+  .section-card .text-caption {
+    font-size: 0.65rem !important;
+    line-height: 1.1 !important;
+  }
+  
+  /* Loading states */
+  .section-card .q-spinner {
+    width: 12px !important;
+    height: 12px !important;
+  }
+  
+  /* No data state */
+  .section-card .full-width.row.flex-center {
+    padding: 0.75rem !important;
+  }
+  
+  .section-card .full-width.row.flex-center .q-icon {
+    font-size: 1.5rem !important;
+  }
+  
+  .section-card .full-width.row.flex-center span {
+    font-size: 0.75rem !important;
+  }
+  
+  /* Close button in header */
+  .q-btn[icon="close"] {
+    width: 32px !important;
+    height: 32px !important;
+  }
+}
+</style>
+
+<style scoped>
 .q-dialog .q-card {
-  min-height: 80vh;
+  /* Remove min-height that forces tall cards */
+}
+
+/* Force refresh - additional mobile specificity */
+@media screen and (max-width: 768px) {
+  /* Force compact layout with higher specificity */
+  .q-dialog__inner .q-card .q-card__section {
+    padding: 0.75rem !important;
+  }
+  
+  .q-dialog__inner .q-card .q-btn {
+    padding: 0.5rem 0.75rem !important;
+    font-size: 0.8rem !important;
+  }
+  
+  .q-dialog__inner .q-card .q-mr-sm {
+    margin-right: 0 !important;
+    margin-bottom: 0.5rem !important;
+  }
+  
+  .q-dialog__inner .q-card .q-mt-md {
+    margin-top: 0.5rem !important;
+    display: flex !important;
+    gap: 0.5rem !important;
+  }
+  
+  /* Button chaos fix with higher specificity */
+  .q-dialog__inner .q-card .q-card__section .q-btn:not(.full-width) {
+    flex: 1 !important;
+    min-width: auto !important;
+    margin: 0 !important;
+  }
 }
 </style>

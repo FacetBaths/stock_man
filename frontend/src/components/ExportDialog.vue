@@ -591,6 +591,185 @@ watch(() => props.modelValue, (newVal) => {
 </script>
 
 <style scoped>
+/* Mobile Responsive Dialog Fixes */
+@media (max-width: 768px) {
+  /* Dialog Card Mobile Overrides */
+  .q-card {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    min-width: auto !important;
+    height: auto !important;
+    max-height: 95vh !important;
+    margin: 0 !important;
+    border-radius: 16px !important;
+  }
+  
+  /* Dialog Header */
+  .q-card__section {
+    padding: 1rem !important;
+  }
+  
+  .text-h6 {
+    font-size: 1.125rem !important;
+  }
+  
+  /* Form Layout */
+  .q-form.q-gutter-md {
+    gap: 1rem !important;
+  }
+  
+  .row.q-col-gutter-md {
+    margin: -0.5rem !important;
+  }
+  
+  .row.q-col-gutter-md > div {
+    padding: 0.5rem !important;
+  }
+  
+  .row.q-col-gutter-sm {
+    margin: -0.25rem !important;
+  }
+  
+  .row.q-col-gutter-sm > div {
+    padding: 0.25rem !important;
+  }
+  
+  /* All columns full width on mobile */
+  .col-12.col-sm-6.col-md-4,
+  .col.col-sm-6,
+  .col {
+    width: 100% !important;
+    flex: 0 0 100% !important;
+    max-width: 100% !important;
+  }
+  
+  /* Form Fields */
+  .q-field {
+    margin-bottom: 1rem !important;
+  }
+  
+  .q-input,
+  .q-select {
+    font-size: 1rem !important;
+  }
+  
+  .q-field__label {
+    font-size: 0.875rem !important;
+  }
+  
+  .q-field__control {
+    min-height: 48px !important;
+  }
+  
+  /* Button Toggle */
+  .q-btn-toggle {
+    width: 100% !important;
+  }
+  
+  .q-btn-toggle .q-btn {
+    flex: 1 !important;
+    font-size: 0.875rem !important;
+  }
+  
+  /* Form Buttons */
+  .q-card-actions {
+    padding: 1rem !important;
+    flex-wrap: wrap !important;
+    gap: 0.75rem !important;
+  }
+  
+  .q-card-actions .q-btn {
+    flex: 1 !important;
+    min-width: auto !important;
+    padding: 0.75rem 1rem !important;
+    font-size: 0.875rem !important;
+  }
+  
+  /* Cancel buttons smaller */
+  .q-card-actions .q-btn.q-btn--flat {
+    flex: 0 0 auto !important;
+    min-width: 100px !important;
+  }
+  
+  /* Checkboxes */
+  .q-checkbox {
+    font-size: 0.875rem !important;
+    margin-bottom: 0.5rem !important;
+  }
+  
+  .q-checkbox__label {
+    font-size: 0.875rem !important;
+  }
+  
+  /* Select dropdowns */
+  .q-select .q-field__control {
+    min-height: 48px !important;
+  }
+  
+  /* Expansion item */
+  .q-expansion-item {
+    margin-bottom: 1rem !important;
+  }
+  
+  .q-expansion-item .q-pa-md {
+    padding: 0.75rem !important;
+  }
+  
+  /* Date inputs */
+  .q-input[type="date"] .q-field__control {
+    min-height: 48px !important;
+  }
+  
+  /* Number inputs */
+  .q-input[type="number"] .q-field__control {
+    min-height: 48px !important;
+  }
+  
+  /* Preview table */
+  .q-markup-table {
+    font-size: 0.8rem !important;
+  }
+  
+  .q-markup-table th,
+  .q-markup-table td {
+    padding: 0.5rem 0.25rem !important;
+  }
+  
+  /* Text content */
+  .text-caption {
+    font-size: 0.75rem !important;
+    line-height: 1.3 !important;
+  }
+  
+  .text-subtitle2 {
+    font-size: 0.875rem !important;
+    margin-bottom: 0.5rem !important;
+  }
+  
+  .text-body2 {
+    font-size: 0.875rem !important;
+  }
+  
+  /* Icons */
+  .q-icon {
+    font-size: 1.25rem !important;
+  }
+  
+  /* Close button */
+  .q-btn[icon="close"] {
+    width: 40px !important;
+    height: 40px !important;
+  }
+  
+  /* Chips in multi-select */
+  .q-chip {
+    font-size: 0.75rem !important;
+    margin: 0.125rem !important;
+  }
+}
+</style>
+
+<style scoped>
 .q-dialog .q-card {
   max-height: 90vh;
   overflow-y: auto;
