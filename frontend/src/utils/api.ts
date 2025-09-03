@@ -806,8 +806,16 @@ export const skuApi = {
 
   // Create new SKU
   createSKU: async (sku: CreateSKURequest): Promise<{ message: string; sku: SKU }> => {
-    const response = await api.post('/skus', sku)
-    return response.data
+    try {
+      const response = await api.post('/skus', sku)
+      return response.data
+    } catch (error: any) {
+      console.error('❌ [SKU API] Create SKU failed:', error)
+      console.error('❌ [SKU API] Error response data:', error.response?.data)
+      console.error('❌ [SKU API] Error status:', error.response?.status)
+      console.error('❌ [SKU API] Error message:', error.message)
+      throw error
+    }
   },
 
   // Update SKU

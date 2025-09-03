@@ -516,35 +516,63 @@ export const useInventoryStore = defineStore('inventory', () => {
 
   // Item creation method that creates SKU and adds stock
   const createItem = async (itemData: {
+    sku_code?: string
     category_id: string
     name: string
-    description: string
+    description?: string
     brand?: string
     model?: string
-    details?: any
+    color?: string
+    dimensions?: string
+    finish?: string
     unit_cost?: number
     currency?: string
     barcode?: string
     quantity: number
     location?: string
+    supplier?: string
+    reference_number?: string
     notes?: string
   }) => {
     try {
       isCreating.value = true
       error.value = null
 
-      // Step 1: Create the SKU
-      const skuResponse = await skuApi.createSKU({
-        category_id: itemData.category_id,
+      // Step 1: Create the SKU with proper structure
+      const skuPayload = {
+        sku_code: itemData.sku_code || '', // Allow custom SKU codes
+        category_id: typeof itemData.category_id === 'object' && itemData.category_id?._id 
+          ? itemData.category_id._id 
+          : itemData.category_id, // Extract _id if category_id is an object, otherwise use as-is
         name: itemData.name,
-        description: itemData.description,
-        brand: itemData.brand,
-        model: itemData.model,
-        details: itemData.details,
-        unit_cost: itemData.unit_cost,
+        description: itemData.description || '',
+        brand: itemData.brand || '',
+        model: itemData.model || '',
+        details: {
+          // Structure color, dimensions, finish into details object as expected by API
+          color_name: itemData.color || '',
+          dimensions: itemData.dimensions || '',
+          finish: itemData.finish || ''
+        },
+        unit_cost: itemData.unit_cost || 0,
         currency: itemData.currency || 'USD',
-        barcode: itemData.barcode
-      })
+        barcode: itemData.barcode || '',
+        supplier_info: {
+          // Structure supplier info as expected by API
+          supplier_name: itemData.supplier || '',
+          supplier_sku: itemData.reference_number || '',
+          lead_time_days: 0
+        },
+        stock_thresholds: {
+          understocked: 5,
+          overstocked: 100
+        }
+      }
+      
+      console.log('🚀 [CreateItem] Input itemData:', itemData)
+      console.log('📦 [CreateItem] SKU payload being sent to API:', JSON.stringify(skuPayload, null, 2))
+      
+      const skuResponse = await skuApi.createSKU(skuPayload)
 
       // Step 2: Add stock instances if quantity > 0
       if (itemData.quantity > 0) {
@@ -552,8 +580,10 @@ export const useInventoryStore = defineStore('inventory', () => {
           sku_id: skuResponse.sku._id,
           quantity: itemData.quantity,
           unit_cost: itemData.unit_cost || 0,
-          location: itemData.location,
-          notes: itemData.notes
+          location: itemData.location || '',
+          supplier: itemData.supplier || '',
+          reference_number: itemData.reference_number || '',
+          notes: itemData.notes || ''
         })
       }
 

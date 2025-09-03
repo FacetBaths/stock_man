@@ -569,8 +569,9 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useQuasar } from 'quasar'
 import { useSKUStore } from '@/stores/sku'
+import { useCategoryStore } from '@/stores/category'
 import { skuApi } from '@/utils/api'
-import { PRODUCT_TYPES, type SKU, type CreateSKURequest, type UpdateSKURequest } from '@/types'
+import { type SKU, type CreateSKURequest, type UpdateSKURequest } from '@/types'
 
 interface Props {
   modelValue: boolean
@@ -587,6 +588,7 @@ const props = defineProps<Props>()
 
 const $q = useQuasar()
 const skuStore = useSKUStore()
+const categoryStore = useCategoryStore()
 
 // State
 const show = computed({
@@ -655,11 +657,17 @@ const defaultForm = {
 
 const form = ref({ ...defaultForm })
 
-// Options
-const productTypeOptions = PRODUCT_TYPES.map(type => ({
-  label: type.label,
-  value: type.value
-}))
+// Options - Load from category store instead of hardcoded PRODUCT_TYPES
+const productTypeOptions = computed(() => {
+  // Filter to only product categories (not tools) and active categories
+  const productCategories = categoryStore.productCategories.filter(cat => cat.status === 'active')
+  
+  return productCategories.map(category => ({
+    label: category.name.charAt(0).toUpperCase() + category.name.slice(1), // Capitalize first letter
+    value: category.name, // Use category name as value for compatibility
+    categoryId: category._id // Store the actual category ID we need for the API
+  }))
+})
 
 const statusOptions = [
   { label: 'Active', value: 'active' as const },
@@ -992,9 +1000,15 @@ const onSubmit = async () => {
       }
     } else {
       // Create new SKU
+      // Map product_type name to category_id for API
+      const selectedProductType = productTypeOptions.value.find(option => option.value === form.value.product_type)
+      if (!selectedProductType) {
+        throw new Error('Please select a valid product type')
+      }
+      
       const skuData: any = {
         sku_code: form.value.sku_code,
-        product_type: form.value.product_type,
+        category_id: selectedProductType.categoryId, // Use the actual category ID from the loaded categories
         is_bundle: form.value.is_bundle,
         supplier_sku: form.value.supplier_sku,
         barcode: form.value.barcode,
@@ -1063,6 +1077,21 @@ const filterProductDetails = (val: string, update: (fn: () => void) => void) => 
     )
   })
 }
+
+// Load categories when component mounts
+onMounted(async () => {
+  try {
+    console.log('SKUFormDialog: Loading categories on mount...')
+    await categoryStore.fetchCategories({ active_only: true })
+    console.log('SKUFormDialog: Categories loaded successfully:', categoryStore.productCategories.length, 'categories')
+  } catch (error) {
+    console.error('SKUFormDialog: Failed to load categories:', error)
+    $q.notify({
+      type: 'negative',
+      message: 'Failed to load product categories'
+    })
+  }
+})
 
 // Watchers
 watch(() => props.modelValue, (newValue) => {
