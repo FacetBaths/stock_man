@@ -193,6 +193,93 @@ export const useToolsStore = defineStore('tools', {
       }
     },
 
+    async createTool(toolData: {
+      sku_code?: string;
+      category_id: string;
+      name: string;
+      description?: string;
+      brand?: string;
+      model?: string;
+      details?: any; // Tool-specific details from AddToolModal
+      unit_cost?: number;
+      currency?: string;
+      barcode?: string;
+      quantity: number;
+      location?: string;
+      supplier?: string;
+      reference_number?: string;
+      notes?: string;
+    }) {
+      try {
+        this.loading = true;
+        console.log('🛠️ [ToolsStore] Creating tool using working inventory store pattern:', toolData);
+
+        // Use the EXACT same successful pattern as AddItemModal -> inventory.createItem()
+        // but with tool-specific modifications
+        const createPayload = {
+          sku_code: toolData.sku_code,
+          category_id: toolData.category_id,
+          name: toolData.name,
+          description: toolData.description,
+          brand: toolData.brand,
+          model: toolData.model,
+          details: toolData.details, // Pass through tool details as-is
+          unit_cost: toolData.unit_cost,
+          currency: toolData.currency,
+          barcode: toolData.barcode,
+          quantity: toolData.quantity,
+          location: toolData.location,
+          supplier: toolData.supplier,
+          reference_number: toolData.reference_number,
+          notes: toolData.notes,
+        };
+
+        console.log('📦 [ToolsStore] Using inventory.createItem with tool payload:', createPayload);
+        
+        // Use the working inventory store method directly
+        const { useInventoryStore } = await import('./inventory');
+        const inventoryStore = useInventoryStore();
+        
+        // Override default thresholds for tools (0 min, 2 max)
+        const originalPayload = createPayload;
+        const toolCreatePayload = {
+          ...originalPayload,
+          // Tool-specific stock thresholds
+          stock_thresholds: {
+            understocked: 0, // Tools: 0 minimum
+            overstocked: 2   // Tools: 2 maximum
+          }
+        };
+        
+        const result = await inventoryStore.createItem(toolCreatePayload);
+        
+        console.log('✅ [ToolsStore] Tool created successfully via inventory store:', result);
+
+        // Refresh tools inventory to show the new tool
+        await this.fetchToolsInventory({ page: 1 });
+
+        Notify.create({
+          type: 'positive',
+          message: 'Tool created successfully',
+          position: 'top',
+        });
+
+        return result;
+        
+      } catch (error) {
+        console.error('❌ [ToolsStore] Failed to create tool:', error);
+        const errorMessage = error.response?.data?.message || (error instanceof Error ? error.message : 'Unknown error');
+        Notify.create({
+          type: 'negative',
+          message: `Failed to create tool: ${errorMessage}`,
+          position: 'top',
+        });
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+
     async updateTool(toolId: string, updateData: ToolUpdateData) {
       try {
         console.log('🔧 Updating tool:', toolId, 'with data:', updateData);

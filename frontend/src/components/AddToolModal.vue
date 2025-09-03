@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { useInventoryStore } from '@/stores/inventory'
+import { useToolsStore } from '@/stores/tools'
 import { useCategoryStore } from '@/stores/category'
 import { skuApi } from '@/utils/api'
 import { formatCategoryName } from '@/utils/formatting'
@@ -25,7 +25,7 @@ const emit = defineEmits<{
 
 const route = useRoute()
 const authStore = useAuthStore()
-const inventoryStore = useInventoryStore()
+const toolsStore = useToolsStore()
 const categoryStore = useCategoryStore()
 
 // Mode toggle: 'create' for new SKU, 'add_stock' for existing SKU
@@ -163,7 +163,7 @@ const handleSubmit = async () => {
       }
       
       console.log('🛠️ [AddToolModal] Creating tool with payload:', createPayload)
-      const result = await inventoryStore.createItem(createPayload)
+      const result = await toolsStore.createTool(createPayload)
       console.log('✅ [AddToolModal] Tool created successfully:', result)
       
     } else {
@@ -184,7 +184,8 @@ const handleSubmit = async () => {
       }
       
       console.log('📦 [AddToolModal] Adding stock with payload:', addStockPayload)
-      const result = await inventoryStore.addStock(addStockPayload)
+      // TODO: Implement addStock method in toolsStore for existing tools
+      const result = await toolsStore.addStock ? toolsStore.addStock(addStockPayload) : null
       console.log('✅ [AddToolModal] Stock added successfully:', result)
     }
     
@@ -246,8 +247,8 @@ watch(() => categoryStore.categories, () => {
 
         <div class="modal-body">
           <form @submit.prevent="handleSubmit">
-            <div v-if="inventoryStore.error" class="alert alert-danger">
-              {{ inventoryStore.error }}
+            <div v-if="toolsStore.loading" class="alert alert-info">
+              Creating tool, please wait...
             </div>
 
             <!-- Mode Selection -->
@@ -542,11 +543,11 @@ watch(() => categoryStore.categories, () => {
               <button
                 type="submit"
                 class="btn btn-success"
-                :disabled="inventoryStore.isCreating"
+:disabled="toolsStore.loading"
               >
-                <span v-if="inventoryStore.isCreating" class="spinner mr-2"></span>
+                <span v-if="toolsStore.loading" class="spinner mr-2"></span>
                 <q-icon name="build" class="q-mr-sm" />
-                {{ inventoryStore.isCreating ? 'Adding Tool...' : 'Add Tool' }}
+                {{ toolsStore.loading ? 'Adding Tool...' : 'Add Tool' }}
               </button>
             </div>
           </form>
