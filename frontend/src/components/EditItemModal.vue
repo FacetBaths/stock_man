@@ -507,9 +507,9 @@ onMounted(() => {
 </script>
 
 <template>
-  <q-dialog v-model="showDialog" persistent>
-    <q-card style="min-width: 600px; max-width: 800px;">
-      <q-card-section class="row items-center">
+  <q-dialog v-model="showDialog" persistent class="edit-item-dialog">
+    <q-card class="edit-item-card">
+      <q-card-section class="section-card row items-center">
         <div class="text-h6">
           <q-icon name="edit" class="q-mr-sm" />
           Edit Product Info
@@ -730,3 +730,89 @@ onMounted(() => {
     </q-card>
   </q-dialog>
 </template>
+
+<style scoped>
+/* Mobile-responsive styles for EditItemModal */
+@media (max-width: 768px) {
+  /* Dialog takes full screen on mobile */
+  :deep(.edit-item-dialog .q-dialog__inner) {
+    padding: 0 !important;
+  }
+  
+  /* Card fills available space naturally */
+  .edit-item-card {
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  /* Header section with proper spacing */
+  .section-card {
+    padding: 16px !important;
+    min-height: auto !important;
+    flex-shrink: 0;
+  }
+  
+  /* Form content scrollable */
+  .edit-item-card .q-card-section:not(.section-card) {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px !important;
+  }
+  
+  /* Actions section fixed at bottom */
+  .edit-item-card .q-card-actions {
+    flex-shrink: 0;
+    padding: 16px !important;
+    border-top: 1px solid rgba(0, 0, 0, 0.12);
+  }
+  
+  /* Adjust form spacing for mobile */
+  .row.q-col-gutter-md {
+    margin: -8px !important;
+  }
+  
+  .row.q-col-gutter-md > * {
+    padding: 8px !important;
+  }
+  
+  /* Make buttons more touch-friendly */
+  .q-btn {
+    min-height: 44px;
+    padding: 8px 16px;
+  }
+  
+  /* Improve input field spacing */
+  .q-field {
+    margin-bottom: 8px;
+  }
+  
+  /* Compact SKU info card */
+  .bg-grey-1.q-card {
+    padding: 12px !important;
+  }
+  
+  /* Typography adjustments */
+  .text-h6 {
+    font-size: 1.1rem;
+  }
+  
+  .text-subtitle2 {
+    font-size: 0.95rem;
+  }
+}
+
+/* Desktop styles */
+@media (min-width: 769px) {
+  .edit-item-card {
+    min-width: 600px;
+    max-width: 800px;
+    width: auto;
+  }
+}
+</style>
