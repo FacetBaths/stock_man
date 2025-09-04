@@ -257,9 +257,21 @@ const currentSlide = ref(0)
   }
 }
 
-/* Touch-friendly swipe area */
+/* Touch-friendly swipe area - Fixed for dialog usage */
 .mobile-stats {
   touch-action: pan-x;
+}
+
+/* Fix touch event warnings when used in dialogs */
+.stats-carousel :deep(.q-carousel__slides-container),
+.stats-carousel :deep(.q-carousel__slide) {
+  touch-action: pan-x;
+}
+
+/* Ensure carousel container also handles touch events properly */
+.stats-carousel {
+  touch-action: pan-x;
+  will-change: transform;
 }
 
 /* Remove default Quasar carousel styling */

@@ -518,11 +518,6 @@ export const categoryApi = {
     return response.data
   },
 
-  // Get category hierarchy tree
-  getHierarchy: async () => {
-    const response = await api.get('/categories/hierarchy/tree')
-    return response.data
-  }
 }
 
 // Tools Management API - Direct integration with backend /api/tools endpoints

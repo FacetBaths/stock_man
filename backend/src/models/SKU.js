@@ -176,8 +176,7 @@ const skuSchema = new mongoose.Schema({
   stock_thresholds: {
     understocked: {
       type: Number,
-      min: 0,
-      default: 5
+      min: 0
     },
     overstocked: {
       type: Number,

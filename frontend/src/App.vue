@@ -3,6 +3,7 @@ import { onMounted, ref, onUnmounted, computed } from "vue";
 import { RouterView, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import UserProfile from "@/components/UserProfile.vue";
+import AdminSettings from "@/components/AdminSettings.vue";
 import packageInfo from "../../package.json";
 import { capitalizeWords } from "./utils/formatting";
 
@@ -10,6 +11,7 @@ const authStore = useAuthStore();
 const router = useRouter();
 const isDesktop = ref(window.innerWidth >= 1200);
 const showProfileDialog = ref(false);
+const showAdminDialog = ref(false);
 
 const updateScreenSize = () => {
   isDesktop.value = window.innerWidth >= 1200;
@@ -139,6 +141,11 @@ const getVersionTooltip = () => {
 
   return `Version: ${buildInfo.version}\nBuild: #${buildNum}\nCommit: ${buildInfo.gitCommit}\nBranch: ${buildInfo.gitBranch}\nBuilt: ${buildDate}`;
 };
+
+// Check if user has admin access (admin or warehouse_manager)
+const hasAdminAccess = computed(() => {
+  return authStore.user?.role === 'admin' || authStore.user?.role === 'warehouse_manager';
+});
 </script>
 
 <template>
@@ -225,6 +232,18 @@ const getVersionTooltip = () => {
                     <q-item-section class="text-dark">Profile</q-item-section>
                   </q-item>
                   <q-item
+                    v-if="hasAdminAccess"
+                    clickable
+                    v-close-popup
+                    @click="showAdminDialog = true"
+                    class="menu-item"
+                  >
+                    <q-item-section avatar>
+                      <q-icon name="settings" class="text-primary" />
+                    </q-item-section>
+                    <q-item-section class="text-dark">Admin Settings</q-item-section>
+                  </q-item>
+                  <q-item
                     v-if="authStore.isAdmin"
                     clickable
                     v-close-popup
@@ -279,6 +298,12 @@ const getVersionTooltip = () => {
         </q-card-section>
       </q-card>
     </q-dialog>
+
+    <!-- Admin Settings Dialog -->
+    <AdminSettings
+      v-model="showAdminDialog"
+      @close="showAdminDialog = false"
+    />
   </q-app>
 </template>
 

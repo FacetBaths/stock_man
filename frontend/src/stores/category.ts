@@ -7,7 +7,6 @@ export const useCategoryStore = defineStore('category', () => {
   // State
   const categories = ref<Category[]>([])
   const currentCategory = ref<Category | null>(null)
-  const categoryHierarchy = ref<Category[]>([])
   const isLoading = ref(false)
   const isCreating = ref(false)
   const isUpdating = ref(false)
@@ -30,9 +29,7 @@ export const useCategoryStore = defineStore('category', () => {
     categories.value.filter(cat => cat.status === 'inactive')
   )
 
-  const rootCategories = computed(() => 
-    categories.value.filter(cat => !cat.parent_id)
-  )
+  const rootCategories = computed(() => categories.value)
 
   const toolCategories = computed(() => 
     categories.value.filter(cat => cat.type === 'tool')
@@ -42,33 +39,13 @@ export const useCategoryStore = defineStore('category', () => {
     categories.value.filter(cat => cat.type === 'product')
   )
 
-  const categoryStats = computed(() => {
-    const total = categories.value.length
-    const active = activeCategories.value.length
-    const tools = toolCategories.value.length
-    const products = productCategories.value.length
-    const hierarchyDepth = Math.max(...categoryHierarchy.value.map(cat => 
-      getHierarchyDepth(cat)
-    ), 0)
+  const categoryStats = computed(() => ({
+    total: categories.value.length,
+    active: activeCategories.value.length,
+    tools: toolCategories.value.length,
+    products: productCategories.value.length
+  }))
 
-    return {
-      total,
-      active,
-      tools,
-      products,
-      hierarchyDepth
-    }
-  })
-
-  // Helper function to calculate hierarchy depth
-  const getHierarchyDepth = (category: Category, depth = 1): number => {
-    if (!category.children || category.children.length === 0) {
-      return depth
-    }
-    return Math.max(...category.children.map(child => 
-      getHierarchyDepth(child, depth + 1)
-    ))
-  }
 
   // Actions
   const fetchCategories = async (params?: {
@@ -133,22 +110,6 @@ export const useCategoryStore = defineStore('category', () => {
     }
   }
 
-  const fetchHierarchy = async () => {
-    try {
-      isLoading.value = true
-      error.value = null
-
-      const response = await categoryApi.getHierarchy()
-      categoryHierarchy.value = response.hierarchy
-      
-      return response
-    } catch (err: any) {
-      error.value = err.response?.data?.message || 'Failed to fetch category hierarchy'
-      throw err
-    } finally {
-      isLoading.value = false
-    }
-  }
 
   const createCategory = async (categoryData: CreateCategoryRequest) => {
     try {
@@ -160,10 +121,6 @@ export const useCategoryStore = defineStore('category', () => {
       // Add to list
       categories.value.unshift(response.category)
       
-      // Refresh hierarchy if this is a parent/child relationship
-      if (categoryData.parent_id || categories.value.some(cat => !cat.parent_id)) {
-        await fetchHierarchy()
-      }
 
       return response
     } catch (err: any) {
@@ -192,10 +149,6 @@ export const useCategoryStore = defineStore('category', () => {
         currentCategory.value = response.category
       }
 
-      // Refresh hierarchy if parent relationships changed
-      if (updates.parent_id !== undefined) {
-        await fetchHierarchy()
-      }
 
       return response
     } catch (err: any) {
@@ -224,8 +177,6 @@ export const useCategoryStore = defineStore('category', () => {
         currentCategory.value = null
       }
 
-      // Refresh hierarchy
-      await fetchHierarchy()
 
     } catch (err: any) {
       error.value = err.response?.data?.message || 'Failed to delete category'
@@ -243,34 +194,6 @@ export const useCategoryStore = defineStore('category', () => {
     return categories.value.find(cat => cat.name === name)
   }
 
-  const getChildCategories = (parentId: string): Category[] => {
-    return categories.value.filter(cat => cat.parent_id === parentId)
-  }
-
-  const getCategoryPath = (categoryId: string): Category[] => {
-    const path: Category[] = []
-    let current = getCategoryById(categoryId)
-    
-    while (current) {
-      path.unshift(current)
-      if (typeof current.parent_id === 'string') {
-        current = getCategoryById(current.parent_id)
-      } else if (current.parent_id && typeof current.parent_id === 'object') {
-        current = current.parent_id as Category
-        path.unshift(current)
-        break
-      } else {
-        break
-      }
-    }
-    
-    return path
-  }
-
-  const getCategoryBreadcrumb = (categoryId: string): string => {
-    const path = getCategoryPath(categoryId)
-    return path.map(cat => cat.name).join(' > ')
-  }
 
   const searchCategories = (query: string): Category[] => {
     if (!query.trim()) return categories.value
@@ -308,7 +231,6 @@ export const useCategoryStore = defineStore('category', () => {
     // State
     categories,
     currentCategory,
-    categoryHierarchy,
     isLoading,
     isCreating,
     isUpdating,
@@ -327,15 +249,11 @@ export const useCategoryStore = defineStore('category', () => {
     // Actions
     fetchCategories,
     fetchCategory,
-    fetchHierarchy,
     createCategory,
     updateCategory,
     deleteCategory,
     getCategoryById,
     getCategoryByName,
-    getChildCategories,
-    getCategoryPath,
-    getCategoryBreadcrumb,
     searchCategories,
     updateFilters,
     clearFilters,
