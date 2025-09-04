@@ -364,21 +364,20 @@ export interface UseItemsRequest {
 // Category management
 export interface CreateCategoryRequest {
   name: string
-  slug?: string
+  type: 'product' | 'tool'
   description?: string
-  parent_id?: string
-  is_tool_category?: boolean
+  attributes?: string[]
   sort_order?: number
+  status?: 'active' | 'inactive'
 }
 
 export interface UpdateCategoryRequest {
   name?: string
-  slug?: string
+  type?: 'product' | 'tool'
   description?: string
-  parent_id?: string
-  is_tool_category?: boolean
-  status?: 'active' | 'inactive'
+  attributes?: string[]
   sort_order?: number
+  status?: 'active' | 'inactive'
 }
 
 // ✅ Tag model - Instance-based architecture (clean implementation)

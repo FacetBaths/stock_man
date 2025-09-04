@@ -69,6 +69,10 @@ jobs:
           NODE_ENV: production
           GITHUB_PAGES_CUSTOM_DOMAIN: true
           VITE_API_URL: https://stockman-production-e4e4.up.railway.app/api
+          VITE_APP_VERSION: ${{ env.NEW_VERSION }}
+          VITE_BUILD_TIME: ${{ env.BUILD_TIME }}
+          VITE_GIT_COMMIT: ${{ env.GIT_COMMIT }}
+          VITE_BUILD_NUMBER: ${{ env.BUILD_NUMBER }}
           
       - name: Verify build output
         run: |

@@ -12,43 +12,28 @@ const validateCategory = [
     .trim()
     .isLength({ min: 1, max: 100 })
     .withMessage('Category name must be between 1 and 100 characters'),
-  body('slug')
+  body('type')
     .optional()
-    .trim()
-    .matches(/^[a-z0-9-]+$/)
-    .withMessage('Slug can only contain lowercase letters, numbers, and hyphens'),
+    .isIn(['product', 'tool'])
+    .withMessage('Type must be either product or tool'),
   body('description')
     .optional()
     .trim()
     .isLength({ max: 500 })
     .withMessage('Description cannot exceed 500 characters'),
-  body('parent_id')
+  body('attributes')
     .optional()
-    .isMongoId()
-    .withMessage('Parent ID must be a valid MongoDB ID'),
-  body('is_active')
-    .optional()
-    .isBoolean()
-    .withMessage('is_active must be a boolean'),
+    .isArray()
+    .withMessage('Attributes must be an array'),
   body('sort_order')
     .optional()
     .isInt({ min: 0 })
     .withMessage('Sort order must be a non-negative integer'),
-  body('metadata')
+  body('status')
     .optional()
-    .isObject()
-    .withMessage('Metadata must be an object')
+    .isIn(['active', 'inactive'])
+    .withMessage('Status must be either active or inactive')
 ];
-
-// Helper function to generate slug from name
-function generateSlug(name) {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-}
 
 // GET /api/categories - Get all categories with optional filtering
 router.get('/', 
@@ -105,9 +90,11 @@ router.get('/',
 
       let query = Category.find(filter).sort({ sort_order: 1, name: 1 });
       
-      if (req.query.include_children === 'true') {
-        query = query.populate('children');
-      }
+      // TODO: 2025-01-04 - Remove children population (schema doesn't support it)
+      // Commented out to fix 500 error - can delete after 2025-02-04 if not needed
+      // if (req.query.include_children === 'true') {
+      //   query = query.populate('children');
+      // }
 
       const categories = await query;
       console.log('📦 [Categories API] Query result:', {
@@ -115,13 +102,14 @@ router.get('/',
         categories: categories.map(c => ({ _id: c._id, name: c.name, status: c.status }))
       })
 
-      // If requesting top-level categories with children, build hierarchy
-      if (req.query.parent_id === 'null' && req.query.include_children === 'true') {
-        // Build hierarchical structure
-        const hierarchical = await Category.buildHierarchy();
-        console.log('🌳 [Categories API] Returning hierarchy')
-        return res.json({ categories: hierarchical });
-      }
+      // TODO: 2025-01-04 - Disabled hierarchy building (schema doesn't support it)
+      // Commented out to fix 500 error - can delete after 2025-02-04 if not needed
+      // if (req.query.parent_id === 'null' && req.query.include_children === 'true') {
+      //   // Build hierarchical structure
+      //   const hierarchical = await Category.buildHierarchy();
+      //   console.log('🌳 [Categories API] Returning hierarchy')
+      //   return res.json({ categories: hierarchical });
+      // }
 
       console.log('✅ [Categories API] Returning categories:', categories.length)
       res.json({ categories });
@@ -152,9 +140,7 @@ router.get('/:id',
         });
       }
 
-      const category = await Category.findById(req.params.id)
-        .populate('parent_id', 'name slug')
-        .populate('children');
+      const category = await Category.findById(req.params.id);
 
       if (!category) {
         return res.status(404).json({ message: 'Category not found' });
@@ -197,49 +183,17 @@ router.post('/',
 
       const categoryData = {
         name: req.body.name,
-        slug: req.body.slug || generateSlug(req.body.name),
+        type: req.body.type || 'product',
         description: req.body.description || '',
-        parent_id: req.body.parent_id || null,
-        is_active: req.body.is_active !== false, // Default to true
+        attributes: req.body.attributes || [],
         sort_order: req.body.sort_order || 0,
-        metadata: req.body.metadata || {},
-        created_by: req.user.username,
-        last_updated_by: req.user.username
+        status: req.body.status || 'active'
       };
-
-      // Check if slug already exists
-      const existingCategory = await Category.findOne({ slug: categoryData.slug });
-      if (existingCategory) {
-        return res.status(400).json({ 
-          message: 'A category with this slug already exists' 
-        });
-      }
-
-      // If parent_id is provided, verify it exists
-      if (categoryData.parent_id) {
-        const parentCategory = await Category.findById(categoryData.parent_id);
-        if (!parentCategory) {
-          return res.status(400).json({ 
-            message: 'Parent category not found' 
-          });
-        }
-        
-        // Check for circular references
-        if (await parentCategory.hasAncestor(categoryData.parent_id)) {
-          return res.status(400).json({ 
-            message: 'Cannot create circular reference in category hierarchy' 
-          });
-        }
-      }
 
       const category = new Category(categoryData);
       await category.save();
 
-      // Populate relations before returning
-      await category.populate([
-        { path: 'parent_id', select: 'name slug' },
-        { path: 'children', select: 'name slug' }
-      ]);
+      // No need for population - all fields are native to the schema
 
       res.status(201).json({ 
         message: 'Category created successfully',
@@ -288,76 +242,21 @@ router.put('/:id',
       }
 
       // Prepare update data
-      const updateData = {
-        last_updated_by: req.user.username
-      };
+      const updateData = {};
 
-      // Only update provided fields
-      if (req.body.name !== undefined) {
-        updateData.name = req.body.name;
-        
-        // Auto-generate slug if not provided but name changed
-        if (!req.body.slug && req.body.name !== category.name) {
-          updateData.slug = generateSlug(req.body.name);
-        }
-      }
-      
-      if (req.body.slug !== undefined) {
-        updateData.slug = req.body.slug;
-        
-        // Check if new slug conflicts with existing categories
-        const existingCategory = await Category.findOne({ 
-          slug: req.body.slug, 
-          _id: { $ne: req.params.id } 
-        });
-        if (existingCategory) {
-          return res.status(400).json({ 
-            message: 'A category with this slug already exists' 
-          });
-        }
-      }
-
+      // Only update provided fields that match our schema
+      if (req.body.name !== undefined) updateData.name = req.body.name;
+      if (req.body.type !== undefined) updateData.type = req.body.type;
       if (req.body.description !== undefined) updateData.description = req.body.description;
-      if (req.body.is_active !== undefined) updateData.is_active = req.body.is_active;
+      if (req.body.attributes !== undefined) updateData.attributes = req.body.attributes;
       if (req.body.sort_order !== undefined) updateData.sort_order = req.body.sort_order;
-      if (req.body.metadata !== undefined) updateData.metadata = req.body.metadata;
-
-      // Handle parent_id change
-      if (req.body.parent_id !== undefined) {
-        if (req.body.parent_id) {
-          // Verify new parent exists
-          const parentCategory = await Category.findById(req.body.parent_id);
-          if (!parentCategory) {
-            return res.status(400).json({ 
-              message: 'Parent category not found' 
-            });
-          }
-
-          // Check for circular references
-          if (req.body.parent_id === req.params.id) {
-            return res.status(400).json({ 
-              message: 'Category cannot be its own parent' 
-            });
-          }
-
-          if (await parentCategory.hasAncestor(req.params.id)) {
-            return res.status(400).json({ 
-              message: 'Cannot create circular reference in category hierarchy' 
-            });
-          }
-        }
-        
-        updateData.parent_id = req.body.parent_id || null;
-      }
+      if (req.body.status !== undefined) updateData.status = req.body.status;
 
       const updatedCategory = await Category.findByIdAndUpdate(
         req.params.id,
         updateData,
         { new: true, runValidators: true }
-      ).populate([
-        { path: 'parent_id', select: 'name slug' },
-        { path: 'children', select: 'name slug' }
-      ]);
+      );
 
       res.json({ 
         message: 'Category updated successfully',
@@ -421,7 +320,7 @@ router.delete('/:id',
         deletedCategory: {
           _id: category._id,
           name: category.name,
-          slug: category.slug
+          type: category.type
         }
       });
 
@@ -435,26 +334,27 @@ router.delete('/:id',
   }
 );
 
-// GET /api/categories/hierarchy - Get full category hierarchy
-router.get('/hierarchy/tree', 
-  auth,
-  async (req, res) => {
-    try {
-      const hierarchy = await Category.buildHierarchy();
-      
-      res.json({ 
-        hierarchy,
-        message: 'Category hierarchy retrieved successfully'
-      });
-
-    } catch (error) {
-      console.error('Get category hierarchy error:', error);
-      res.status(500).json({ 
-        message: 'Failed to fetch category hierarchy', 
-        error: error.message 
-      });
-    }
-  }
-);
+// TODO: 2025-01-04 - Remove hierarchy tree endpoint (schema doesn't support it)
+// Commented out to fix 500 error - can delete after 2025-02-04 if not needed
+// router.get('/hierarchy/tree', 
+//   auth,
+//   async (req, res) => {
+//     try {
+//       const hierarchy = await Category.buildHierarchy();
+//       
+//       res.json({ 
+//         hierarchy,
+//         message: 'Category hierarchy retrieved successfully'
+//       });
+//
+//     } catch (error) {
+//       console.error('Get category hierarchy error:', error);
+//       res.status(500).json({ 
+//         message: 'Failed to fetch category hierarchy', 
+//         error: error.message 
+//       });
+//     }
+//   }
+// );
 
 module.exports = router;
