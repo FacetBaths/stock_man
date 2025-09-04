@@ -79,6 +79,7 @@ const returnReason = ref('')
 const selectedLoanForAction = ref<Tag | null>(null)
 const isProcessingAction = ref(false)
 const showAddToolModal = ref(false)
+const toolToDelete = ref<any>(null)
 
 // Router
 const router = useRouter()
@@ -279,6 +280,53 @@ const formatDate = (dateString: string) => {
 const editTool = (tool: any) => {
   selectedTool.value = tool
   showEditToolModal.value = true
+}
+
+// Tool deletion functionality
+const handleDeleteTool = (tool: any) => {
+  toolToDelete.value = tool
+  showDeleteDialog.value = true
+}
+
+const confirmDeleteTool = async () => {
+  if (!toolToDelete.value) return
+  
+  try {
+    console.log('🗑️ [Tools] Deleting tool:', toolToDelete.value)
+    
+    // Check if deleteTool method exists, if not use API directly (browser cache issue workaround)
+    if (typeof toolsStore.deleteTool === 'function') {
+      await toolsStore.deleteTool(toolToDelete.value._id)
+    } else {
+      console.log('⚠️ [Tools] Using direct API call due to cache issue')
+      // Import API directly as fallback
+      const { skuApi } = await import('@/utils/api')
+      await skuApi.deleteSKU(toolToDelete.value._id)
+    }
+    
+    console.log('✅ [Tools] Tool deleted successfully')
+    
+    // Close dialog and reset
+    showDeleteDialog.value = false
+    toolToDelete.value = null
+    
+    // Refresh dashboard stats and tools inventory
+    await Promise.all([
+      refreshDashboard(),
+      toolsStore.fetchToolsInventory()
+    ])
+    
+    console.log('🔄 [Tools] Dashboard and inventory refreshed after deletion')
+    
+  } catch (error) {
+    console.error('❌ [Tools] Delete tool error:', error)
+    // Error notification is handled by the store
+  }
+}
+
+const cancelDeleteTool = () => {
+  showDeleteDialog.value = false
+  toolToDelete.value = null
 }
 
 const handleToolUpdated = async () => {
@@ -834,7 +882,7 @@ onMounted(async () => {
                   </p>
                 </div>
               </div>
-              <ToolsTable :can-write="true" @edit="editTool" />
+              <ToolsTable :can-write="true" @edit="editTool" @delete="handleDeleteTool" />
             </div>
           </q-tab-panel>
 
@@ -1604,6 +1652,57 @@ onMounted(async () => {
               icon="assignment_return"
               @click="() => { showLoanDetailsModal = false; returnLoan(selectedLoan); }"
               :loading="isUpdating"
+            />
+          </q-card-actions>
+        </q-card>
+      </q-dialog>
+
+      <!-- Delete Tool Confirmation Dialog -->
+      <q-dialog v-model="showDeleteDialog" persistent>
+        <q-card style="min-width: 400px;">
+          <q-card-section class="row items-center">
+            <q-avatar icon="delete" color="negative" text-color="white" />
+            <span class="q-ml-sm text-h6">Delete Tool</span>
+          </q-card-section>
+
+          <q-card-section v-if="toolToDelete">
+            <p class="q-mb-md">
+              Are you sure you want to <strong>permanently delete</strong> this tool?
+            </p>
+            <p class="q-mb-md">
+              This action will:
+            </p>
+            <ul class="q-pl-md q-mb-md">
+              <li>Delete the tool SKU and all its data</li>
+              <li>Remove all {{ toolToDelete.total_quantity || 0 }} stock instances</li>
+              <li>Delete any associated history</li>
+            </ul>
+            <p class="text-weight-medium">
+              Tool: <span class="text-primary">{{ toolToDelete.name }}</span><br>
+              SKU Code: <span class="text-secondary">{{ toolToDelete.sku_code }}</span><br>
+              <span v-if="toolToDelete.brand || toolToDelete.model">
+                {{ toolToDelete.brand }} {{ toolToDelete.model }}<br>
+              </span>
+              Total Quantity: <span class="text-orange">{{ toolToDelete.total_quantity || 0 }}</span>
+            </p>
+            <q-banner class="bg-negative text-white q-mt-md" rounded>
+              <q-icon name="warning" class="q-mr-sm" />
+              <strong>This action CANNOT be undone!</strong>
+            </q-banner>
+          </q-card-section>
+
+          <q-card-actions align="right">
+            <q-btn 
+              flat 
+              label="Cancel" 
+              color="primary" 
+              @click="cancelDeleteTool"
+            />
+            <q-btn 
+              label="Delete Tool" 
+              color="negative" 
+              @click="confirmDeleteTool"
+              :loading="toolsStore.loading"
             />
           </q-card-actions>
         </q-card>

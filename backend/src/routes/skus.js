@@ -464,7 +464,7 @@ router.post('/',
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return res.status(400).json({ 
+        return res.status(412).json({ 
           message: 'Validation failed', 
           errors: errors.array() 
         });
@@ -496,24 +496,25 @@ router.post('/',
         sku_code: skuCode,
         name: req.body.name,
         description: req.body.description || '',
+        brand: req.body.brand || '',
+        model: req.body.model || '',
         category_id: req.body.category_id,
+        details: req.body.details || {},
         unit_cost: req.body.unit_cost || 0,
-        unit_price: req.body.unit_price || req.body.unit_cost || 0,
-        manufacturer_model: req.body.manufacturer_model || '',
+        currency: req.body.currency || 'USD',
         barcode: req.body.barcode || '',
-        weight: req.body.weight || 0,
-        dimensions: {
-          length: req.body.dimensions?.length || 0,
-          width: req.body.dimensions?.width || 0,
-          height: req.body.dimensions?.height || 0,
-          unit: req.body.dimensions?.unit || 'inches'
+        supplier_info: req.body.supplier_info || {
+          supplier_name: '',
+          supplier_sku: '',
+          lead_time_days: 0
         },
-        is_active: req.body.is_active !== false, // Default to true
-        is_lendable: req.body.is_lendable || false,
+        stock_thresholds: req.body.stock_thresholds || {
+          understocked: 5,
+          overstocked: 100
+        },
+        status: req.body.status || 'active',
         is_bundle: req.body.is_bundle || false,
         bundle_items: req.body.bundle_items || [],
-        tags: req.body.tags || [],
-        notes: req.body.notes || '',
         created_by: req.user.username,
         last_updated_by: req.user.username
       };
@@ -751,8 +752,42 @@ router.delete('/:id',
         });
       }
 
+      // Delete all associated instances first
+      const Instance = require('../models/Instance');
+      const deletedInstances = await Instance.deleteMany({ sku_id: req.params.id });
+      console.log(`Deleted ${deletedInstances.deletedCount} instances for SKU ${sku.sku_code}`);
+
       // Delete associated inventory record
-      await Inventory.findOneAndDelete({ sku_id: req.params.id });
+      const deletedInventory = await Inventory.findOneAndDelete({ sku_id: req.params.id });
+      if (deletedInventory) {
+        console.log(`Deleted inventory record for SKU ${sku.sku_code}`);
+      }
+
+      // Create audit log for the deletion
+      await AuditLog.create({
+        event_type: 'sku_deleted',
+        entity_type: 'sku',
+        entity_id: req.params.id,
+        user_id: req.user._id.toString(),
+        user_name: req.user.username,
+        action: 'Delete SKU',
+        description: `Deleted SKU ${sku.sku_code} (${sku.name}) and ${deletedInstances.deletedCount} associated instances`,
+        changes: {
+          before: {
+            sku_code: sku.sku_code,
+            name: sku.name,
+            instances_count: deletedInstances.deletedCount
+          },
+          after: null
+        },
+        metadata: {
+          ip_address: req.ip,
+          api_endpoint: req.originalUrl,
+          method: req.method
+        },
+        severity: 'high',
+        category: 'business'
+      });
 
       // Delete the SKU
       await SKU.findByIdAndDelete(req.params.id);

@@ -14,6 +14,7 @@ const toolsStore = useToolsStore()
 
 const emit = defineEmits<{
   edit: [tool: ToolInventoryItem]
+  delete: [tool: ToolInventoryItem]
 }>()
 
 // Component state
@@ -233,6 +234,11 @@ const getVoltageDisplay = (voltage?: string) => {
 // Check if user can view cost information
 const canViewCost = computed(() =>
   authStore.hasPermission('view_cost') || authStore.hasRole(['admin', 'warehouse_manager'])
+)
+
+// Check if user can delete tools
+const canDelete = computed(() =>
+  authStore.hasPermission('delete_item') || authStore.hasRole(['admin', 'warehouse_manager'])
 )
 
 // Handle condition status click to show details
@@ -614,6 +620,18 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
                   class="action-btn"
                 >
                   <q-tooltip>Edit tool</q-tooltip>
+                </q-btn>
+                <q-btn
+                  v-if="canDelete"
+                  @click.stop="emit('delete', tool)"
+                  color="negative"
+                  icon="delete"
+                  size="sm"
+                  round
+                  flat
+                  class="action-btn"
+                >
+                  <q-tooltip>Delete tool</q-tooltip>
                 </q-btn>
               </div>
             </div>

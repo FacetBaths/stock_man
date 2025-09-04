@@ -287,6 +287,55 @@ skuSchema.methods.getDisplayName = function() {
   }
 };
 
+// Method to check if SKU can be safely deleted
+skuSchema.methods.canBeDeleted = async function() {
+  try {
+    const Tag = require('./Tag');
+    
+    // Only check for active tags/checkouts - instances will be deleted along with the SKU
+    const activeTagCount = await Tag.countDocuments({ 
+      'sku_items.sku_id': this._id,
+      status: { $nin: ['completed', 'cancelled'] }
+    });
+    
+    if (activeTagCount > 0) {
+      return {
+        allowed: false,
+        reason: 'SKU is referenced in active tags/checkouts',
+        details: `${activeTagCount} active tags reference this SKU. Complete or cancel these checkouts before deleting.`
+      };
+    }
+    
+    // Check if SKU is part of any bundle (this would break the bundle)
+    const bundleCount = await this.constructor.countDocuments({ 
+      'bundle_items.sku_id': this._id,
+      is_bundle: true 
+    });
+    
+    if (bundleCount > 0) {
+      return {
+        allowed: false,
+        reason: 'SKU is part of one or more bundles',
+        details: `${bundleCount} bundles contain this SKU. Remove from bundles before deleting.`
+      };
+    }
+    
+    return {
+      allowed: true,
+      reason: 'SKU can be safely deleted',
+      details: 'All associated instances will be deleted automatically.'
+    };
+    
+  } catch (error) {
+    console.error('Error checking if SKU can be deleted:', error);
+    return {
+      allowed: false,
+      reason: 'Error checking dependencies',
+      details: error.message
+    };
+  }
+};
+
 // Virtual populate for instances
 skuSchema.virtual('instances', {
   ref: 'Instance',

@@ -324,6 +324,46 @@ export const useToolsStore = defineStore('tools', {
       }
     },
 
+    async deleteTool(toolId: string) {
+      try {
+        console.log('🗑️ [ToolsStore] Deleting tool:', toolId);
+
+        // Use the same SKU deletion API as the inventory store
+        const { skuApi } = await import('../utils/api');
+        await skuApi.deleteSKU(toolId);
+        
+        console.log('✅ [ToolsStore] Tool deleted successfully');
+        
+        // Remove tool from local state
+        const toolIndex = this.toolsInventory.findIndex(tool => tool._id === toolId);
+        if (toolIndex !== -1) {
+          this.toolsInventory.splice(toolIndex, 1);
+        }
+        
+        // Update pagination if needed
+        this.pagination.totalRecords = Math.max(0, this.pagination.totalRecords - 1);
+        this.pagination.totalPages = Math.ceil(this.pagination.totalRecords / this.pagination.limit);
+        
+        Notify.create({
+          type: 'positive',
+          message: 'Tool deleted successfully',
+          position: 'top',
+        });
+        
+        return true;
+        
+      } catch (error) {
+        console.error('❌ [ToolsStore] Failed to delete tool:', error);
+        const errorMessage = error.response?.data?.message || (error instanceof Error ? error.message : 'Unknown error');
+        Notify.create({
+          type: 'negative',
+          message: `Failed to delete tool: ${errorMessage}`,
+          position: 'top',
+        });
+        throw error;
+      }
+    },
+
     // Helper methods for filtering
     setSearchTerm(term: string) {
       this.searchTerm = term;
