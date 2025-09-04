@@ -110,6 +110,8 @@ const formatTotalInvested = (item: any) => {
   const cost = getCost(item)
   const quantity = getQuantity(item)
   if (!cost || cost === null) return '-'
+  // Calculate total value using current unit cost (not historical acquisition cost)
+  // This shows the current value of inventory based on latest SKU cost
   const total = cost * quantity
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -350,15 +352,15 @@ const getAvailableQuantityNew = (item: any) => {
 // Helper to get cost from inventory API response structure
 const getCost = (item: any) => {
   // The inventory response has:
-  // - average_cost at the inventory level (actual cost basis for inventory)
   // - unit_cost in the nested sku object (current SKU cost from SKU model)
-  // Prefer average_cost for inventory display as it represents the actual cost basis
+  // - average_cost at the inventory level (historical acquisition cost average)
+  // Prioritize unit_cost for current cost display as it represents the current/latest cost
+  if (item.sku && item.sku.unit_cost !== undefined && item.sku.unit_cost !== null) {
+    return item.sku.unit_cost
+  }
+  // Fallback to average_cost from historical acquisition costs if unit_cost not available
   if (item.average_cost !== undefined && item.average_cost !== null) {
     return item.average_cost
-  }
-  // Fallback to unit_cost from SKU if average not available
-  if (item.sku && item.sku.unit_cost !== undefined) {
-    return item.sku.unit_cost
   }
   return 0
 }

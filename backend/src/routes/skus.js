@@ -1051,6 +1051,65 @@ router.post('/barcode/:barcode/add-stock',
   }
 );
 
+// POST /api/skus/:id/cost - Add cost to SKU
+router.post('/:id/cost',
+  auth,
+  requireWriteAccess,
+  [
+    param('id').isMongoId().withMessage('Invalid SKU ID'),
+    body('cost')
+      .isFloat({ min: 0 })
+      .withMessage('Cost must be a non-negative number'),
+    body('notes')
+      .optional()
+      .trim()
+      .isLength({ max: 500 })
+      .withMessage('Notes cannot exceed 500 characters')
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ 
+          message: 'Validation failed', 
+          errors: errors.array() 
+        });
+      }
+
+      const sku = await SKU.findById(req.params.id);
+      if (!sku) {
+        return res.status(404).json({ message: 'SKU not found' });
+      }
+      
+      // ✅ FILTER: Block access to tool SKUs in product view
+      const category = await Category.findById(sku.category_id);
+      if (category && category.type === 'tool') {
+        return res.status(404).json({ message: 'SKU not found' });
+      }
+
+      const { cost, notes } = req.body;
+      
+      // Use the SKU model's addCost method
+      await sku.addCost(cost, req.user.username, notes || '');
+      
+      // Populate category before returning
+      await sku.populate('category_id');
+      
+      res.json({
+        message: 'Cost added successfully',
+        sku: sku
+      });
+
+    } catch (error) {
+      console.error('Add cost error:', error);
+      res.status(500).json({ 
+        message: 'Failed to add cost', 
+        error: error.message 
+      });
+    }
+  }
+);
+
 // POST /api/skus/batch-scan - Batch lookup SKUs by barcodes
 router.post('/batch-scan',
   auth,

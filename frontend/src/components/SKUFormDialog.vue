@@ -468,7 +468,7 @@
             <!-- Current Cost -->
             <div class="col-12 col-sm-6">
               <q-input
-                v-model.number="form.current_cost"
+                v-model.number="form.unit_cost"
                 label="Current Cost"
                 outlined
                 dense
@@ -640,7 +640,7 @@ const defaultForm = {
   model: '',
   supplier_sku: '', // Replace manufacturer_model with supplier_sku
   barcode: '',
-  current_cost: 0,
+  unit_cost: 0,
   stock_thresholds: {
     understocked: 5,
     overstocked: 100
@@ -922,7 +922,7 @@ const onSubmit = async () => {
         model: form.value.model,
         barcode: form.value.barcode,
         status: form.value.status as 'active' | 'discontinued' | 'pending',
-        unit_cost: form.value.current_cost,
+        unit_cost: form.value.unit_cost,
         currency: 'USD', // Default currency
         
         // Details object - merge existing details with form updates  
@@ -992,9 +992,9 @@ const onSubmit = async () => {
       await skuStore.updateSKU(props.sku._id, updates)
       
       // Add cost if changed
-      if (form.value.current_cost !== props.sku.unit_cost) {
+      if (form.value.unit_cost !== props.sku.unit_cost) {
         await skuStore.addCost(props.sku._id, {
-          cost: form.value.current_cost,
+          cost: form.value.unit_cost,
           notes: 'Updated from form'
         })
       }
@@ -1012,7 +1012,7 @@ const onSubmit = async () => {
         is_bundle: form.value.is_bundle,
         supplier_sku: form.value.supplier_sku,
         barcode: form.value.barcode,
-        current_cost: form.value.current_cost,
+        unit_cost: form.value.unit_cost,
         stock_thresholds: form.value.stock_thresholds,
         description: form.value.description,
         notes: form.value.notes
@@ -1146,7 +1146,7 @@ watch(() => props.modelValue, (newValue) => {
         model: props.sku.model || '',
         supplier_sku: supplierSku,
         barcode: props.sku.barcode || '',
-        current_cost: props.sku.unit_cost || 0,
+        unit_cost: props.sku.unit_cost || 0,
         stock_thresholds: { 
           understocked: props.sku.stock_thresholds?.understocked || 5,
           overstocked: props.sku.stock_thresholds?.overstocked || 100

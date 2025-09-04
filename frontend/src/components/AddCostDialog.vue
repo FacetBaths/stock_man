@@ -13,7 +13,7 @@
         <q-card-section>
           <div v-if="sku" class="q-mb-md">
             <div class="text-weight-medium">{{ sku.sku_code }}</div>
-            <div class="text-caption text-grey-6">Current Cost: ${{ formatCurrency(sku.current_cost) }}</div>
+            <div class="text-caption text-grey-6">Current Cost: ${{ formatCurrency(sku.unit_cost) }}</div>
           </div>
 
           <div class="row q-col-gutter-md">
@@ -106,7 +106,7 @@ const formatCurrency = (value: number) => {
 
 const resetForm = () => {
   form.value = {
-    cost: props.sku?.current_cost || 0,
+    cost: props.sku?.unit_cost || 0,
     notes: ''
   }
 }
