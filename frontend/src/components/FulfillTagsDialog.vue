@@ -1,6 +1,6 @@
 <template>
   <q-dialog v-model="showDialog" persistent>
-    <q-card class="fulfill-tags-card" style="min-width: 800px; max-width: 1000px;">
+    <q-card class="fulfill-tags-card fulfill-tags-responsive">
       <q-card-section class="row items-center q-pb-none">
         <q-icon name="done_all" class="text-positive q-mr-sm" size="sm" />
         <div class="text-h6">
@@ -699,6 +699,70 @@ onMounted(() => {
 .fulfill-tags-card {
   max-height: 90vh;
   overflow-y: auto;
+}
+
+.fulfill-tags-responsive {
+  width: 100%;
+  min-width: 320px;
+  max-width: min(1000px, 95vw);
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 768px) {
+  .fulfill-tags-responsive {
+    max-width: 98vw;
+    margin: 8px;
+  }
+  
+  .fulfill-tags-card {
+    max-height: 95vh;
+  }
+  
+  /* Adjust step indicator for mobile */
+  .step-indicator {
+    display: none;
+  }
+  
+  /* Make sure inputs don't overflow */
+  .q-input {
+    min-width: 0;
+  }
+  
+  /* Adjust card sections padding on mobile */
+  .q-card-section {
+    padding: 12px;
+  }
+  
+  /* Make sure list items wrap properly */
+  .q-item {
+    flex-wrap: wrap;
+  }
+  
+  /* Ensure quantity input doesn't break layout on mobile */
+  .q-item-section[style*="min-width: 120px"] {
+    min-width: 80px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .fulfill-tags-responsive {
+    max-width: 100vw;
+    margin: 4px;
+  }
+  
+  .q-card-section {
+    padding: 8px;
+  }
+  
+  /* Hide project name on very small screens to save space */
+  .text-body2 {
+    font-size: 0.8rem;
+  }
+  
+  /* Make chips smaller on mobile */
+  .q-chip {
+    font-size: 0.7rem;
+  }
 }
 
 .q-item-section {

@@ -24,6 +24,9 @@ const tagToEdit = ref<Tag | null>(null);
 const showFulfillDialog = ref(false);
 const selectedTags = ref<Tag[]>([]);
 
+// Expansion state for tags
+const expandedTags = ref(new Set<string>());
+
 // Store state computed properties
 const error = computed(() => tagStore.error);
 const isLoading = computed(() => tagStore.isLoading);
@@ -262,6 +265,15 @@ const getTotalQuantity = (items: any[]) => {
       : 0;
     return sum + quantity;
   }, 0);
+};
+
+// Toggle tag expansion
+const toggleTagExpansion = (tagId: string) => {
+  if (expandedTags.value.has(tagId)) {
+    expandedTags.value.delete(tagId);
+  } else {
+    expandedTags.value.add(tagId);
+  }
 };
 
 onMounted(async () => {
@@ -510,111 +522,79 @@ const tableColumns = [
           </div>
         </div>
 
-        <div v-else>
-          <!-- Column Headers -->
-          <div class="tags-header row items-center q-pa-md">
-            <div class="col-3 text-weight-bold text-body1 text-dark">
-              <q-icon name="person" class="q-mr-xs" size="sm" />
-              Customer
-            </div>
-            <div
-              class="col-2 text-weight-bold text-body1 text-dark text-center"
-            >
-              <q-icon name="label" class="q-mr-xs" size="sm" />
-              Type
-            </div>
-            <div
-              class="col-2 text-weight-bold text-body1 text-dark text-center"
-            >
-              <q-icon name="inventory_2" class="q-mr-xs" size="sm" />
-              Items
-            </div>
-            <div
-              class="col-2 text-weight-bold text-body1 text-dark text-center"
-            >
-              <q-icon name="info" class="q-mr-xs" size="sm" />
-              Status
-            </div>
-            <div
-              class="col-2 text-weight-bold text-body1 text-dark text-center"
-            >
-              <q-icon name="schedule" class="q-mr-xs" size="sm" />
-              Created
-            </div>
-            <div
-              class="col-1 text-weight-bold text-body1 text-dark text-center"
-            >
-              <q-icon name="settings" class="q-mr-xs" size="sm" />
-              Actions
-            </div>
-          </div>
-
-          <q-separator />
-
-          <q-list separator>
-            <q-expansion-item
+        <!-- Tags Grid -->
+        <div class="tags-grid q-pa-md">
+          <div class="row q-gutter-md">
+            <q-card
               v-for="tag in filteredTags"
               :key="tag._id"
-              class="tag-expansion-item"
-              header-class="tag-header"
-              expand-separator
-              :default-opened="false"
+              class="tag-card glass-card col-12"
+              flat
+              data-aos="fade-up"
+              data-aos-delay="100"
             >
-              <template v-slot:header>
-                <div class="full-width row items-center no-wrap">
-                  <!-- Customer Name -->
-                  <div
-                    class="col-3 text-weight-bold text-subtitle1 text-dark ellipsis"
-                  >
-                    {{ tag.customer_name }}
+              <!-- Tag Header -->
+              <q-card-section class="tag-header-section">
+                <div class="row items-center no-wrap q-gutter-md">
+                  <!-- Left Side - Customer Info -->
+                  <div class="col">
+                    <div class="row items-center q-gutter-sm">
+                      <q-avatar color="primary" text-color="white" size="md">
+                        <q-icon name="person" />
+                      </q-avatar>
+                      <div>
+                        <div class="text-h6 text-weight-bold text-dark">
+                          {{ tag.customer_name }}
+                        </div>
+                        <div v-if="tag.project_name" class="text-caption text-grey-6">
+                          <q-icon name="folder" size="xs" class="q-mr-xs" />
+                          {{ tag.project_name }}
+                        </div>
+                        <div class="text-caption text-grey-7">
+                          <q-icon name="schedule" size="xs" class="q-mr-xs" />
+                          Created: {{ formatDate(tag.createdAt) }}
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
-                  <!-- Tag Type -->
-                  <div class="col-2 text-center">
-                    <q-chip
-                      :style="{
-                        backgroundColor: getTagTypeColor(tag.tag_type),
-                        color: 'white',
-                      }"
-                      size="sm"
-                      class="text-weight-medium text-capitalize"
-                    >
-                      {{ tag.tag_type }}
-                    </q-chip>
+                  <!-- Center - Status Chips -->
+                  <div class="col-auto">
+                    <div class="row q-gutter-xs items-center">
+                      <q-chip
+                        :style="{
+                          backgroundColor: getTagTypeColor(tag.tag_type),
+                          color: 'white',
+                        }"
+                        size="sm"
+                        class="text-weight-medium text-capitalize"
+                        icon="label"
+                      >
+                        {{ tag.tag_type }}
+                      </q-chip>
+                      
+                      <q-chip
+                        :color="getStatusColor(tag.status)"
+                        text-color="white"
+                        size="sm"
+                        class="text-weight-medium text-capitalize"
+                        icon="flag"
+                      >
+                        {{ tag.status }}
+                      </q-chip>
+                      
+                      <q-chip color="info" text-color="white" size="sm" icon="inventory">
+                        {{ getTotalQuantity(tag.sku_items) }} items
+                      </q-chip>
+                    </div>
                   </div>
 
-                  <!-- Total Quantity -->
-                  <div class="col-2 text-center">
-                    <q-chip color="info" text-color="white" size="sm">
-                      {{ getTotalQuantity(tag.sku_items) }}
-                    </q-chip>
-                  </div>
-
-                  <!-- Status -->
-                  <div class="col-2 text-center">
-                    <q-chip
-                      :color="getStatusColor(tag.status)"
-                      text-color="white"
-                      size="sm"
-                      class="text-weight-medium text-capitalize"
-                    >
-                      {{ tag.status }}
-                    </q-chip>
-                  </div>
-
-                  <!-- Created Date -->
-                  <div class="col-2 text-center text-body2 text-grey-8">
-                    {{ formatDate(tag.createdAt) }}
-                  </div>
-
-                  <!-- Actions -->
-                  <div class="col-1 text-center">
-                    <div
-                      class="row no-wrap items-center justify-center q-gutter-xs"
-                    >
+                  <!-- Right Side - Actions -->
+                  <div class="col-auto">
+                    <div class="row q-gutter-xs">
                       <q-btn
                         v-if="authStore.canWrite"
-                        @click.stop="handleEditTag(tag)"
+                        @click="handleEditTag(tag)"
                         color="primary"
                         icon="edit"
                         size="sm"
@@ -626,7 +606,7 @@ const tableColumns = [
                       </q-btn>
                       <q-btn
                         v-if="authStore.canWrite"
-                        @click.stop="handleDeleteTag(tag)"
+                        @click="handleDeleteTag(tag)"
                         color="negative"
                         icon="delete"
                         size="sm"
@@ -636,95 +616,116 @@ const tableColumns = [
                       >
                         <q-tooltip>Delete Tag</q-tooltip>
                       </q-btn>
+                      
+                      <!-- Expand/Collapse Button -->
+                      <q-btn
+                        @click="toggleTagExpansion(tag._id)"
+                        :color="expandedTags.has(tag._id) ? 'primary' : 'grey-6'"
+                        :icon="expandedTags.has(tag._id) ? 'expand_less' : 'expand_more'"
+                        size="sm"
+                        round
+                        flat
+                        dense
+                      >
+                        <q-tooltip>{{ expandedTags.has(tag._id) ? 'Collapse' : 'View Items' }}</q-tooltip>
+                      </q-btn>
                     </div>
                   </div>
                 </div>
-              </template>
+              </q-card-section>
 
-              <!-- Expanded Content - Items List -->
-              <div class="tag-items-container q-pa-md">
-                <div class="text-h6 text-dark q-mb-md">
-                  <q-icon name="inventory_2" class="q-mr-sm" />
-                  Tagged Items
-                </div>
+              <q-separator v-if="expandedTags.has(tag._id)" />
 
-                <div
-                  v-if="tag.sku_items && tag.sku_items.length > 0"
-                  class="items-scroll-area"
-                >
-                  <q-list dense separator>
-                    <q-item
-                      v-for="(skuItem, index) in tag.sku_items"
-                      :key="index"
-                      class="item-detail"
-                    >
-                      <q-item-section avatar>
-                        <q-icon name="inventory" color="primary" />
-                      </q-item-section>
+              <!-- Expandable Items Section -->
+              <q-slide-transition>
+                <q-card-section v-if="expandedTags.has(tag._id)" class="tag-items-section">
+                  <div class="text-subtitle1 text-weight-medium text-dark q-mb-md">
+                    <q-icon name="inventory_2" class="q-mr-sm" color="primary" />
+                    Tagged Items ({{ tag.sku_items?.length || 0 }})
+                  </div>
 
-                      <q-item-section>
-                        <q-item-label class="text-weight-bold">
-                          <span class="sku-code">
-                            <template
+                  <div v-if="tag.sku_items && tag.sku_items.length > 0">
+                    <!-- Compact Item List -->
+                    <div class="compact-items-container">
+                      <q-list dense separator class="compact-items-list">
+                        <q-item
+                          v-for="(skuItem, index) in tag.sku_items"
+                          :key="index"
+                          class="compact-item"
+                          dense
+                        >
+                          <q-item-section avatar>
+                            <q-avatar color="primary" text-color="white" size="xs">
+                              <q-icon name="inventory" size="xs" />
+                            </q-avatar>
+                          </q-item-section>
+                          
+                          <q-item-section>
+                            <q-item-label class="text-weight-medium text-dark">
+                              <template
+                                v-if="
+                                  typeof skuItem.sku_id === 'object' &&
+                                  skuItem.sku_id?.sku_code
+                                "
+                              >
+                                {{ skuItem.sku_id.sku_code || "Unknown SKU" }}
+                              </template>
+                              <template v-else>
+                                SKU {{ skuItem.sku_id }}
+                              </template>
+                              
+                              <span
+                                v-if="
+                                  typeof skuItem.sku_id === 'object' &&
+                                  skuItem.sku_id?.name
+                                "
+                                class="text-grey-7 q-ml-sm"
+                              >
+                                - {{ skuItem.sku_id.name }}
+                              </span>
+                            </q-item-label>
+                            
+                            <q-item-label
                               v-if="
                                 typeof skuItem.sku_id === 'object' &&
-                                skuItem.sku_id?.sku_code
+                                skuItem.sku_id?.description
                               "
+                              caption
+                              class="text-grey-6"
+                              lines="1"
                             >
-                              {{ skuItem.sku_id.sku_code || "Unknown SKU" }}
-                            </template>
-                            <template v-else>
-                              SKU {{ skuItem.sku_id }}
-                            </template>
-                          </span>
-                          <span
-                            v-if="
-                              typeof skuItem.sku_id === 'object' &&
-                              skuItem.sku_id?.name
-                            "
-                            class="q-ml-sm text-grey-8 sku-name"
-                          >
-                            | {{ skuItem.sku_id.name }}
-                          </span>
-                        </q-item-label>
-                        <q-item-label
-                          v-if="
-                            typeof skuItem.sku_id === 'object' &&
-                            skuItem.sku_id?.description
-                          "
-                          caption
-                          class="text-grey-6 item-description"
-                        >
-                          {{ skuItem.sku_id.description }}
-                        </q-item-label>
-                      </q-item-section>
+                              {{ skuItem.sku_id.description }}
+                            </q-item-label>
+                          </q-item-section>
+                          
+                          <q-item-section side>
+                            <q-badge
+                              color="primary"
+                              :label="
+                                skuItem.selected_instance_ids
+                                  ? skuItem.selected_instance_ids.length
+                                  : skuItem.remaining_quantity || skuItem.quantity
+                              "
+                              class="text-weight-bold"
+                            />
+                          </q-item-section>
+                        </q-item>
+                      </q-list>
+                    </div>
+                  </div>
 
-                      <q-item-section side>
-                        <q-badge
-                          color="primary"
-                          :label="
-                            skuItem.selected_instance_ids
-                              ? skuItem.selected_instance_ids.length
-                              : skuItem.remaining_quantity || skuItem.quantity
-                          "
-                          class="quantity-badge"
-                        />
-                      </q-item-section>
-                    </q-item>
-                  </q-list>
-                </div>
-
-                <div v-else class="no-items-message text-center q-pa-md">
-                  <q-icon
-                    name="inventory_2"
-                    size="32px"
-                    class="text-grey-5 q-mb-sm"
-                  />
-                  <div class="text-body2 text-grey-6">No items in this tag</div>
-                </div>
-              </div>
-            </q-expansion-item>
-          </q-list>
+                  <div v-else class="text-center q-pa-lg">
+                    <q-icon
+                      name="inventory_2"
+                      size="64px"
+                      class="text-grey-4 q-mb-md"
+                    />
+                    <div class="text-body1 text-grey-6">No items in this tag</div>
+                  </div>
+                </q-card-section>
+              </q-slide-transition>
+            </q-card>
+          </div>
         </div>
       </div>
     </div>
@@ -972,6 +973,94 @@ const tableColumns = [
 
 .opacity-80 {
   opacity: 0.8;
+}
+
+/* New Tag Card Styles */
+.tag-card {
+  background: rgba(255, 255, 255, 0.15) !important;
+  backdrop-filter: blur(25px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+.tag-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
+  background: rgba(255, 255, 255, 0.2) !important;
+}
+
+.tag-header-section {
+  background: rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.tag-items-section {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.item-card {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+.item-card:hover {
+  background: rgba(255, 255, 255, 0.15) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+}
+
+/* Compact Items List Styles */
+.compact-items-container {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.compact-items-list {
+  background: transparent;
+}
+
+.compact-item {
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 0;
+  padding: 8px 12px;
+  transition: all 0.2s ease;
+}
+
+.compact-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.compact-item .q-item__section--avatar {
+  min-width: 32px;
+}
+
+.compact-item .q-item__section--side {
+  padding-left: 16px;
+}
+
+/* Compact items scrollbar */
+.compact-items-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.compact-items-container::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.compact-items-container::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+}
+
+.compact-items-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
 }
 
 /* Responsive Design for Lists */
