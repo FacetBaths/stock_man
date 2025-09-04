@@ -508,10 +508,7 @@ router.post('/',
           supplier_sku: '',
           lead_time_days: 0
         },
-        stock_thresholds: req.body.stock_thresholds || {
-          understocked: 5,
-          overstocked: 100
-        },
+        stock_thresholds: req.body.stock_thresholds || {},
         status: req.body.status || 'active',
         is_bundle: req.body.is_bundle || false,
         bundle_items: req.body.bundle_items || [],

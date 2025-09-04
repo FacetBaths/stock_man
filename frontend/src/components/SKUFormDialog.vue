@@ -642,7 +642,7 @@ const defaultForm = {
   barcode: '',
   unit_cost: 0,
   stock_thresholds: {
-    understocked: 5,
+    understocked: 5,  // Sensible default that can be manually overridden to 0
     overstocked: 100
   },
   description: '',
@@ -946,10 +946,10 @@ const onSubmit = async () => {
           specifications: props.sku.details?.specifications
         },
         
-        // Stock thresholds
+        // Stock thresholds - preserve 0 values
         stock_thresholds: {
-          understocked: Number(form.value.stock_thresholds.understocked) || 5,
-          overstocked: Number(form.value.stock_thresholds.overstocked) || 100
+          understocked: Number(form.value.stock_thresholds.understocked) ?? 5,  // Use nullish coalescing to allow 0
+          overstocked: Number(form.value.stock_thresholds.overstocked) ?? 100
         },
         
         // Supplier info - merge existing with form updates
@@ -1148,8 +1148,8 @@ watch(() => props.modelValue, (newValue) => {
         barcode: props.sku.barcode || '',
         unit_cost: props.sku.unit_cost || 0,
         stock_thresholds: { 
-          understocked: props.sku.stock_thresholds?.understocked || 5,
-          overstocked: props.sku.stock_thresholds?.overstocked || 100
+          understocked: props.sku.stock_thresholds?.understocked ?? 5,  // Use nullish coalescing to allow 0 values
+          overstocked: props.sku.stock_thresholds?.overstocked ?? 100
         },
         description: props.sku.description || '',
         notes: props.sku.notes || '',
