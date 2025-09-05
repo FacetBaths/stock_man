@@ -498,11 +498,15 @@ const openBulkCreateDialog = () => {
             continue
           }
 
-          // Generate SKU code
+          // TODO: This bulk creation functionality needs to be updated for new architecture
+          // Generate SKU code using new category-based approach
+          /*
           const skuCode = await skuStore.generateSKUCode({
             product_type: item.product_type,
             product_details: productDetailsId
           })
+          */
+          throw new Error('Bulk SKU creation is temporarily disabled - please use individual SKU creation')
 
           // Create SKU
           await skuStore.createSKU({

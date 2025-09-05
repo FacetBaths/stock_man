@@ -1049,6 +1049,62 @@ router.post('/barcode/:barcode/add-stock',
   }
 );
 
+// POST /api/skus/generate - Generate SKU code based on category
+router.post('/generate',
+  auth,
+  [
+    body('category_id')
+      .notEmpty()
+      .withMessage('Category ID is required')
+      .isMongoId()
+      .withMessage('Category ID must be a valid MongoDB ID'),
+    body('manufacturer_model')
+      .optional()
+      .trim()
+      .isLength({ max: 100 })
+      .withMessage('Manufacturer model cannot exceed 100 characters')
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ 
+          message: 'Validation failed', 
+          errors: errors.array() 
+        });
+      }
+
+      // Verify category exists
+      const category = await Category.findById(req.body.category_id);
+      if (!category) {
+        return res.status(400).json({ message: 'Category not found' });
+      }
+
+      // Generate SKU code using the existing function
+      const skuCode = await generateSKUCode(
+        req.body.category_id, 
+        req.body.manufacturer_model
+      );
+
+      res.json({ 
+        sku_code: skuCode,
+        category: {
+          _id: category._id,
+          name: category.name,
+          type: category.type
+        }
+      });
+
+    } catch (error) {
+      console.error('Generate SKU code error:', error);
+      res.status(500).json({ 
+        message: 'Failed to generate SKU code', 
+        error: error.message 
+      });
+    }
+  }
+);
+
 // POST /api/skus/:id/cost - Add cost to SKU
 router.post('/:id/cost',
   auth,

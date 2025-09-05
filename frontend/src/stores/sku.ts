@@ -322,9 +322,8 @@ export const useSKUStore = defineStore('sku', () => {
   }
 
   const generateSKUCode = async (data: {
-    product_type: string
-    product_details: string
-    template?: string
+    category_id: string
+    manufacturer_model?: string
   }) => {
     try {
       const response = await skuApi.generateSKUCode(data)

@@ -1,6 +1,6 @@
 <template>
-  <q-dialog v-model="show" persistent>
-    <q-card style="min-width: 700px; max-width: 900px">
+  <q-dialog v-model="show" persistent position="top">
+    <q-card style="min-width: 700px; max-width: 900px" class="sku-form-dialog">
       <q-card-section class="row items-center">
         <div class="text-h6">
           {{ isEditing ? 'Edit SKU' : 'Create New SKU' }}
@@ -41,7 +41,7 @@
 
             <!-- Product Type -->
             <div class="col-12 col-sm-6">
-              <q-select
+<q-select
                 v-model="form.product_type"
                 label="Product Type *"
                 outlined
@@ -51,6 +51,10 @@
                 map-options
                 :rules="[val => !!val || 'Product Type is required']"
                 @update:model-value="onProductTypeChange"
+                behavior="menu"
+                menu-self="top left"
+                menu-anchor="bottom left"
+                :menu-offset="[0, 8]"
               />
             </div>
 
@@ -84,9 +88,10 @@
 
             <!-- Select Existing Product -->
             <div class="col-12 col-sm-6" v-if="!form.is_bundle && !isEditing && productMode === 'existing'">
-              <q-select
+<q-select
                 v-model="form.product_details"
-                label="Product Details *"
+                label="Existing Product *"
+                hint="Select an existing product to use as a reference"
                 outlined
                 dense
                 :options="productDetailsOptions"
@@ -94,12 +99,17 @@
                 option-label="name"
                 emit-value
                 map-options
-                :rules="[val => (!form.is_bundle && productMode === 'existing') ? (!!val || 'Product Details is required') : true]"
+                :rules="[val => (!form.is_bundle && productMode === 'existing') ? (!!val || 'Existing product selection is required') : true]"
                 :loading="loadingProducts"
                 clearable
                 use-input
                 input-debounce="0"
                 @filter="filterProductDetails"
+                @update:model-value="onProductDetailsChange"
+                behavior="menu"
+                menu-self="top left"
+                menu-anchor="bottom left"
+                :menu-offset="[0, 8]"
               />
             </div>
 
@@ -245,7 +255,7 @@
                   <q-card flat bordered class="q-pa-md">
                     <div class="row q-col-gutter-md items-end">
                       <div class="col-12 col-sm-3">
-                        <q-select
+<q-select
                           v-model="item.product_type"
                           label="Product Type *"
                           outlined
@@ -255,11 +265,15 @@
                           map-options
                           :rules="[val => !!val || 'Product Type is required']"
                           @update:model-value="(val) => onBundleItemProductTypeChange(index, val)"
+                          behavior="menu"
+                          menu-self="top left"
+                          menu-anchor="bottom left"
+                          :menu-offset="[0, 8]"
                         />
                       </div>
                       
                       <div class="col-12 col-sm-4">
-                        <q-select
+<q-select
                           v-model="item.product_details"
                           label="Product *"
                           outlined
@@ -271,6 +285,10 @@
                           map-options
                           :rules="[val => !!val || 'Product is required']"
                           :loading="bundleItemLoading[index]"
+                          behavior="menu"
+                          menu-self="top left"
+                          menu-anchor="bottom left"
+                          :menu-offset="[0, 8]"
                         />
                       </div>
                       
@@ -481,7 +499,7 @@
 
             <!-- Status (for editing only) -->
             <div class="col-12 col-sm-6" v-if="isEditing">
-              <q-select
+<q-select
                 v-model="form.status"
                 label="Status"
                 outlined
@@ -489,6 +507,10 @@
                 :options="statusOptions"
                 emit-value
                 map-options
+                behavior="menu"
+                menu-self="top left"
+                menu-anchor="bottom left"
+                :menu-offset="[0, 8]"
               />
             </div>
 
@@ -602,7 +624,7 @@ const saving = ref(false)
 const generating = ref(false)
 const loadingProducts = ref(false)
 const productDetailsOptions = ref<any[]>([])
-const productMode = ref<'existing' | 'new'>('existing')
+const productMode = ref<'existing' | 'new'>('new')
 // Bundle item management state
 const bundleItemProductOptions = ref<any[][]>([])
 const bundleItemLoading = ref<boolean[]>([])
@@ -685,7 +707,7 @@ const productModeOptions = [
 const resetForm = () => {
   form.value = { ...defaultForm }
   productDetailsOptions.value = []
-  productMode.value = 'existing'
+  productMode.value = 'new' // Default to new product mode for creating SKUs
   bundleItemProductOptions.value = []
   bundleItemLoading.value = []
 }
@@ -800,13 +822,25 @@ const loadExistingSKUs = async (productType: string) => {
   
   try {
     loadingProducts.value = true
-    // Load existing SKUs of the same product type to use as bundle components
+    console.log('Loading SKUs for product type:', productType)
+    
+    // Get the category ID for the selected product type
+    const selectedCategory = productTypeOptions.value.find(opt => opt.value === productType)
+    
+    if (!selectedCategory || !selectedCategory.categoryId) {
+      console.error('No matching category found for product type:', productType)
+      productDetailsOptions.value = []
+      return
+    }
+    
+    // Load existing SKUs filtered by the correct category ID
     const response = await skuApi.getSKUs({
-      // Filter by category name that matches product type
-      search: productType,
+      category_id: selectedCategory.categoryId, // Use category ID instead of name search
       status: 'active',
       limit: 100
     })
+    
+    console.log('Found SKUs:', response.skus.length)
     
     // Format SKUs for dropdown display
     productDetailsOptions.value = response.skus.map(sku => ({
@@ -817,18 +851,23 @@ const loadExistingSKUs = async (productType: string) => {
       brand: sku.brand,
       model: sku.model
     }))
+    
+    console.log('Loaded product options:', productDetailsOptions.value.length)
   } catch (error) {
     console.error('Error loading existing SKUs:', error)
     $q.notify({
       type: 'negative',
       message: 'Failed to load existing SKUs'
     })
+    // Initialize with empty array to avoid undefined
+    productDetailsOptions.value = []
   } finally {
     loadingProducts.value = false
   }
 }
 
 const onProductTypeChange = (productType: string) => {
+  console.log('Product type changed to:', productType)
   form.value.product_details = ''
   // Reset new product fields when product type changes
   form.value.new_product = {
@@ -842,7 +881,10 @@ const onProductTypeChange = (productType: string) => {
     color: '',
     description: ''
   }
+  
   if (productMode.value === 'existing') {
+    // Clear options first to show loading state properly
+    productDetailsOptions.value = []
     loadExistingSKUs(productType)
   }
 }
@@ -856,27 +898,40 @@ const generateSKUCode = async () => {
     return
   }
 
-  if (productMode.value === 'existing' && !form.value.product_details) {
-    $q.notify({
-      type: 'warning',
-      message: 'Please select product details first'
-    })
-    return
-  }
-
   try {
     generating.value = true
-    // For new products, we'll generate based on type and a placeholder
-    const productDetails = productMode.value === 'existing' 
-      ? form.value.product_details 
-      : 'new-product-placeholder'
+    
+    // Get the category ID for the selected product type
+    const selectedProductType = productTypeOptions.value.find(option => option.value === form.value.product_type)
+    if (!selectedProductType) {
+      throw new Error('Invalid product type selected')
+    }
+    
+    console.log('Generating SKU code for category:', selectedProductType.categoryId)
+    
+    // Extract manufacturer model from form if available
+    let manufacturerModel = ''
+    if (productMode.value === 'new') {
+      // Use brand + model combination if available
+      const brand = form.value.new_product.brand || form.value.brand || ''
+      const model = form.value.new_product.model || form.value.model || ''
+      if (brand && model) {
+        manufacturerModel = `${brand}-${model}`.replace(/[^A-Z0-9\-_]/gi, '')
+      } else if (model) {
+        manufacturerModel = model.replace(/[^A-Z0-9\-_]/gi, '')
+      }
+    }
     
     const skuCode = await skuStore.generateSKUCode({
-      product_type: form.value.product_type,
-      product_details: productDetails
+      category_id: selectedProductType.categoryId,
+      manufacturer_model: manufacturerModel || undefined
     })
+    
     form.value.sku_code = skuCode
+    console.log('Generated SKU code:', skuCode)
+    
   } catch (error: any) {
+    console.error('SKU generation error:', error)
     $q.notify({
       type: 'negative',
       message: error.message || 'Failed to generate SKU code'
@@ -890,6 +945,7 @@ const validateSKUCode = async () => {
   if (!form.value.sku_code || isEditing.value) return
   
   try {
+console.log('Validating SKU code:', form.value.sku_code)
     // For new SKUs, check if SKU code already exists via API
     const response = await skuApi.lookupSKU(form.value.sku_code)
     if (response) {
@@ -1004,11 +1060,13 @@ const onSubmit = async () => {
       }
     } else {
       // Create new SKU
-      // Map product_type name to category_id for API
+// Map product_type name to category_id for API
       const selectedProductType = productTypeOptions.value.find(option => option.value === form.value.product_type)
       if (!selectedProductType) {
         throw new Error('Please select a valid product type')
       }
+      
+      console.log('Selected product type:', selectedProductType)
       
       const skuData: any = {
         sku_code: form.value.sku_code,
@@ -1054,9 +1112,39 @@ const onSubmit = async () => {
       } else {
         // Regular SKU: send product_details or new_product
         if (productMode.value === 'existing') {
-          skuData.product_details = form.value.product_details
+          // When using existing product, find the selected product and copy relevant details
+          const selectedProduct = productDetailsOptions.value.find(p => p._id === form.value.product_details)
+          if (selectedProduct) {
+            console.log('Using existing product as reference:', selectedProduct.sku_code)
+            // Extract name from new_product fields if provided, otherwise use a generated name
+            skuData.name = form.value.new_product.name || 
+                          form.value.name || 
+                          `${selectedProduct.sku_name} (${form.value.sku_code})` || 
+                          `Product ${form.value.sku_code}`
+            // Copy details from existing product as reference
+            skuData.brand = selectedProduct.brand || ''
+            skuData.model = selectedProduct.model || ''
+          } else {
+            // Fallback if no product is found
+            skuData.name = form.value.new_product.name || form.value.name || `Product ${form.value.sku_code}`
+          }
         } else if (productMode.value === 'new') {
-          skuData.new_product = form.value.new_product
+          // When creating new product, use new_product fields
+          if (form.value.product_type === 'wall') {
+            // For walls, generate name from product details
+            const parts = []
+            if (form.value.new_product.product_line) parts.push(form.value.new_product.product_line)
+            if (form.value.new_product.color_name) parts.push(form.value.new_product.color_name)
+            if (form.value.new_product.dimensions) parts.push(`(${form.value.new_product.dimensions})`)
+            skuData.name = parts.length > 0 ? parts.join(' ') : `Wall Product ${form.value.sku_code}`
+          } else {
+            // For other product types, use the name field
+            skuData.name = form.value.new_product.name || `Product ${form.value.sku_code}`
+          }
+          
+          // Copy new product details
+          skuData.brand = form.value.new_product.brand || ''
+          skuData.model = form.value.new_product.model || ''
         }
       }
       
@@ -1094,16 +1182,32 @@ const filterProductDetails = (val: string, update: (fn: () => void) => void) => 
   if (val === '') {
     update(() => {
       // Show all options when no filter
+      console.log('No filter applied, showing all options:', productDetailsOptions.value.length)
     })
     return
   }
 
   update(() => {
     const needle = val.toLowerCase()
-    productDetailsOptions.value = productDetailsOptions.value.filter(v => 
+    const filtered = productDetailsOptions.value.filter(v => 
       v.name.toLowerCase().indexOf(needle) > -1
     )
+    console.log(`Filter "${needle}" found ${filtered.length} matches`)
+    productDetailsOptions.value = filtered
   })
+}
+
+// Handle when a product is selected from the dropdown
+const onProductDetailsChange = (productId: string) => {
+  if (!productId) return
+  
+  console.log('Product selected:', productId)
+  const selectedProduct = productDetailsOptions.value.find(p => p._id === productId)
+  
+  if (selectedProduct) {
+    console.log('Selected product details:', selectedProduct)
+    // You could pre-fill other fields based on the selected product if desired
+  }
 }
 
 // Load categories when component mounts
@@ -1112,6 +1216,19 @@ onMounted(async () => {
     console.log('SKUFormDialog: Loading categories on mount...')
     await categoryStore.fetchCategories({ active_only: true })
     console.log('SKUFormDialog: Categories loaded successfully:', categoryStore.productCategories.length, 'categories')
+    
+    // Pre-select first product type if none is selected (walls if available)
+    if (!form.value.product_type && productTypeOptions.value.length > 0) {
+      // Try to find 'walls' category first, otherwise use first available
+      const wallsCategory = productTypeOptions.value.find(opt => opt.value === 'walls')
+      form.value.product_type = wallsCategory ? wallsCategory.value : productTypeOptions.value[0].value
+      console.log('Auto-selected product type:', form.value.product_type)
+      
+      // Only load existing SKUs if we're in existing product mode
+      if (productMode.value === 'existing') {
+        await loadExistingSKUs(form.value.product_type)
+      }
+    }
   } catch (error) {
     console.error('SKUFormDialog: Failed to load categories:', error)
     $q.notify({
@@ -1122,10 +1239,29 @@ onMounted(async () => {
 })
 
 // Watchers
+// Initialize product types when form opens
+const initializeProductTypes = async () => {
+  try {
+    if (categoryStore.productCategories.length === 0) {
+      console.log('Fetching categories for product types...')
+      await categoryStore.fetchCategories({ active_only: true })
+      console.log('Categories loaded:', categoryStore.productCategories.length)
+      
+      if (form.value.product_type) {
+        loadExistingSKUs(form.value.product_type)
+      }
+    }
+  } catch (error) {
+    console.error('Failed to load categories:', error)
+  }
+}
+
 watch(() => props.modelValue, (newValue) => {
-  console.log('SKUFormDialog modelValue changed to:', newValue)
-  console.log('props.sku:', props.sku)
-  console.log('props.barcode:', props.barcode)
+  console.log('🔄 SKUFormDialog modelValue changed to:', newValue)
+  console.log('📋 props.sku:', props.sku)
+  console.log('🔍 props.barcode:', props.barcode)
+  console.log('📋 Current productTypeOptions:', productTypeOptions.value)
+  console.log('🎯 Current productMode:', productMode.value)
   if (newValue) {
     if (props.sku) {
       // Editing mode
@@ -1270,17 +1406,71 @@ watch(() => props.modelValue, (newValue) => {
       // Create mode
       console.log('SKUFormDialog: Create mode')
       resetForm()
+      
+      // Initialize with first product type if available (prefer walls)
+      if (productTypeOptions.value.length > 0 && !form.value.product_type) {
+        const wallsCategory = productTypeOptions.value.find(opt => opt.value === 'walls')
+        form.value.product_type = wallsCategory ? wallsCategory.value : productTypeOptions.value[0].value
+        console.log('Auto-selected product type in create mode:', form.value.product_type)
+      }
+      
       // Prefill barcode if provided
       if (props.barcode) {
         form.value.barcode = props.barcode
         console.log('Prefilled barcode:', props.barcode)
       }
+      
+      console.log('Form initialized in create mode:', {
+        productType: form.value.product_type,
+        productMode: productMode.value,
+        isBundle: form.value.is_bundle
+      })
     }
   }
 })
 </script>
 
 <style scoped>
+/* Dialog positioning and dropdown fixes */
+.sku-form-dialog {
+  position: relative;
+  z-index: 6000;
+  /* Ensure the dialog card doesn't interfere with dropdowns */
+  overflow: visible;
+}
+
+/* Ensure dropdowns appear correctly within the dialog */
+.sku-form-dialog :deep(.q-menu) {
+  z-index: 9000 !important;
+}
+
+.sku-form-dialog :deep(.q-select__dropdown) {
+  z-index: 9000 !important;
+}
+
+.sku-form-dialog :deep(.q-select__dropdown .q-item) {
+  z-index: 9001 !important;
+}
+
+/* Fix for select options positioning */
+.sku-form-dialog :deep(.q-select) {
+  position: relative;
+}
+
+.sku-form-dialog :deep(.q-field__control) {
+  position: relative;
+}
+
+/* Prevent card overflow issues */
+.sku-form-dialog .q-card__section {
+  overflow: visible;
+}
+
+/* Ensure form sections don't clip dropdowns */
+.sku-form-dialog .q-form {
+  overflow: visible;
+}
+
 /* Mobile Responsive Dialog Fixes */
 @media (max-width: 768px) {
   /* Dialog Card Mobile Overrides */

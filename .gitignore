@@ -242,6 +242,9 @@ backups/
 # Build outputs
 frontend/dist/
 
+# Archive directory (development artifacts)
+.archive/
+
 # Development and temporary files
 *.temp
 *.tmp
