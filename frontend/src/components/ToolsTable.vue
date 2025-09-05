@@ -487,7 +487,7 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
             <!-- Tool Details Section -->
             <div class="item-section tool-details-section">
               <div
-                v-if="tool.details.tool_type"
+                v-if="tool.details && tool.details.tool_type"
                 class="tool-type-banner"
                 :class="`type-banner-${getToolTypeColor(
                   tool.details.tool_type
@@ -502,7 +502,7 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
                 <span v-if="tool.brand" class="brand">{{ tool.brand }}</span>
                 <span v-if="tool.model" class="model">{{ tool.model }}</span>
               </div>
-              <div v-if="tool.details.manufacturer" class="manufacturer">
+              <div v-if="tool.details && tool.details.manufacturer" class="manufacturer">
                 <q-icon name="business" size="xs" class="q-mr-xs" />
                 {{ tool.details.manufacturer }}
               </div>
@@ -520,7 +520,7 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
               >
                 <q-tooltip>SKU Code</q-tooltip>
               </q-chip>
-              <div v-if="tool.details.serial_number" class="serial-number">
+              <div v-if="tool.details && tool.details.serial_number" class="serial-number">
                 <q-icon name="tag" size="xs" class="q-mr-xs" />
                 <span class="serial-text">{{
                   tool.details.serial_number
@@ -530,7 +530,7 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
 
             <!-- Specifications Section -->
             <div class="item-section specifications-section">
-              <div v-if="tool.details.voltage" class="voltage">
+              <div v-if="tool.details && tool.details.voltage" class="voltage">
                 <q-chip
                   :color="tool.details.voltage === 'N/A' ? 'grey' : 'amber'"
                   text-color="white"
@@ -543,7 +543,7 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
                 </q-chip>
               </div>
               <div
-                v-if="tool.details.features && tool.details.features.length > 0"
+                v-if="tool.details && tool.details.features && tool.details.features.length > 0"
                 class="features"
               >
                 <div class="features-text">

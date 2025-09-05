@@ -2080,8 +2080,10 @@ onMounted(async () => {
         </q-card>
       </q-dialog>
     </div>
- 
-  </q-page>
+ <!-- <q-card dark class="table-container">
+   <ToolsTable :can-write="false" @edit="editTool" @delete="handleDeleteTool" />
+ </q-card>-->
+  </q-page> 
 </template>
 
 <style scoped>

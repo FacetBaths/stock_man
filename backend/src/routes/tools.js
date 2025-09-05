@@ -229,6 +229,7 @@ router.get('/inventory', auth, async (req, res) => {
           description: 1,
           brand: 1,
           model: 1,
+          details: 1, // ✅ CRITICAL: Include the details object for tools
           unit_cost: 1, // ✅ CRITICAL: Explicitly include unit_cost
           currency: 1,
           status: 1,
