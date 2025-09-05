@@ -75,11 +75,11 @@ const validateSKUCreate = [
     .optional()
     .isArray()
     .withMessage('tags must be an array'),
-  body('notes')
+  body('sku_notes')
     .optional()
     .trim()
     .isLength({ max: 1000 })
-    .withMessage('Notes cannot exceed 1000 characters')
+    .withMessage('SKU notes cannot exceed 1000 characters')
 ];
 
 // Validation middleware for SKU updates - all fields optional
@@ -144,11 +144,11 @@ const validateSKUUpdate = [
     .optional()
     .isObject()
     .withMessage('Stock thresholds must be an object'),
-  body('notes')
+  body('sku_notes')
     .optional()
     .trim()
     .isLength({ max: 1000 })
-    .withMessage('Notes cannot exceed 1000 characters')
+    .withMessage('SKU notes cannot exceed 1000 characters')
 ];
 
 // Helper function to generate SKU code based on category and manufacturer model
@@ -512,6 +512,7 @@ router.post('/',
         status: req.body.status || 'active',
         is_bundle: req.body.is_bundle || false,
         bundle_items: req.body.bundle_items || [],
+        sku_notes: req.body.sku_notes || '',
         created_by: req.user.username,
         last_updated_by: req.user.username
       };
@@ -636,7 +637,7 @@ router.put('/:id',
 
       if (req.body.unit_cost !== undefined) updateData.unit_cost = req.body.unit_cost;
       if (req.body.barcode !== undefined) updateData.barcode = req.body.barcode;
-      if (req.body.notes !== undefined) updateData.notes = req.body.notes;
+      if (req.body.sku_notes !== undefined) updateData.sku_notes = req.body.sku_notes;
       if (req.body.status !== undefined) updateData.status = req.body.status;
       
       // Handle stock_thresholds updates

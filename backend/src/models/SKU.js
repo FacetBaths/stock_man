@@ -209,6 +209,13 @@ const skuSchema = new mongoose.Schema({
     }
   }],
   
+  // SKU-specific notes field for additional information
+  sku_notes: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  
   // Tracking
   created_by: {
     type: String,

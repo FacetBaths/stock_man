@@ -140,6 +140,9 @@ export interface SKU {
     description: string
   }>
 
+  // SKU-specific notes
+  sku_notes: string
+  
   // Tracking
   created_by: string
   last_updated_by: string
@@ -295,6 +298,7 @@ export interface CreateSKURequest {
     understocked: number
     overstocked: number
   }
+  sku_notes?: string
 }
 
 export interface UpdateSKURequest {
@@ -331,6 +335,7 @@ export interface UpdateSKURequest {
     understocked: number
     overstocked: number
   }>
+  sku_notes?: string
 }
 
 // ✅ Instance management - matches backend endpoints

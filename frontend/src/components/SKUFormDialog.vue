@@ -534,15 +534,16 @@
               />
             </div>
 
-            <!-- Notes -->
+            <!-- SKU Notes -->
             <div class="col-12">
               <q-input
-                v-model="form.notes"
-                label="Notes"
+                v-model="form.sku_notes"
+                label="SKU Notes"
                 outlined
                 dense
                 type="textarea"
                 rows="2"
+                hint="Notes specific to this SKU"
               />
             </div>
           </div>
@@ -646,7 +647,7 @@ const defaultForm = {
     overstocked: 100
   },
   description: '',
-  notes: '',
+  sku_notes: '',
   status: 'active',
   // Product detail fields (from details object)
   product_line: '',
@@ -963,7 +964,10 @@ const onSubmit = async () => {
         // Images if available (preserve existing)
         ...(props.sku.images && {
           images: props.sku.images
-        })
+        }),
+        
+        // SKU notes
+        sku_notes: form.value.sku_notes
       }
       
       // Extract category_id - this is required by backend validation
@@ -1009,13 +1013,37 @@ const onSubmit = async () => {
       const skuData: any = {
         sku_code: form.value.sku_code,
         category_id: selectedProductType.categoryId, // Use the actual category ID from the loaded categories
+        name: form.value.new_product.name || form.value.name || 'New Product', // ✅ REQUIRED: Add name field
+        description: form.value.description || '',
+        brand: form.value.brand || '',
+        model: form.value.model || '',
         is_bundle: form.value.is_bundle,
-        supplier_sku: form.value.supplier_sku,
-        barcode: form.value.barcode,
-        unit_cost: form.value.unit_cost,
-        stock_thresholds: form.value.stock_thresholds,
-        description: form.value.description,
-        notes: form.value.notes
+        barcode: form.value.barcode || '',
+        unit_cost: form.value.unit_cost || 0,
+        currency: 'USD',
+        stock_thresholds: form.value.stock_thresholds || { understocked: 5, overstocked: 100 },
+        
+        // ✅ Fix: Move supplier_sku into supplier_info object where backend expects it
+        supplier_info: {
+          supplier_name: '',
+          supplier_sku: form.value.supplier_sku || '',
+          lead_time_days: 0
+        },
+        
+        // ✅ Add details object based on product mode and type
+        details: productMode.value === 'new' ? {
+          // Wall-specific fields
+          product_line: form.value.new_product.product_line || '',
+          color_name: form.value.new_product.color_name || '',
+          dimensions: form.value.new_product.dimensions || '',
+          finish: form.value.new_product.finish || '',
+          
+          // Generic fields
+          weight: 0,
+          specifications: {}
+        } : {},
+        
+        sku_notes: form.value.sku_notes || ''
       }
       
       if (form.value.is_bundle) {
@@ -1152,7 +1180,7 @@ watch(() => props.modelValue, (newValue) => {
           overstocked: props.sku.stock_thresholds?.overstocked ?? 100
         },
         description: props.sku.description || '',
-        notes: props.sku.notes || '',
+        sku_notes: props.sku.sku_notes || '',
         status: props.sku.status,
         // Product detail fields from details object
         product_line: props.sku.details?.product_line || '',
