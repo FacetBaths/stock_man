@@ -208,7 +208,41 @@ router.get('/inventory', auth, async (req, res) => {
               },
               in: { $ifNull: ['$$loaned_breakdown.count', 0] }
             }
+          },
+          // ✅ ENSURE: Calculate total value based on quantity and unit cost
+          total_value: {
+            $multiply: [
+              { $size: '$all_instances' }, // total_quantity
+              { $ifNull: ['$unit_cost', 0] } // unit_cost with fallback to 0
+            ]
           }
+        }
+      },
+      
+      // ✅ PROJECT: Explicitly include all necessary SKU fields + calculated fields
+      {
+        $project: {
+          _id: 1,
+          sku_id: '$_id',
+          sku_code: 1,
+          name: 1,
+          description: 1,
+          brand: 1,
+          model: 1,
+          unit_cost: 1, // ✅ CRITICAL: Explicitly include unit_cost
+          currency: 1,
+          status: 1,
+          barcode: 1,
+          category_id: 1,
+          category: 1, // Include the populated category
+          total_quantity: 1,
+          available_quantity: 1,
+          reserved_quantity: 1,
+          broken_quantity: 1,
+          loaned_quantity: 1,
+          total_value: 1, // Include calculated total value
+          created_at: 1,
+          updated_at: 1
         }
       }
     ];

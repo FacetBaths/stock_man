@@ -658,11 +658,42 @@ export const toolsApi = {
       const inventory = inventoryResponse.inventory || []
       const loans = loansResponse.tags || []
       
+      console.log('📊 Tools Dashboard Stats Calculation:')
+      console.log(`Found ${inventory.length} tool inventory items`)
+      
+      // Debug: Check first few items to understand data structure
+      if (inventory.length > 0) {
+        console.log('First tool item structure:', {
+          sku_code: inventory[0].sku_code,
+          total_quantity: inventory[0].total_quantity,
+          unit_cost: inventory[0].unit_cost,
+          total_value: inventory[0].total_value,
+          hasUnitCost: inventory[0].hasOwnProperty('unit_cost'),
+          hasTotalValue: inventory[0].hasOwnProperty('total_value')
+        })
+      }
+      
       const totalTools = inventory.reduce((sum, item) => sum + (item.total_quantity || 0), 0)
       const availableTools = inventory.reduce((sum, item) => sum + (item.available_quantity || 0), 0)
       const loanedTools = inventory.reduce((sum, item) => sum + (item.loaned_quantity || 0), 0)
       const overdueLoans = loans.filter(loan => loan.is_overdue).length
-      const totalValue = inventory.reduce((sum, item) => sum + ((item.total_quantity || 0) * (item.unit_cost || 0)), 0)
+      
+      // Use backend-calculated total_value when available, fallback to frontend calculation
+      let totalValue = 0
+      inventory.forEach((item, index) => {
+        // Prefer backend-calculated total_value, fallback to manual calculation
+        const itemValue = item.total_value || ((item.total_quantity || 0) * (item.unit_cost || 0))
+        totalValue += itemValue
+        
+        // Debug logging for first few items
+        if (index < 3) {
+          const quantity = item.total_quantity || 0
+          const cost = item.unit_cost || 0
+          console.log(`Item ${index + 1} (${item.sku_code}): ${quantity} tools @ $${cost} each = $${itemValue} total`)
+        }
+      })
+      
+      console.log(`📊 Final Totals: ${totalTools} tools, $${totalValue.toFixed(2)} total value`)
       
       return {
         stats: {
