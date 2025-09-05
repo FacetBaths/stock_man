@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useInventoryStore } from '@/stores/inventory'
 import { formatCurrency } from '@/utils/currency'
+import { getProductTypeColor } from '@/utils/colors'
 import type { Inventory } from '@/types'
 import { TAG_TYPES } from '@/types'
 import StockStatusChip from '@/components/StockStatusChip.vue'
@@ -78,20 +79,9 @@ const getStockStatus = (quantity: number) => {
   return { class: 'in-stock', text: 'In Stock', color: 'positive' }
 }
 
-// Helper function to get type colors
+// Helper function to get type colors using new color utility
 const getTypeColor = (productType: string) => {
-  const colorMap: { [key: string]: string } = {
-    'wall': 'primary',
-    'toilet': 'positive',
-    'base': 'amber',
-    'tub': 'cyan',
-    'vanity': 'deep-purple',
-    'shower_door': 'deep-orange',
-    'raw_material': 'brown',
-    'accessory': 'pink',
-    'miscellaneous': 'grey'
-  }
-  return colorMap[productType] || 'grey'
+  return getProductTypeColor(productType)
 }
 
 const formatDate = (dateString: string) => {

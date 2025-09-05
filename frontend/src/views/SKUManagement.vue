@@ -7,6 +7,7 @@ import { useCategoryStore } from '@/stores/category'
 import { useInventoryStore } from '@/stores/inventory'
 import { inventoryApi, instancesApi } from '@/utils/api'
 import { PRODUCT_TYPES, type SKU } from '@/types'
+import { getCategoryColor as utilGetCategoryColor, getStatusColor as utilGetStatusColor } from '@/utils/colors'
 import StockStatusChip from '@/components/StockStatusChip.vue'
 import SKUFormDialog from '@/components/SKUFormDialog.vue'
 import AddCostDialog from '@/components/AddCostDialog.vue'
@@ -153,12 +154,7 @@ const formatStatus = (status: string) => {
 }
 
 const getStatusColor = (status: string) => {
-  const colors: Record<string, string> = {
-    active: 'green',
-    inactive: 'orange',
-    discontinued: 'red'
-  }
-  return colors[status] || 'grey'
+  return utilGetStatusColor(status)
 }
 
 const getCategoryName = (categoryId: string | any) => {
@@ -182,22 +178,12 @@ const getCategoryName = (categoryId: string | any) => {
 }
 
 const getCategoryColor = (categoryId: string | any) => {
-  if (!categoryId) return 'grey'
-
-  // Handle case where categoryId is an object (populated category)
-  let idString: string
-  if (typeof categoryId === 'object' && categoryId._id) {
-    idString = categoryId._id
-  } else if (typeof categoryId === 'string') {
-    idString = categoryId
-  } else {
-    return 'grey'
+  const color = utilGetCategoryColor(categoryId)
+  // Optional: Log color assignments for debugging
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`Category ${categoryId} assigned color: ${color}`)
   }
-
-  const colors: string[] = ['blue', 'green', 'orange', 'cyan', 'purple', 'teal', 'brown', 'pink', 'indigo', 'deep-purple']
-  // Use category ID to generate consistent color
-  const index = idString ? idString.charCodeAt(idString.length - 1) % colors.length : 0
-  return colors[index]
+  return color
 }
 
 // Get stock status from inventory data based on backend flags
