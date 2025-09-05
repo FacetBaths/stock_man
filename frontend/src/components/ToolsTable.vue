@@ -250,6 +250,25 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
 
 <template>
   <div class="tools-table-container">
+    <!-- Section Header -->
+    <div class="section-header q-mb-lg">
+      <div class="row items-center">
+        <q-icon
+          name="inventory"
+          size="32px"
+          class="text-primary q-mr-md"
+        />
+        <div>
+          <h5 class="text-h5 q-ma-none text-weight-bold">
+            Tool Inventory
+          </h5>
+          <p class="text-body2 q-ma-none text-grey-7">
+            Manage and track all your tools with real-time inventory status
+          </p>
+        </div>
+      </div>
+    </div>
+
     <!-- Loading state -->
     <div v-if="toolsStore.loading" class="loading-container">
       <q-spinner-hourglass size="50px" color="primary" />
@@ -258,15 +277,16 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
 
     <!-- Search and Filter Controls (always show when not loading) -->
     <div v-if="!toolsStore.loading" class="search-filter-section glass-card q-pa-md q-mb-md">
-      <div class="row q-gutter-md">
+      <div class="row q-gutter-md responsive-filters">
         <!-- Search Input -->
         <div class="col-12 col-md-4">
           <q-input
             v-model="searchQuery"
-            placeholder="Search tools by name, SKU, brand, model..."
+            placeholder="Search tools..."
             outlined
             dense
             clearable
+            class="search-input"
           >
             <template v-slot:prepend>
               <q-icon name="search" />
@@ -283,6 +303,7 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
             flat
             icon="category"
             class="filter-btn"
+            size="sm"
           >
             <q-menu v-model="showCategoryFilter" anchor="bottom left" self="top left">
               <q-list style="min-width: 180px">
@@ -311,6 +332,7 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
             flat
             icon="build"
             class="filter-btn"
+            size="sm"
           >
             <q-menu v-model="showTypeFilter" anchor="bottom left" self="top left">
               <q-list style="min-width: 180px">
@@ -339,6 +361,7 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
             flat
             icon="assignment_turned_in"
             class="filter-btn"
+            size="sm"
           >
             <q-menu v-model="showConditionFilter" anchor="bottom left" self="top left">
               <q-list style="min-width: 180px">
@@ -367,6 +390,7 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
             flat
             :icon="sortDescending ? 'arrow_downward' : 'arrow_upward'"
             class="filter-btn"
+            size="sm"
           >
             <q-menu v-model="showSortFilter" anchor="bottom left" self="top left">
               <q-list style="min-width: 200px">
@@ -440,49 +464,18 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
 
     <!-- Tools List -->
     <div v-if="!toolsStore.loading && filteredTools.length > 0">
-      <!-- Header Section -->
-      <div class="table-header glass-header q-pa-md q-mb-sm">
-        <div class="header-row">
-          <div class="header-section tool-details-header">
-            <q-icon name="build" class="q-mr-xs" />
-            Tool Details
-          </div>
-          <div class="header-section sku-header">
-            <q-icon name="qr_code" class="q-mr-xs" />
-            SKU
-          </div>
-          <div class="header-section specifications-header">
-            <q-icon name="settings" class="q-mr-xs" />
-            Specifications
-          </div>
-          <div class="header-section quantity-header">
-            <q-icon name="inventory" class="q-mr-xs" />
-            Quantity
-          </div>
-          <div class="header-section condition-header">
-            <q-icon name="assignment_turned_in" class="q-mr-xs" />
-            Condition
-          </div>
-          <div v-if="canViewCost" class="header-section cost-header">
-            <q-icon name="attach_money" class="q-mr-xs" />
-            Cost
-          </div>
-          <div v-if="canWrite" class="header-section actions-header">
-            <q-icon name="settings" class="q-mr-xs" />
-            Actions
-          </div>
-        </div>
-      </div>
+      <!-- Tools Cards -->
+      <div class="tools-cards-container">
 
-      <!-- Tools List -->
-      <div class="tools-list">
-        <div
-          v-for="tool in filteredTools"
-          :key="tool._id"
-          class="tool-item"
-          @click="canWrite ? emit('edit', tool) : null"
-          :style="{ cursor: canWrite ? 'pointer' : 'default' }"
-        >
+        <!-- Individual Tool Cards -->
+        <div class="tools-list">
+          <div
+            v-for="tool in filteredTools"
+            :key="tool._id"
+            class="tool-item"
+            @click="canWrite ? emit('edit', tool) : null"
+            :style="{ cursor: canWrite ? 'pointer' : 'default' }"
+          >
           <div class="item-row">
             <!-- Tool Details Section -->
             <div class="item-section tool-details-section">
@@ -639,6 +632,7 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
         </div>
       </div>
     </div>
+    </div>
 
     <!-- Condition Details Dialog -->
     <q-dialog v-model="showConditionDialog" persistent>
@@ -760,6 +754,21 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
   width: 100%;
 }
 
+/* Section Header */
+.section-header h5 {
+  color: rgba(33, 37, 41, 0.9);
+}
+
+.section-header p {
+  color: rgba(33, 37, 41, 0.7);
+}
+
+/* Search Input */
+.search-input {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(5px);
+}
+
 .loading-container {
   display: flex;
   flex-direction: column;
@@ -795,10 +804,10 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
 
 /* Filter Button Styling */
 .filter-btn {
-  min-width: 100px;
+  min-width: 80px;
   text-transform: none;
   border-radius: 8px;
-  padding: 8px 16px;
+  padding: 6px 12px;
   font-weight: 500;
   transition: all 0.2s ease;
 }
@@ -808,67 +817,35 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
   transform: translateY(-1px);
 }
 
-/* Header Section */
-.table-header {
-  background: rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(15px);
-  border-radius: 15px;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  margin-bottom: 12px;
-}
-
-.header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-  padding: 0 10px;
-}
-
-.header-section {
-  color: rgba(33, 37, 41, 0.8);
-  font-weight: 600;
-  font-size: 14px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 1 auto;
-  min-width: 80px;
-}
-
-.tool-details-header {
-  flex: 1 1 auto;
-  justify-content: flex-start;
-  max-width: 300px;
-}
-
-.specifications-header {
-  flex: 1 1 auto;
-  max-width: 200px;
-}
-
-/* Tool Item Styling */
-.tools-list {
+/* Tools Cards Container */
+.tools-cards-container {
   background: transparent;
 }
 
+/* Tools List Container */
+.tools-list {
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 .tool-item {
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
-  border-radius: 15px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  margin-bottom: 12px;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(15px);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  margin-bottom: 16px;
   transition: all 0.3s ease;
-  padding: 16px;
+  padding: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
 }
 
 .tool-item:hover {
-  background: rgba(255, 255, 255, 0.2);
-  border-color: rgba(255, 255, 255, 0.3);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.35);
+  transform: translateY(-3px);
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.15);
 }
 
 .item-row {
@@ -876,7 +853,7 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
   justify-content: space-between;
   align-items: center;
   width: 100%;
-  padding: 0 10px;
+  gap: 20px;
 }
 
 .item-section {
@@ -885,13 +862,14 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
   align-items: flex-start;
   justify-content: center;
   flex: 0 1 auto;
-  min-width: 80px;
-  padding: 0 8px;
+  min-width: 100px;
+  padding: 0 12px;
 }
 
 .tool-details-section {
   flex: 1 1 auto;
-  max-width: 300px;
+  max-width: 320px;
+  padding-right: 16px;
 }
 
 .specifications-section {
@@ -912,17 +890,19 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
 }
 
 .tool-title {
-  font-weight: 600;
-  font-size: 16px;
-  color: rgba(33, 37, 41, 0.9);
-  margin-bottom: 4px;
-  line-height: 1.2;
+  font-weight: 700;
+  font-size: 18px;
+  color: rgba(33, 37, 41, 0.95);
+  margin-bottom: 6px;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
 }
 
 .tool-brand-model {
-  font-size: 14px;
-  color: rgba(33, 37, 41, 0.7);
-  margin-bottom: 4px;
+  font-size: 15px;
+  color: rgba(33, 37, 41, 0.75);
+  margin-bottom: 8px;
+  font-weight: 500;
 }
 
 .brand {
@@ -935,46 +915,61 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
 }
 
 .manufacturer {
-  font-size: 12px;
-  color: rgba(33, 37, 41, 0.6);
+  font-size: 13px;
+  color: rgba(33, 37, 41, 0.65);
   display: flex;
   align-items: center;
+  margin-top: 2px;
 }
 
 /* SKU Section */
+.sku-section {
+  text-align: center;
+}
+
 .sku-chip {
-  margin-bottom: 6px;
+  margin-bottom: 8px;
+  font-weight: 600;
 }
 
 .serial-number {
-  font-size: 11px;
-  color: rgba(33, 37, 41, 0.6);
+  font-size: 12px;
+  color: rgba(33, 37, 41, 0.65);
   display: flex;
   align-items: center;
+  justify-content: center;
 }
 
 .serial-text {
-  font-family: monospace;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
   font-weight: 500;
+  font-size: 11px;
 }
 
 /* Specifications */
+.specifications-section {
+  text-align: center;
+}
+
 .voltage-chip {
-  margin-bottom: 6px;
+  margin-bottom: 8px;
+  font-weight: 600;
 }
 
 .features {
-  font-size: 11px;
+  font-size: 12px;
   color: rgba(33, 37, 41, 0.7);
 }
 
 .features-text {
   display: flex;
   align-items: center;
-  max-width: 180px;
+  justify-content: center;
+  max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: center;
 }
 
 /* Quantity Section */
@@ -983,20 +978,27 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
 }
 
 .total-quantity-badge {
-  margin-bottom: 6px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  font-size: 13px;
 }
 
 .quantity-breakdown {
-  font-size: 11px;
-  color: rgba(33, 37, 41, 0.6);
-  line-height: 1.3;
+  font-size: 12px;
+  color: rgba(33, 37, 41, 0.65);
+  line-height: 1.4;
   text-align: center;
 }
 
 /* Condition Section */
+.condition-section {
+  text-align: center;
+}
+
 .condition-chip {
   cursor: pointer;
   transition: all 0.2s ease;
+  font-weight: 600;
 }
 
 .condition-chip:hover {
@@ -1009,29 +1011,38 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
 }
 
 .cost-label {
-  font-weight: 600;
-  font-size: 16px;
-  color: rgba(33, 37, 41, 0.9);
-  margin-bottom: 4px;
+  font-weight: 700;
+  font-size: 18px;
+  color: rgba(33, 37, 41, 0.95);
+  margin-bottom: 6px;
+  letter-spacing: -0.01em;
 }
 
 .total-value-label {
-  font-size: 12px;
-  color: rgba(33, 37, 41, 0.6);
+  font-size: 13px;
+  color: rgba(33, 37, 41, 0.65);
+  font-weight: 500;
 }
 
 /* Actions Section */
+.actions-section {
+  text-align: center;
+}
+
 .action-buttons {
   display: flex;
-  gap: 8px;
+  gap: 12px;
+  justify-content: center;
 }
 
 .action-btn {
   transition: all 0.2s ease;
+  padding: 8px;
 }
 
 .action-btn:hover {
-  transform: scale(1.1);
+  transform: scale(1.15);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 /* Dialog Styling */
@@ -1062,9 +1073,30 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
   .specifications-section {
     max-width: 150px;
   }
+  
+  .filter-btn {
+    min-width: 70px;
+    padding: 6px 10px;
+    font-size: 12px;
+  }
 }
 
 @media (max-width: 768px) {
+  .responsive-filters {
+    flex-direction: column !important;
+    gap: 8px !important;
+  }
+  
+  .responsive-filters > div {
+    width: 100% !important;
+  }
+  
+  .filter-btn {
+    width: 100%;
+    justify-content: space-between;
+    min-width: auto;
+  }
+  
   .header-row,
   .item-row {
     flex-wrap: wrap;
@@ -1079,6 +1111,10 @@ const handleConditionClick = (tool: ToolInventoryItem) => {
 
   .tool-item {
     padding: 12px;
+  }
+  
+  .search-filter-section {
+    padding: 12px !important;
   }
 }
 </style>

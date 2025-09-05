@@ -824,18 +824,18 @@ onMounted(async () => {
 
       <!-- Tab Navigation -->
       <div class="col-12">
-        <div class="glass-card">
+        <div class="glass-card flex justify-around">
           <q-tabs
             v-model="currentTab"
             dense
             class="text-primary"
             active-color="primary"
             indicator-color="primary"
-            align="left"
+            align="center"
             no-caps
           >
             <q-tab name="dashboard" icon="dashboard" label="Dashboard" />
-            <q-tab name="inventory" icon="inventory" label="Inventory" />
+            <!-- <q-tab name="inventory" icon="inventory" label="Inventory" /> -->
             <q-tab
               v-if="authStore.canWrite"
               name="add-tool"
@@ -881,18 +881,7 @@ onMounted(async () => {
                     </q-btn>
                   </div>
                   <div class="row q-col-gutter-md">
-                    <div class="col-12 col-sm-6 col-md-4">
-                      <q-btn
-                        color="primary"
-                        icon="inventory"
-                        label="Manage Inventory"
-                        class="full-width"
-                        size="lg"
-                        no-caps
-                        @click="currentTab = 'inventory'"
-                      />
-                    </div>
-                    <div class="col-12 col-sm-6 col-md-4">
+                    <div class="col-12 col-sm-6">
                       <q-btn
                         color="positive"
                         icon="add_shopping_cart"
@@ -904,7 +893,7 @@ onMounted(async () => {
                         :disable="isLoading"
                       />
                     </div>
-                    <div class="col-12 col-sm-6 col-md-4">
+                    <div class="col-12 col-sm-6">
                       <q-btn
                         color="warning"
                         icon="assignment_return"
@@ -919,11 +908,22 @@ onMounted(async () => {
                   </div>
                 </div>
               </div>
+
+              <!-- Tool Inventory Section -->
+              <div class="col-12">
+                <div class="tools-inventory-section">
+                  <ToolsTable
+                    :can-write="authStore.canWrite"
+                    @edit="editTool"
+                    @delete="handleDeleteTool"
+                  />
+                </div>
+              </div>
             </div>
           </q-tab-panel>
 
           <!-- Inventory Tab -->
-          <q-tab-panel name="inventory" class="q-pa-none">
+          <!-- <q-tab-panel name="inventory" class="q-pa-none">
             <div class="glass-card q-pa-lg">
               <div class="row items-center q-mb-lg">
                 <q-icon
@@ -947,7 +947,7 @@ onMounted(async () => {
                 @delete="handleDeleteTool"
               />
             </div>
-          </q-tab-panel>
+          </q-tab-panel> -->
 
           <!-- Loans Tab -->
           <q-tab-panel name="loans" class="q-pa-none">
@@ -2080,10 +2080,7 @@ onMounted(async () => {
         </q-card>
       </q-dialog>
     </div>
- <!-- <q-card dark class="table-container">
-   <ToolsTable :can-write="false" @edit="editTool" @delete="handleDeleteTool" />
- </q-card>-->
-  </q-page> 
+  </q-page>
 </template>
 
 <style scoped>
@@ -2094,6 +2091,18 @@ onMounted(async () => {
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* Tools Inventory Section Styling */
+.tools-inventory-section {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 16px;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  padding: 24px;
+  margin-top: 8px;
 }
 
 .q-card.glass-card {
@@ -2147,6 +2156,27 @@ onMounted(async () => {
 /* Custom colors for Quasar components */
 .text-orange {
   color: #ff9800;
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+  .q-page {
+    padding: 8px !important;
+  }
+  
+  .glass-card {
+    padding: 16px !important;
+    margin-bottom: 12px;
+  }
+  
+  .tools-inventory-section {
+    padding: 16px;
+    margin-top: 4px;
+  }
+  
+  .q-col-gutter-lg > .col-12 {
+    padding: 8px;
+  }
 }
 
 /* Tool Checkout Modal Styles - Tag Modal Style */
