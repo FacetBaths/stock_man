@@ -39,8 +39,8 @@
               </div>
             </div>
 
-            <!-- Product Type -->
-            <div class="col-12 col-sm-6">
+            <!-- Product Type (for creating only) -->
+            <div class="col-12 col-sm-6" v-if="!isEditing">
 <q-select
                 v-model="form.product_type"
                 label="Product Type *"
@@ -51,6 +51,25 @@
                 map-options
                 :rules="[val => !!val || 'Product Type is required']"
                 @update:model-value="onProductTypeChange"
+                behavior="menu"
+                menu-self="top left"
+                menu-anchor="bottom left"
+                :menu-offset="[0, 8]"
+              />
+            </div>
+
+            <!-- Category (for editing only) -->
+            <div class="col-12 col-sm-6" v-if="isEditing">
+              <q-select
+                v-model="form.category_id"
+                :options="categoryOptions"
+                label="Category *"
+                dense
+                outlined
+                emit-value
+                map-options
+                :rules="[val => !!val || 'Category is required']"
+                @update:model-value="onCategoryChange"
                 behavior="menu"
                 menu-self="top left"
                 menu-anchor="bottom left"
@@ -594,6 +613,7 @@ import { useQuasar } from 'quasar'
 import { useSKUStore } from '@/stores/sku'
 import { useCategoryStore } from '@/stores/category'
 import { skuApi } from '@/utils/api'
+import { formatCategoryName } from '@/utils/formatting'
 import { type SKU, type CreateSKURequest, type UpdateSKURequest } from '@/types'
 
 interface Props {
@@ -642,6 +662,7 @@ const defaultForm = {
   sku_code: '',
   product_type: '',
   product_details: '',
+  category_id: '',
   is_bundle: false,
   bundle_items: [] as FormBundleItem[],
   new_product: {
@@ -686,9 +707,20 @@ const productTypeOptions = computed(() => {
   const productCategories = categoryStore.productCategories.filter(cat => cat.status === 'active')
   
   return productCategories.map(category => ({
-    label: category.name.charAt(0).toUpperCase() + category.name.slice(1), // Capitalize first letter
+    label: formatCategoryName(category.name), // Use proper category name formatting
     value: category.name, // Use category name as value for compatibility
     categoryId: category._id // Store the actual category ID we need for the API
+  }))
+})
+
+// Category options for editing mode (includes all active categories)
+const categoryOptions = computed(() => {
+  const allCategories = [...categoryStore.productCategories, ...categoryStore.toolCategories]
+    .filter(cat => cat.status === 'active')
+  
+  return allCategories.map(category => ({
+    label: formatCategoryName(category.name), // Use proper category name formatting
+    value: category._id // Use category ID as the value for editing
   }))
 })
 
@@ -889,6 +921,12 @@ const onProductTypeChange = (productType: string) => {
   }
 }
 
+const onCategoryChange = (categoryId: string) => {
+  console.log('Category changed to:', categoryId)
+  // In editing mode, we just update the category - no need to reset other fields
+  // as the user is editing an existing SKU, not creating a new one
+}
+
 const generateSKUCode = async () => {
   if (!form.value.product_type) {
     $q.notify({
@@ -968,6 +1006,15 @@ const onSubmit = async () => {
   try {
     saving.value = true
     
+    // Validation for editing mode
+    if (isEditing.value && !form.value.category_id) {
+      $q.notify({
+        type: 'warning',
+        message: 'Please select a category'
+      })
+      return
+    }
+    
     if (isEditing.value && props.sku) {
       // Update existing SKU - match backend API exactly from BACKEND_API_REFERENCE.md
       const updates: UpdateSKURequest = {
@@ -1026,26 +1073,9 @@ const onSubmit = async () => {
         sku_notes: form.value.sku_notes
       }
       
-      // Extract category_id - this is required by backend validation
-      let categoryId = null
-      if (props.sku.category_id) {
-        if (typeof props.sku.category_id === 'object' && props.sku.category_id._id) {
-          categoryId = props.sku.category_id._id
-        } else if (typeof props.sku.category_id === 'string') {
-          categoryId = props.sku.category_id
-        }
-      }
-      
-      // Debug logging to understand the category_id issue
-      console.log('Frontend: props.sku.category_id:', props.sku.category_id)
-      console.log('Frontend: extracted categoryId:', categoryId)
-      console.log('Frontend: categoryId type:', typeof categoryId)
-      
-      if (categoryId) {
-        updates.category_id = categoryId
-      } else {
-        console.error('Frontend: No valid category_id found in SKU object')
-        throw new Error('Category ID is required but missing from SKU')
+      // Add category_id from form (user can now change this)
+      if (form.value.category_id) {
+        updates.category_id = form.value.category_id
       }
       
       console.log('Frontend: About to update SKU with data:', JSON.stringify(updates, null, 2))
@@ -1285,9 +1315,20 @@ watch(() => props.modelValue, (newValue) => {
         supplierSku = props.sku.supplier_info.supplier_sku
       }
 
+      // Extract category ID
+      let categoryId = ''
+      if (props.sku.category_id) {
+        if (typeof props.sku.category_id === 'object' && props.sku.category_id._id) {
+          categoryId = props.sku.category_id._id
+        } else if (typeof props.sku.category_id === 'string') {
+          categoryId = props.sku.category_id
+        }
+      }
+      
       form.value = {
         sku_code: props.sku.sku_code,
         product_type: productType,
+        category_id: categoryId,
         product_details: typeof props.sku.product_details === 'string' 
           ? props.sku.product_details 
           : (props.sku.product_details as any)?._id || '',

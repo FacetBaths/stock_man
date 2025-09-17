@@ -62,6 +62,7 @@ export interface Category {
   attributes?: string[]           // Backend has attributes array
   sort_order: number
   status: 'active' | 'inactive'
+  color?: string                  // Hex color for visual identification
   createdAt?: string
   updatedAt?: string
   displayName?: string            // Backend virtual field
@@ -374,6 +375,7 @@ export interface CreateCategoryRequest {
   attributes?: string[]
   sort_order?: number
   status?: 'active' | 'inactive'
+  color?: string
 }
 
 export interface UpdateCategoryRequest {
@@ -383,6 +385,7 @@ export interface UpdateCategoryRequest {
   attributes?: string[]
   sort_order?: number
   status?: 'active' | 'inactive'
+  color?: string
 }
 
 // ✅ Tag model - Instance-based architecture (clean implementation)

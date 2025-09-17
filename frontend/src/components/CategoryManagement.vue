@@ -96,6 +96,18 @@
         bordered
         class="categories-table"
       >
+        <!-- Color column -->
+        <template v-slot:body-cell-color="props">
+          <q-td :props="props">
+            <div 
+              class="color-swatch"
+              :style="{ backgroundColor: props.row.color || '#1976d2' }"
+              :title="props.row.color || '#1976d2'"
+            >
+            </div>
+          </q-td>
+        </template>
+        
         <!-- Type column -->
         <template v-slot:body-cell-type="props">
           <q-td :props="props">
@@ -169,7 +181,7 @@
             <q-card class="glass-card" flat bordered>
               <q-card-section>
                 <div class="row items-center justify-between q-mb-sm">
-                  <div class="text-h6">{{ props.row.name }}</div>
+                  <div class="text-h6">{{ formatCategoryName(props.row.name) }}</div>
                   <q-chip
                     :color="props.row.status === 'active' ? 'positive' : 'grey'"
                     text-color="white"
@@ -287,6 +299,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { useCategoryStore } from '@/stores/category'
+import { formatCategoryName } from '@/utils/formatting'
 import CategoryForm from './CategoryForm.vue'
 import StatsCarousel from './StatsCarousel.vue'
 import type { Category } from '@/types'
@@ -362,7 +375,15 @@ const tableColumns = [
     label: 'Name',
     align: 'left',
     field: 'name',
+    format: (val: string) => formatCategoryName(val),
     sortable: true
+  },
+  {
+    name: 'color',
+    label: 'Color',
+    align: 'center',
+    field: 'color',
+    sortable: false
   },
   {
     name: 'type',
@@ -698,6 +719,21 @@ watch(() => categoryStore.error, (error) => {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+.color-swatch {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 0, 0, 0.1);
+  margin: 0 auto;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.color-swatch:hover {
+  transform: scale(1.1);
+  border-color: rgba(0, 0, 0, 0.3);
 }
 
 .category-list .category-meta {

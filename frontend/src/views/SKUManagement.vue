@@ -7,7 +7,8 @@ import { useCategoryStore } from '@/stores/category'
 import { useInventoryStore } from '@/stores/inventory'
 import { inventoryApi, instancesApi } from '@/utils/api'
 import { PRODUCT_TYPES, type SKU } from '@/types'
-import { getCategoryColor as utilGetCategoryColor, getStatusColor as utilGetStatusColor } from '@/utils/colors'
+import { getCategoryColor as utilGetCategoryColor, getCategoryColorFromData, getStatusColor as utilGetStatusColor } from '@/utils/colors'
+import { formatCategoryName } from '@/utils/formatting'
 import StockStatusChip from '@/components/StockStatusChip.vue'
 import SKUFormDialog from '@/components/SKUFormDialog.vue'
 import AddCostDialog from '@/components/AddCostDialog.vue'
@@ -117,11 +118,6 @@ const tablePagination = computed(() => ({
   rowsNumber: skuStore.pagination.totalSkus
 }))
 
-const formatCategoryName = (name: string) => {
-  name == 'rawmaterials'? name = 'raw Materials' : void 0
-  name == 'showerdoors'? name = 'shower Doors' : void 0
-  return name.replace(/\b\w/g, char => char.toUpperCase())
-}
 
 const categoryOptions = computed(() => {
   return categoryStore.categories.map(category => ({
@@ -160,28 +156,43 @@ const getStatusColor = (status: string) => {
 const getCategoryName = (categoryId: string | any) => {
   if (!categoryId) return 'Uncategorized'
 
+  let categoryName = ''
+  
   // Handle case where categoryId is already populated object from backend
   if (typeof categoryId === 'object' && categoryId.displayName) {
-    return categoryId.displayName
-  }
-  if (typeof categoryId === 'object' && categoryId.name) {
-    return categoryId.name
-  }
-
-  // Handle case where categoryId is still just an ID string
-  if (typeof categoryId === 'string') {
+    categoryName = categoryId.displayName
+  } else if (typeof categoryId === 'object' && categoryId.name) {
+    categoryName = categoryId.name
+  } else if (typeof categoryId === 'string') {
+    // Handle case where categoryId is still just an ID string
     const category = categoryStore.categories.find(c => c._id === categoryId)
-    return category ? category.name : 'Unknown Category'
+    categoryName = category ? category.name : 'Unknown Category'
+  } else {
+    categoryName = 'Unknown Category'
   }
-
-  return 'Unknown Category'
+  
+  // Apply proper formatting
+  return formatCategoryName(categoryName)
 }
 
 const getCategoryColor = (categoryId: string | any) => {
+  // If categoryId is a populated category object, use the database color
+  if (typeof categoryId === 'object' && categoryId) {
+    return getCategoryColorFromData(categoryId)
+  }
+  
+  // If it's just an ID string, find the category in store and use database color
+  if (typeof categoryId === 'string') {
+    const category = categoryStore.categories.find(c => c._id === categoryId)
+    if (category) {
+      return getCategoryColorFromData(category)
+    }
+  }
+  
+  // Fallback to generated color
   const color = utilGetCategoryColor(categoryId)
-  // Optional: Log color assignments for debugging
   if (process.env.NODE_ENV === 'development') {
-    console.log(`Category ${categoryId} assigned color: ${color}`)
+    console.log(`Category ${categoryId} assigned fallback color: ${color}`)
   }
   return color
 }

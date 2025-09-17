@@ -59,6 +59,43 @@
           hint="Lower numbers appear first"
         />
 
+        <!-- Color Picker -->
+        <div class="q-mb-md">
+          <div class="text-body2 q-mb-sm">Category Color</div>
+          <div class="row items-center q-gutter-md">
+            <q-input
+              v-model="form.color"
+              label="Color"
+              outlined
+              dense
+              :rules="[val => /^#[0-9A-Fa-f]{6}$/.test(val) || 'Must be a valid hex color (e.g. #1976d2)']"
+              placeholder="#1976d2"
+              class="col-8"
+            >
+              <template v-slot:prepend>
+                <q-icon name="palette" />
+              </template>
+            </q-input>
+            <q-btn
+              :style="{ backgroundColor: form.color, color: getContrastColor(form.color) }"
+              round
+              size="md"
+              class="col-auto color-preview"
+            >
+              <q-popup-proxy cover transition-show="scale" transition-hide="scale">
+                <q-color
+                  v-model="form.color"
+                  default-value="#1976d2"
+                  no-header
+                  no-footer
+                  class="color-picker"
+                />
+              </q-popup-proxy>
+              <q-tooltip>Click to pick color</q-tooltip>
+            </q-btn>
+          </div>
+        </div>
+
         <!-- Status (only for editing) -->
         <q-select
           v-if="isEditing"
@@ -126,12 +163,14 @@ const form = reactive<{
   description: string
   sort_order: number
   status: 'active' | 'inactive'
+  color: string
 }>({
   name: '',
   type: '',
   description: '',
   sort_order: 0,
-  status: 'active'
+  status: 'active',
+  color: '#1976d2'
 })
 
 const isSubmitting = ref(false)
@@ -151,6 +190,17 @@ const statusOptions = [
 ]
 
 // Methods
+const getContrastColor = (hexcolor: string): string => {
+  // Convert hex to RGB
+  const r = parseInt(hexcolor.slice(1, 3), 16)
+  const g = parseInt(hexcolor.slice(3, 5), 16)
+  const b = parseInt(hexcolor.slice(5, 7), 16)
+  
+  // Calculate relative luminance
+  const yiq = (r * 299 + g * 587 + b * 114) / 1000
+  return yiq >= 128 ? 'black' : 'white'
+}
+
 const resetForm = () => {
   if (isEditing.value && props.category) {
     form.name = props.category.name
@@ -158,12 +208,14 @@ const resetForm = () => {
     form.description = props.category.description || ''
     form.sort_order = props.category.sort_order
     form.status = props.category.status
+    form.color = props.category.color || '#1976d2'
   } else {
     form.name = ''
     form.type = ''
     form.description = ''
     form.sort_order = 0
     form.status = 'active'
+    form.color = '#1976d2'
   }
   error.value = null
 }
@@ -183,7 +235,8 @@ const handleSubmit = async () => {
         description: form.description || undefined,
         attributes: [],
         sort_order: form.sort_order,
-        status: form.status
+        status: form.status,
+        color: form.color
       }
       
       // Remove undefined values
@@ -203,7 +256,8 @@ const handleSubmit = async () => {
         description: form.description || undefined,
         attributes: [],
         sort_order: form.sort_order || 0,
-        status: 'active'
+        status: 'active',
+        color: form.color
       }
       
       // Remove undefined values
@@ -277,5 +331,20 @@ watch(() => props.mode, () => {
 /* Loading state styling */
 .q-field--loading {
   opacity: 0.7;
+}
+
+/* Color picker styling */
+.color-preview {
+  border: 2px solid rgba(0, 0, 0, 0.12);
+  min-width: 40px;
+  min-height: 40px;
+}
+
+.color-preview:hover {
+  border-color: rgba(0, 0, 0, 0.24);
+}
+
+.color-picker {
+  min-width: 280px;
 }
 </style>

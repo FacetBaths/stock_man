@@ -35,6 +35,17 @@ const categorySchema = new mongoose.Schema({
     type: String,
     enum: ['active', 'inactive'],
     default: 'active'
+  },
+  // Color for visual identification (hex color)
+  color: {
+    type: String,
+    default: '#1976d2', // Default to primary blue
+    validate: {
+      validator: function(v) {
+        return /^#[0-9A-F]{6}$/i.test(v);
+      },
+      message: 'Color must be a valid hex color (e.g. #1976d2)'
+    }
   }
 }, {
   timestamps: true
