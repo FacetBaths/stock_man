@@ -56,6 +56,55 @@ export const getCategoryColor = (category: string | { _id?: string; name?: strin
   return generateColorFromString(category)
 }
 
+// Get category color with database priority - prefers database color over generated
+export const getCategoryColorFromData = (category: { color?: string; _id?: string; name?: string } | null | undefined): string => {
+  if (!category) return '#1976d2' // Default blue
+  
+  // Use database color if available
+  if (category.color) {
+    return category.color
+  }
+  
+  // Fall back to generated color from ID or name
+  const identifier = category._id || category.name
+  if (identifier) {
+    // Convert Quasar color name to hex for consistency
+    const generatedColor = generateColorFromString(identifier)
+    return convertQuasarColorToHex(generatedColor)
+  }
+  
+  return '#1976d2' // Default blue
+}
+
+// Convert Quasar color names to hex values
+const convertQuasarColorToHex = (colorName: string): string => {
+  const colorMap: Record<string, string> = {
+    'primary': '#1976d2',
+    'green': '#4caf50',
+    'orange': '#ff9800',
+    'cyan': '#00bcd4',
+    'purple': '#9c27b0',
+    'teal': '#009688',
+    'amber': '#ffc107',
+    'pink': '#e91e63',
+    'indigo': '#3f51b5',
+    'deep-purple': '#673ab7',
+    'deep-orange': '#ff5722',
+    'brown': '#795548',
+    'blue-grey': '#607d8b',
+    'lime': '#cddc39',
+    'light-green': '#8bc34a',
+    'red': '#f44336',
+    'yellow': '#ffeb3b',
+    'light-blue': '#03a9f4',
+    'purple-4': '#ab47bc',
+    'green-4': '#66bb6a',
+    'grey': '#9e9e9e'
+  }
+  
+  return colorMap[colorName] || '#1976d2'
+}
+
 // Legacy mapping for known product types (maintains backward compatibility)
 const LEGACY_TYPE_COLORS: Record<string, string> = {
   'walls': 'primary',
@@ -125,6 +174,7 @@ export const getStockStatusColor = (status: string): string => {
 export default {
   generateColorFromString,
   getCategoryColor,
+  getCategoryColorFromData,
   getProductTypeColor,
   getStatusColor,
   getStockStatusColor

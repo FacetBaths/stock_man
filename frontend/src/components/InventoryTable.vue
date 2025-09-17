@@ -3,7 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useInventoryStore } from '@/stores/inventory'
 import { formatCurrency } from '@/utils/currency'
-import { getProductTypeColor } from '@/utils/colors'
+import { getProductTypeColor, getCategoryColorFromData } from '@/utils/colors'
 import type { Inventory } from '@/types'
 import { TAG_TYPES } from '@/types'
 import StockStatusChip from '@/components/StockStatusChip.vue'
@@ -79,7 +79,36 @@ const getStockStatus = (quantity: number) => {
   return { class: 'in-stock', text: 'In Stock', color: 'positive' }
 }
 
-// Helper function to get type colors using new color utility
+// Helper function to get category color from inventory item
+const getCategoryColor = (item: any) => {
+  // Try to use the category data if available (preferred)
+  if (item.category) {
+    return getCategoryColorFromData(item.category)
+  }
+  
+  // Fallback to product type color for legacy support
+  const productType = getProductType(item)
+  return getProductTypeColor(productType)
+}
+
+// Helper to get contrast color for text on colored backgrounds
+const getContrastColor = (hexcolor: string): string => {
+  if (!hexcolor) return 'white'
+  
+  // Remove # if present
+  const color = hexcolor.replace('#', '')
+  
+  // Convert to RGB
+  const r = parseInt(color.slice(0, 2), 16)
+  const g = parseInt(color.slice(2, 4), 16)
+  const b = parseInt(color.slice(4, 6), 16)
+  
+  // Calculate relative luminance
+  const yiq = (r * 299 + g * 587 + b * 114) / 1000
+  return yiq >= 128 ? 'black' : 'white'
+}
+
+// Legacy helper function to get type colors using new color utility
 const getTypeColor = (productType: string) => {
   return getProductTypeColor(productType)
 }
@@ -474,7 +503,10 @@ const handleTagStatusClick = (item: Inventory) => {
           class="inventory-item"
           :class="`type-${getProductType(item)}`"
           @click="canWrite ? emit('edit', item) : null"
-          :style="{ cursor: canWrite ? 'pointer' : 'default' }"
+          :style="{ 
+            cursor: canWrite ? 'pointer' : 'default',
+            borderLeft: `5px solid ${getCategoryColor(item)}`
+          }"
           flat
           bordered
         >
@@ -483,7 +515,10 @@ const handleTagStatusClick = (item: Inventory) => {
             <div class="item-section details-section">
               <div
                 class="product-type-banner"
-                :class="`type-banner-${getProductType(item)}`"
+                :style="{ 
+                  backgroundColor: getCategoryColor(item),
+                  color: getContrastColor(getCategoryColor(item))
+                }"
               >
                 {{ getProductType(item).replace("_", " ").toUpperCase() }}
               </div>

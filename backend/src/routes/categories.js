@@ -32,7 +32,11 @@ const validateCategory = [
   body('status')
     .optional()
     .isIn(['active', 'inactive'])
-    .withMessage('Status must be either active or inactive')
+    .withMessage('Status must be either active or inactive'),
+  body('color')
+    .optional()
+    .matches(/^#[0-9A-Fa-f]{6}$/)
+    .withMessage('Color must be a valid hex color (e.g. #1976d2)')
 ];
 
 // GET /api/categories - Get all categories with optional filtering
@@ -187,7 +191,8 @@ router.post('/',
         description: req.body.description || '',
         attributes: req.body.attributes || [],
         sort_order: req.body.sort_order || 0,
-        status: req.body.status || 'active'
+        status: req.body.status || 'active',
+        color: req.body.color || '#1976d2'
       };
 
       const category = new Category(categoryData);
@@ -251,6 +256,7 @@ router.put('/:id',
       if (req.body.attributes !== undefined) updateData.attributes = req.body.attributes;
       if (req.body.sort_order !== undefined) updateData.sort_order = req.body.sort_order;
       if (req.body.status !== undefined) updateData.status = req.body.status;
+      if (req.body.color !== undefined) updateData.color = req.body.color;
 
       const updatedCategory = await Category.findByIdAndUpdate(
         req.params.id,
