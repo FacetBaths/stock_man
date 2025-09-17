@@ -925,8 +925,10 @@ onMounted(async () => {
                   <div class="text-weight-bold text-body1">{{ sku.sku_code }}</div>
                   <q-chip
                     :label="getCategoryName(sku.category_id)"
-                    :color="getCategoryColor(sku.category_id)"
-                    text-color="white"
+                    :style="{ 
+                      backgroundColor: getCategoryColor(sku.category_id), 
+                      color: 'white' 
+                    }"
                     size="sm"
                     class="q-mt-xs"
                   />
@@ -1172,8 +1174,10 @@ onMounted(async () => {
           <q-td :props="props">
             <q-chip
               :label="getCategoryName(props.row.category_id)"
-              :color="getCategoryColor(props.row.category_id)"
-              text-color="white"
+              :style="{ 
+                backgroundColor: getCategoryColor(props.row.category_id), 
+                color: 'white' 
+              }"
               dense
             />
           </q-td>
