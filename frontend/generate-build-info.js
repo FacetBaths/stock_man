@@ -31,7 +31,7 @@ const packageJsonPath = path.join(__dirname, 'package.json');
 const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
 const version = packageJson.version;
 
-// Create .env.local file with build info
+// Create .env.local file with build info (for development)
 const envContent = `# Auto-generated build information
 VITE_APP_VERSION=${version}
 VITE_BUILD_TIME=${buildTime}
@@ -41,6 +41,21 @@ VITE_BUILD_NUMBER=${buildNumber}
 `;
 
 fs.writeFileSync(path.join(__dirname, '.env.local'), envContent);
+
+// ALSO create a src/buildInfo.ts file that gets committed to git
+const buildInfoTsContent = `// Auto-generated build information - DO NOT EDIT MANUALLY
+export const buildInfo = {
+  version: '${version}',
+  buildTime: '${buildTime}',
+  gitCommit: '${gitCommit}',
+  gitBranch: '${gitBranch}',
+  buildNumber: '${buildNumber}'
+} as const;
+
+export default buildInfo;
+`;
+
+fs.writeFileSync(path.join(__dirname, 'src', 'buildInfo.ts'), buildInfoTsContent);
 
 console.log('✅ Build info generated:');
 console.log(`   Version: ${version}`);

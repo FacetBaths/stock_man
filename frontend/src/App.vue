@@ -119,13 +119,15 @@ const navTabs = computed(() => {
   return tabs;
 });
 
-// Build info (can be injected during build process)
+// Build info from generated file (committed to git, works in production)
+import buildInfoGenerated from '@/buildInfo'
+
 const buildInfo = {
-  version: import.meta.env.VITE_APP_VERSION || packageInfo.version,
-  buildTime: import.meta.env.VITE_BUILD_TIME || "Unknown",
-  gitCommit: import.meta.env.VITE_GIT_COMMIT || "Unknown",
-  gitBranch: import.meta.env.VITE_GIT_BRANCH || "Unknown",
-  buildNumber: import.meta.env.VITE_BUILD_NUMBER || "Unknown",
+  version: buildInfoGenerated.version || import.meta.env.VITE_APP_VERSION || packageInfo.version,
+  buildTime: buildInfoGenerated.buildTime || import.meta.env.VITE_BUILD_TIME || "Unknown",
+  gitCommit: buildInfoGenerated.gitCommit || import.meta.env.VITE_GIT_COMMIT || "Unknown",
+  gitBranch: buildInfoGenerated.gitBranch || import.meta.env.VITE_GIT_BRANCH || "Unknown",
+  buildNumber: buildInfoGenerated.buildNumber || import.meta.env.VITE_BUILD_NUMBER || "Unknown",
 };
 
 const getVersionTooltip = () => {
