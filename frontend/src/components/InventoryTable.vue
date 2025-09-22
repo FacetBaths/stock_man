@@ -479,8 +479,18 @@ const handleTagStatusClick = (item: Inventory) => {
   }
 }
 
+// Debug pagination data
+watch(() => props.pagination, (newPagination) => {
+  console.log('🔍 [InventoryTable] Pagination prop changed:', newPagination)
+  console.log('🔍 [InventoryTable] - Total items:', newPagination?.total_items)
+  console.log('🔍 [InventoryTable] - Total pages:', newPagination?.total_pages)
+  console.log('🔍 [InventoryTable] - Current page:', newPagination?.current_page)
+  console.log('🔍 [InventoryTable] - Items per page:', newPagination?.items_per_page)
+}, { deep: true, immediate: true })
+
 // Pagination handlers
 const handlePageChange = (page: number) => {
+  console.log('📄 [InventoryTable] Page change requested:', page)
   if (page !== currentPage.value) {
     currentPage.value = page
     emit('page-change', page)
@@ -737,57 +747,9 @@ const handlePageSizeChange = (size: number) => {
                     {{ getAvailableQuantity(item) }} free
                   </div>
                 </div>
-      </div>
-      
-      <!-- Pagination Controls -->
-      <div v-if="props.pagination && props.pagination.total_pages > 1" class="pagination-section q-mt-md">
-        <q-card flat class="pagination-card">
-          <q-card-section class="pagination-content">
-            <div class="pagination-info">
-              <q-chip 
-                color="primary" 
-                text-color="white" 
-                size="sm"
-                icon="inventory"
-              >
-                {{ props.pagination.total_items }} items total
-              </q-chip>
-              <div class="text-caption text-grey-6 q-mt-xs">
-                Page {{ props.pagination.current_page }} of {{ props.pagination.total_pages }}
-              </div>
             </div>
-            
-            <q-pagination
-              v-model="currentPage"
-              :max="props.pagination.total_pages"
-              :max-pages="7"
-              direction-links
-              boundary-links
-              color="primary"
-              :disable="props.loading"
-              @update:model-value="handlePageChange"
-              class="pagination-control"
-            />
-            
-            <div class="page-size-control">
-              <q-select
-                v-model="pageSize"
-                :options="pageSizeOptions"
-                label="Per page"
-                dense
-                outlined
-                :disable="props.loading"
-                @update:model-value="handlePageSizeChange"
-                style="min-width: 100px;"
-              />
-            </div>
-          </q-card-section>
-        </q-card>
-      </div>
-    </div>
 
-    <!-- Tag Status Dialog -->
-            <div class="item-section tag-section">
+            <!-- Tag Section -->
               <q-chip
                 :color="getPrimaryTagStatus(item).color"
                 text-color="white"
@@ -856,6 +818,60 @@ const handlePageSizeChange = (size: number) => {
                   <q-tooltip>Delete item</q-tooltip>
                 </q-btn>
               </div>
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+      
+      <!-- Debug pagination data -->
+      <div class="debug-pagination q-pa-sm" style="background: rgba(255, 0, 0, 0.1); border: 1px solid red; margin: 10px 0;">
+        <small>DEBUG: Pagination data: {{ props.pagination }}</small><br>
+        <small>Has pagination: {{ !!props.pagination }}</small><br>
+        <small>Total pages: {{ props.pagination?.total_pages }}</small><br>
+        <small>Condition met: {{ props.pagination && props.pagination.total_pages >= 1 }}</small>
+      </div>
+      
+      <!-- Pagination Controls -->
+      <div v-if="props.pagination && props.pagination.total_pages >= 1" class="pagination-section q-mt-md">
+        <q-card flat class="pagination-card">
+          <q-card-section class="pagination-content">
+            <div class="pagination-info">
+              <q-chip 
+                color="primary" 
+                text-color="white" 
+                size="sm"
+                icon="inventory"
+              >
+                {{ props.pagination.total_items }} items total
+              </q-chip>
+              <div class="text-caption text-grey-6 q-mt-xs">
+                Page {{ props.pagination.current_page }} of {{ props.pagination.total_pages }}
+              </div>
+            </div>
+            
+            <q-pagination
+              v-model="currentPage"
+              :max="props.pagination.total_pages"
+              :max-pages="7"
+              direction-links
+              boundary-links
+              color="primary"
+              :disable="props.loading"
+              @update:model-value="handlePageChange"
+              class="pagination-control"
+            />
+            
+            <div class="page-size-control">
+              <q-select
+                v-model="pageSize"
+                :options="pageSizeOptions"
+                label="Per page"
+                dense
+                outlined
+                :disable="props.loading"
+                @update:model-value="handlePageSizeChange"
+                style="min-width: 100px;"
+              />
             </div>
           </q-card-section>
         </q-card>
