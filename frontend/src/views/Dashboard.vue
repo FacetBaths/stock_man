@@ -218,6 +218,26 @@ const handleQuickScanSuccess = () => {
   inventoryStore.fetchStats();
 };
 
+// Pagination handlers
+const handlePageChange = (page: number) => {
+  console.log('📄 [Dashboard] Page change requested:', page)
+  const filters = {
+    ...getCurrentFilters(),
+    page: page
+  }
+  inventoryTableRef.value?.refreshInventory(filters)
+}
+
+const handlePageSizeChange = (pageSize: number) => {
+  console.log('📄 [Dashboard] Page size change requested:', pageSize)
+  const filters = {
+    ...getCurrentFilters(),
+    page: 1, // Reset to first page when changing page size
+    limit: pageSize
+  }
+  inventoryTableRef.value?.refreshInventory(filters)
+}
+
 const handleLogout = async () => {
   await authStore.logout();
 };
@@ -622,8 +642,12 @@ onMounted(async () => {
           ref="inventoryTableRef"
           :can-write="authStore.canWrite"
           :filters="{ sort_by: 'sku_code', sort_order: 'asc' }"
+          :pagination="inventoryStore.pagination"
+          :loading="inventoryStore.isLoading"
           @edit="handleEditItem"
           @delete="handleDeleteItem"
+          @page-change="handlePageChange"
+          @page-size-change="handlePageSizeChange"
         />
       </div>
     </div>

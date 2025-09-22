@@ -52,16 +52,19 @@ const emit = defineEmits<{
 // Expose a method to refresh data when filters change
 const refreshInventory = async (filters?: any) => {
   const filtersToUse = filters || props.filters
-  console.log('InventoryTable: Refreshing with filters:', filtersToUse)
-  console.log('InventoryTable: Current inventory count before fetch:', inventoryStore.inventory.length)
-  console.log('InventoryTable: Store loading state:', inventoryStore.isLoading)
+  console.log('🔄 [InventoryTable] ====== REFRESH INVENTORY CALLED ======', filtersToUse)
+  console.log('🔄 [InventoryTable] Current inventory count before fetch:', inventoryStore.inventory.length)
+  console.log('🔄 [InventoryTable] Current pagination before fetch:', inventoryStore.pagination)
+  console.log('🔄 [InventoryTable] Store loading state:', inventoryStore.isLoading)
+  console.log('🔄 [InventoryTable] Filters to use:', filtersToUse)
   try {
     const result = await inventoryStore.fetchInventory(filtersToUse)
-    console.log('InventoryTable: Fetch completed. New inventory count:', inventoryStore.inventory.length)
-    console.log('InventoryTable: Fetch result:', result)
+    console.log('✅ [InventoryTable] Fetch completed. New inventory count:', inventoryStore.inventory.length)
+    console.log('✅ [InventoryTable] New pagination after fetch:', inventoryStore.pagination)
+    console.log('✅ [InventoryTable] Fetch result pagination:', result?.pagination)
   } catch (error) {
-    console.error('InventoryTable: Failed to refresh inventory:', error)
-    console.error('InventoryTable: Error details:', error.response?.data || error.message)
+    console.error('❌ [InventoryTable] Failed to refresh inventory:', error)
+    console.error('❌ [InventoryTable] Error details:', error.response?.data || error.message)
   }
 }
 
@@ -488,22 +491,67 @@ watch(() => props.pagination, (newPagination) => {
   console.log('🔍 [InventoryTable] - Items per page:', newPagination?.items_per_page)
 }, { deep: true, immediate: true })
 
+// Local loading state to control skeleton display with minimum duration
+const isLocalLoading = ref(false)
+const minLoadingDuration = 300 // Minimum 300ms to show skeleton, prevents flash
+
 // Pagination handlers
 const handlePageChange = (page: number) => {
   console.log('📄 [InventoryTable] Page change requested:', page)
-  if (page !== currentPage.value) {
-    currentPage.value = page
-    emit('page-change', page)
+  
+  // Always refresh when pagination is clicked, regardless of current state
+  currentPage.value = page
+  emit('page-change', page)
+  
+  // Show loading with minimum duration
+  isLocalLoading.value = true
+  const startTime = Date.now()
+  
+  // Actually refresh the data with the new page
+  const filters = {
+    ...props.filters,
+    page: page
   }
+  
+  refreshInventory(filters).finally(() => {
+    const elapsed = Date.now() - startTime
+    const remaining = Math.max(0, minLoadingDuration - elapsed)
+    
+    setTimeout(() => {
+      isLocalLoading.value = false
+    }, remaining)
+  })
 }
 
 const handlePageSizeChange = (size: number) => {
-  if (size !== pageSize.value) {
-    pageSize.value = size
-    currentPage.value = 1 // Reset to first page when changing page size
-    emit('page-size-change', size)
-    emit('page-change', 1)
+  console.log('📄 [InventoryTable] Page size change requested:', size)
+  
+  // Always refresh when page size is changed, regardless of current state
+  pageSize.value = size
+  currentPage.value = 1 // Reset to first page when changing page size
+  emit('page-size-change', size)
+  emit('page-change', 1)
+  
+  // Show loading with minimum duration
+  isLocalLoading.value = true
+  const startTime = Date.now()
+  
+  // Actually refresh the data with the new page size
+  const filters = {
+    ...props.filters,
+    page: 1,
+    limit: size
   }
+  console.log('📄 [InventoryTable] Refreshing with new page size filters:', filters)
+  
+  refreshInventory(filters).finally(() => {
+    const elapsed = Date.now() - startTime
+    const remaining = Math.max(0, minLoadingDuration - elapsed)
+    
+    setTimeout(() => {
+      isLocalLoading.value = false
+    }, remaining)
+  })
 }
 </script>
 
@@ -551,20 +599,122 @@ const handlePageSizeChange = (size: number) => {
         </div>
       </div>
 
+      <!-- Top Pagination Controls -->
+      <div v-if="props.pagination && props.pagination.total_pages > 1" class="pagination-section q-mb-md">
+        <q-card flat class="pagination-card">
+          <q-card-section class="pagination-content">
+            <div class="pagination-info">
+              <q-chip 
+                color="primary" 
+                text-color="white" 
+                size="sm"
+                icon="inventory"
+              >
+                {{ props.pagination.total_items }} items total
+              </q-chip>
+              <div class="text-caption text-grey-6 q-mt-xs">
+                Page {{ props.pagination.current_page }} of {{ props.pagination.total_pages }}
+              </div>
+            </div>
+            
+            <q-pagination
+              v-model="currentPage"
+              :max="props.pagination.total_pages"
+              :max-pages="7"
+              direction-links
+              boundary-links
+              color="primary"
+              :disable="isLocalLoading || props.loading"
+              @update:model-value="handlePageChange"
+              class="pagination-control"
+            />
+            
+            <div class="page-size-control">
+              <q-select
+                v-model="pageSize"
+                :options="pageSizeOptions"
+                label="Per page"
+                dense
+                outlined
+                :disable="isLocalLoading || props.loading"
+                @update:model-value="handlePageSizeChange"
+                style="min-width: 100px;"
+              />
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+
       <div class="inventory-list">
-        <q-card
-          v-for="item in items"
-          :key="item._id"
-          class="inventory-item"
-          :class="`type-${getProductType(item)}`"
-          @click="canWrite ? emit('edit', item) : null"
-          :style="{ 
-            cursor: canWrite ? 'pointer' : 'default',
-            borderLeft: `5px solid ${getCategoryColor(item)}`
-          }"
-          flat
-          bordered
-        >
+        <!-- Quasar Skeleton Loading Cards -->
+        <template v-if="isLocalLoading || props.loading">
+          <q-card
+            v-for="n in (props.pagination?.items_per_page || 10)"
+            :key="`skeleton-${n}`"
+            class="inventory-item skeleton-card"
+            flat
+            bordered
+          >
+            <q-card-section class="item-row">
+              <!-- Details Section Skeleton -->
+              <div class="item-section details-section">
+                <q-skeleton type="rect" width="80px" height="16px" class="q-mb-sm" />
+                <q-skeleton type="text" width="180px" />
+                <q-skeleton type="text" width="120px" />
+              </div>
+              
+              <!-- SKU Section Skeleton -->
+              <div class="item-section sku-section">
+                <q-skeleton type="QChip" />
+              </div>
+              
+              <!-- Quantity Section Skeleton -->
+              <div class="item-section quantity-section">
+                <q-skeleton type="QBadge" />
+              </div>
+              
+              <!-- Tag Section Skeleton -->
+              <div class="item-section tag-section">
+                <q-skeleton type="QChip" />
+              </div>
+              
+              <!-- Cost Section Skeleton (if visible) -->
+              <div v-if="canViewCost" class="item-section cost-section">
+                <q-skeleton type="text" width="60px" />
+                <q-skeleton type="text" width="80px" />
+              </div>
+              
+              <!-- Status Section Skeleton -->
+              <div class="item-section status-section">
+                <q-skeleton type="QChip" />
+                <q-skeleton type="text" width="40px" />
+                <q-skeleton type="text" width="60px" />
+              </div>
+              
+              <!-- Actions Section Skeleton (if visible) -->
+              <div v-if="canWrite" class="item-section actions-section">
+                <q-skeleton type="QBtn" size="sm" />
+                <q-skeleton type="QBtn" size="sm" class="q-ml-sm" />
+              </div>
+            </q-card-section>
+          </q-card>
+        </template>
+        
+        <!-- Actual Inventory Cards -->
+        <template v-else>
+          <q-card
+            v-for="item in items"
+            :key="`${item._id}-${item.sku_id}`"
+            class="inventory-item"
+            :class="`type-${getProductType(item)}`"
+            @click="canWrite ? emit('edit', item) : null"
+            :style="{ 
+              cursor: canWrite ? 'pointer' : 'default',
+              borderLeft: `5px solid ${getCategoryColor(item)}`
+            }"
+            flat
+            bordered
+          >
           <q-card-section class="item-row">
             <!-- Details Section -->
             <div class="item-section details-section">
@@ -821,14 +971,7 @@ const handlePageSizeChange = (size: number) => {
             </div>
           </q-card-section>
         </q-card>
-      </div>
-      
-      <!-- Debug pagination data -->
-      <div class="debug-pagination q-pa-sm" style="background: rgba(255, 0, 0, 0.1); border: 1px solid red; margin: 10px 0;">
-        <small>DEBUG: Pagination data: {{ props.pagination }}</small><br>
-        <small>Has pagination: {{ !!props.pagination }}</small><br>
-        <small>Total pages: {{ props.pagination?.total_pages }}</small><br>
-        <small>Condition met: {{ props.pagination && props.pagination.total_pages >= 1 }}</small>
+        </template>
       </div>
       
       <!-- Pagination Controls -->
@@ -856,7 +999,7 @@ const handlePageSizeChange = (size: number) => {
               direction-links
               boundary-links
               color="primary"
-              :disable="props.loading"
+              :disable="isLocalLoading || props.loading"
               @update:model-value="handlePageChange"
               class="pagination-control"
             />
@@ -868,7 +1011,7 @@ const handlePageSizeChange = (size: number) => {
                 label="Per page"
                 dense
                 outlined
-                :disable="props.loading"
+                :disable="isLocalLoading || props.loading"
                 @update:model-value="handlePageSizeChange"
                 style="min-width: 100px;"
               />
@@ -1075,6 +1218,38 @@ const handlePageSizeChange = (size: number) => {
 /* List Styling */
 .inventory-list {
   background: transparent;
+  position: relative;
+}
+
+/* Smooth transitions between skeleton and content */
+.inventory-list .inventory-item {
+  animation: fadeIn 0.4s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Skeleton Loading Cards */
+.skeleton-card {
+  background: rgba(255, 255, 255, 0.05) !important;
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
 }
 
 /* Individual Item Styling */
@@ -1084,11 +1259,14 @@ const handlePageSizeChange = (size: number) => {
   border-radius: 15px;
   border: 1px solid rgba(255, 255, 255, 0.15);
   margin-bottom: 12px;
-  transition: all 0.3s ease;
+  transition: all 0.3s ease, opacity 0.2s ease, transform 0.2s ease;
   padding: 20px;
   min-height: 80px;
   align-items: center;
+  opacity: 1;
+  transform: translateY(0);
 }
+
 
 .inventory-item:hover {
   background: rgba(255, 255, 255, 0.2);

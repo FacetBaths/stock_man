@@ -1,6 +1,6 @@
 {
   "name": "stock-manager",
-  "version": "2.0.5",
+  "version": "2.1.0",
   "description": "Full-stack inventory management system for Facet Renovations - Enhanced Architecture",
   "scripts": {
     "install": "npm install --prefix backend && npm install --prefix frontend",
