@@ -36,128 +36,66 @@ const availableTabs = computed(() => {
   return [{ value: 'all', label: 'All Tools' }, ...toolCategories]
 })
 
-// Since this page is tools-only, filter to show only tools and apply search/category filters
+// Use inventory data directly from store (server-side filtered)
 const filteredItems = computed(() => {
-  // Use inventory data from backend (Inventory model records)
-  let items = inventoryStore.inventory || []
-  
-  console.log('🔧 [Debug] Raw inventory items:', items.length)
-  if (items.length > 0) {
-    console.log('🔧 [Debug] Sample item:', items[0])
-  }
-
-  // STEP 1: Filter to only tool categories (since this is a tools-only page)
-  const toolCategoryIds = categoryStore.categories
-    .filter(cat => cat.type === 'tool' && cat.status === 'active')
-    .map(cat => cat._id)
-  
-  console.log('🔧 [Debug] Tool category IDs:', toolCategoryIds)
-  
-  items = items.filter(item => {
-    // Check if this inventory item's category is a tool category
-    const isToolCategory = toolCategoryIds.includes(item.category?._id) || 
-                         toolCategoryIds.includes(item.sku?.category_id)
-    if (isToolCategory) {
-      console.log('🔧 [Debug] Found tool:', item.sku?.name, 'category:', item.category?.name)
-    }
-    return isToolCategory
-  })
-  
-  console.log('🔧 [Debug] After tool filter:', items.length)
-
-  // STEP 2: Apply search filter (global search within tools)
-  if (searchQuery.value.trim()) {
-    const search = searchQuery.value.toLowerCase().trim()
-    console.log('🔍 [Debug] Applying search filter:', search)
-    
-    items = items.filter(item => {
-      // Search through SKU fields (populated from backend)
-      if (item.sku) {
-        const sku = item.sku
-        if (sku.sku_code?.toLowerCase().includes(search) || 
-            sku.name?.toLowerCase().includes(search) ||
-            sku.barcode?.toLowerCase().includes(search) ||
-            sku.brand?.toLowerCase().includes(search) ||
-            sku.model?.toLowerCase().includes(search) ||
-            sku.description?.toLowerCase().includes(search)) {
-          return true
-        }
-      }
-      
-      // Search through category name
-      if (item.category?.name?.toLowerCase().includes(search)) {
-        return true
-      }
-      
-      return false
-    })
-    
-    console.log('🔍 [Debug] After search filter:', items.length)
-  }
-
-  // STEP 3: Apply category tab filter (specific tool category)
-  if (!searchQuery.value.trim() && activeTab.value !== 'all') {
-    console.log('🏷️ [Debug] Applying category tab filter:', activeTab.value)
-    
-    items = items.filter(item => {
-      // Filter by category ID (from Inventory → SKU → Category relationship)
-      if (item.sku?.category_id === activeTab.value) {
-        return true
-      }
-      // If category is populated object
-      if (item.category?._id === activeTab.value) {
-        return true
-      }
-      return false
-    })
-    
-    console.log('🏷️ [Debug] After category filter:', items.length)
-  }
-
-  // STEP 4: Apply stock filter
-  if (showInStockOnly.value) {
-    items = items.filter(item => {
-      // Check available_quantity from Inventory model
-      return item.available_quantity > 0
-    })
-    
-    console.log('📦 [Debug] After stock filter:', items.length)
-  }
-
-  console.log('✅ [Debug] Final filtered items:', items.length)
-  return items
+  // Return items directly from store - filtering is now done server-side
+  return inventoryStore.inventory || []
 })
 
-const handleTabClick = (tab: string) => {
+const handleTabClick = async (tab: string) => {
+  console.log('🏷️ [Inventory] Tab changed to:', tab)
   activeTab.value = tab
+  // Reload with new category filter, reset to page 1
+  await loadInventory(1)
 }
 
-const handleSearch = () => {
-  loadItems()
+const handleSearch = async () => {
+  console.log('🔍 [Inventory] Search requested:', searchQuery.value)
+  // Reload with new search, reset to page 1  
+  await loadInventory(1)
 }
 
-const handleInStockToggle = () => {
-  loadItems()
+const handleInStockToggle = async () => {
+  console.log('📦 [Inventory] Stock filter toggled:', showInStockOnly.value)
+  // Reload with new stock filter, reset to page 1
+  await loadInventory(1)
 }
 
-// Load all inventory data - filtering is done client-side for tools
-const loadInventory = async () => {
+// Load inventory data with server-side filtering and pagination
+const loadInventory = async (pageOverride?: number, limitOverride?: number) => {
   try {
-    // Load all inventory data - include tools for tools inventory
     const params: any = {
-      status: showInStockOnly.value ? 'available' : 'all',
-      include_tools: 'true' // Include tools in inventory fetch
+      include_tools: 'true', // Include tools in inventory fetch for tools page
+      page: pageOverride || inventoryStore.pagination.current_page || 1,
+      limit: limitOverride || inventoryStore.pagination.items_per_page || 50,
+      sort_by: 'sku_code',
+      sort_order: 'asc'
     }
     
-    // Only add search if there's an actual user search query
+    // Add search filter
     if (searchQuery.value.trim()) {
       params.search = searchQuery.value.trim()
     }
     
-    console.log('🔄 [Debug] Loading inventory with params:', params)
+    // Add category filter if specific category tab is selected
+    if (activeTab.value !== 'all') {
+      params.category_id = activeTab.value
+    }
+    
+    // Add stock status filter
+    if (showInStockOnly.value) {
+      params.status = 'available' // This will filter to items with available_quantity > 0
+    }
+    
+    console.log('🔄 [Debug] Loading inventory with server-side params:', params)
     
     await inventoryStore.fetchInventory(params)
-    console.log('✅ [Debug] Inventory loaded, total items:', inventoryStore.inventory?.length || 0)
+    
+    console.log('✅ [Debug] Server-side inventory loaded:')
+    console.log('📊 [Debug] - Items returned:', inventoryStore.inventory?.length || 0)
+    console.log('📊 [Debug] - Total items:', inventoryStore.pagination.total_items)
+    console.log('📊 [Debug] - Total pages:', inventoryStore.pagination.total_pages)
+    console.log('📊 [Debug] - Current page:', inventoryStore.pagination.current_page)
   } catch (error) {
     console.error('❌ [Debug] Error loading inventory:', error)
     throw error
@@ -166,6 +104,19 @@ const loadInventory = async () => {
 
 // Alias for backward compatibility
 const loadItems = loadInventory
+
+// Pagination handlers
+const handlePageChange = async (page: number) => {
+  console.log('📄 [Inventory] Page change requested:', page)
+  // Update pagination state first, then reload
+  await loadInventory(page)
+}
+
+const handlePageSizeChange = async (size: number) => {
+  console.log('📐 [Inventory] Page size change requested:', size)
+  // Reset to page 1 when changing page size, then reload
+  await loadInventory(1, size)
+}
 
 const handleAddItem = () => {
   showAddModal.value = true
@@ -274,16 +225,6 @@ const handleQuickScanSuccess = () => {
   loadItems() // Refresh after batch processing
 }
 
-// Pagination handlers
-const handlePageChange = async (page: number) => {
-  console.log('📄 [Inventory] Page change requested:', page)
-  await loadInventory() // Reload with new page
-}
-
-const handlePageSizeChange = async (size: number) => {
-  console.log('📐 [Inventory] Page size change requested:', size)
-  await loadInventory() // Reload with new page size
-}
 
 // Initialize filters from route query parameters (tools-only page)
 const initializeFromRoute = () => {
