@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useInventoryStore } from '@/stores/inventory'
 import { formatCurrency } from '@/utils/currency'
@@ -18,6 +18,14 @@ interface Props {
     sort_by?: string
     sort_order?: 'asc' | 'desc'
   }
+  // Pagination props
+  pagination?: {
+    total_items: number
+    total_pages: number
+    current_page: number
+    items_per_page: number
+  }
+  loading?: boolean
 }
 
 const props = defineProps<Props>()
@@ -37,6 +45,8 @@ const items = computed(() => props.items || inventoryStore.inventory)
 const emit = defineEmits<{
   edit: [item: Inventory]
   delete: [item: Inventory]
+  'page-change': [page: number]
+  'page-size-change': [size: number]
 }>()
 
 // Expose a method to refresh data when filters change
@@ -61,6 +71,24 @@ defineExpose({ refreshInventory })
 // Dialog state for tag details
 const showTagDialog = ref(false)
 const selectedItem = ref<Inventory | null>(null)
+
+// Pagination state
+const currentPage = ref(1)
+const pageSize = ref(50)
+const pageSizeOptions = [25, 50, 100, 200]
+
+// Watch for changes to pagination prop to sync local state
+watch(() => props.pagination?.current_page, (newPage) => {
+  if (newPage && newPage !== currentPage.value) {
+    currentPage.value = newPage
+  }
+}, { immediate: true })
+
+watch(() => props.pagination?.items_per_page, (newSize) => {
+  if (newSize && newSize !== pageSize.value) {
+    pageSize.value = newSize
+  }
+}, { immediate: true })
 
 // Legacy function - no longer used with new inventory structure
 // Keeping for compatibility but not called anywhere
@@ -450,6 +478,23 @@ const handleTagStatusClick = (item: Inventory) => {
     showTagDialog.value = true
   }
 }
+
+// Pagination handlers
+const handlePageChange = (page: number) => {
+  if (page !== currentPage.value) {
+    currentPage.value = page
+    emit('page-change', page)
+  }
+}
+
+const handlePageSizeChange = (size: number) => {
+  if (size !== pageSize.value) {
+    pageSize.value = size
+    currentPage.value = 1 // Reset to first page when changing page size
+    emit('page-size-change', size)
+    emit('page-change', 1)
+  }
+}
 </script>
 
 <template>
@@ -692,10 +737,56 @@ const handleTagStatusClick = (item: Inventory) => {
                     {{ getAvailableQuantity(item) }} free
                   </div>
                 </div>
+      </div>
+      
+      <!-- Pagination Controls -->
+      <div v-if="props.pagination && props.pagination.total_pages > 1" class="pagination-section q-mt-md">
+        <q-card flat class="pagination-card">
+          <q-card-section class="pagination-content">
+            <div class="pagination-info">
+              <q-chip 
+                color="primary" 
+                text-color="white" 
+                size="sm"
+                icon="inventory"
+              >
+                {{ props.pagination.total_items }} items total
+              </q-chip>
+              <div class="text-caption text-grey-6 q-mt-xs">
+                Page {{ props.pagination.current_page }} of {{ props.pagination.total_pages }}
               </div>
             </div>
+            
+            <q-pagination
+              v-model="currentPage"
+              :max="props.pagination.total_pages"
+              :max-pages="7"
+              direction-links
+              boundary-links
+              color="primary"
+              :disable="props.loading"
+              @update:model-value="handlePageChange"
+              class="pagination-control"
+            />
+            
+            <div class="page-size-control">
+              <q-select
+                v-model="pageSize"
+                :options="pageSizeOptions"
+                label="Per page"
+                dense
+                outlined
+                :disable="props.loading"
+                @update:model-value="handlePageSizeChange"
+                style="min-width: 100px;"
+              />
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+    </div>
 
-            <!-- Tag Status Section -->
+    <!-- Tag Status Dialog -->
             <div class="item-section tag-section">
               <q-chip
                 :color="getPrimaryTagStatus(item).color"
@@ -1713,5 +1804,64 @@ const handleTagStatusClick = (item: Inventory) => {
 
 .tag-detail-section .q-chip {
   margin-bottom: 8px;
+}
+
+/* Pagination Styling */
+.pagination-section {
+  margin-top: 20px;
+}
+
+.pagination-card {
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 15px;
+}
+
+.pagination-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  padding: 16px 20px;
+}
+
+.pagination-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 140px;
+}
+
+.pagination-control {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+
+.page-size-control {
+  min-width: 100px;
+}
+
+/* Mobile Pagination */
+@media (max-width: 768px) {
+  .pagination-content {
+    flex-direction: column;
+    gap: 16px;
+    text-align: center;
+  }
+  
+  .pagination-info {
+    align-items: center;
+    width: 100%;
+  }
+  
+  .pagination-control {
+    width: 100%;
+  }
+  
+  .page-size-control {
+    width: 100%;
+  }
 }
 </style>

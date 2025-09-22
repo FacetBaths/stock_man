@@ -274,6 +274,17 @@ const handleQuickScanSuccess = () => {
   loadItems() // Refresh after batch processing
 }
 
+// Pagination handlers
+const handlePageChange = async (page: number) => {
+  console.log('📄 [Inventory] Page change requested:', page)
+  await loadInventory() // Reload with new page
+}
+
+const handlePageSizeChange = async (size: number) => {
+  console.log('📐 [Inventory] Page size change requested:', size)
+  await loadInventory() // Reload with new page size
+}
+
 // Initialize filters from route query parameters (tools-only page)
 const initializeFromRoute = () => {
   console.log('🔧 [Debug] Initializing tools inventory page')
@@ -482,8 +493,12 @@ watch([searchQuery, showInStockOnly], () => {
           :can-write="authStore.canWrite"
           :items="filteredItems"
           :filters="tableFilters"
+          :pagination="inventoryStore.pagination"
+          :loading="inventoryStore.isLoading"
           @edit="handleEditItem"
           @delete="handleDeleteItem"
+          @page-change="handlePageChange"
+          @page-size-change="handlePageSizeChange"
         />
       </div>
     </div>
