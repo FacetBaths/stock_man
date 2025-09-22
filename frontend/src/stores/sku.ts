@@ -443,7 +443,10 @@ export const useSKUStore = defineStore('sku', () => {
       sku.sku_code.toLowerCase().includes(searchTerm) ||
       sku.name.toLowerCase().includes(searchTerm) ||
       sku.description?.toLowerCase().includes(searchTerm) ||
-      sku.barcode?.toLowerCase().includes(searchTerm)
+      sku.brand?.toLowerCase().includes(searchTerm) ||
+      sku.model?.toLowerCase().includes(searchTerm) ||
+      sku.barcode?.toLowerCase().includes(searchTerm) ||
+      sku.supplier_info?.supplier_sku?.toLowerCase().includes(searchTerm)
     )
   }
 

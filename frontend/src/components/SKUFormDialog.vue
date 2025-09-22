@@ -1,6 +1,6 @@
 <template>
-  <q-dialog v-model="show" persistent position="top">
-    <q-card style="min-width: 700px; max-width: 900px" class="sku-form-dialog">
+  <q-dialog v-model="show" persistent position="top" maximized class="sku-form-dialog-container">
+    <q-card class="sku-form-dialog" style="min-width: 700px; max-width: 900px; max-height: 90vh; display: flex; flex-direction: column;">
       <q-card-section class="row items-center">
         <div class="text-h6">
           {{ isEditing ? 'Edit SKU' : 'Create New SKU' }}
@@ -11,8 +11,8 @@
 
       <q-separator />
 
-      <q-form @submit="onSubmit" @validation-error="onValidationError">
-        <q-card-section>
+      <q-form @submit="onSubmit" @validation-error="onValidationError" class="flex-1 flex flex-col">
+        <q-card-section class="flex-1" style="overflow-y: auto; max-height: calc(90vh - 140px);">
           <div class="row q-col-gutter-md">
             <!-- SKU Code -->
             <div class="col-12">
@@ -592,7 +592,7 @@
 
         <q-separator />
 
-        <q-card-actions align="right">
+        <q-card-actions align="right" class="q-pa-md" style="flex-shrink: 0;">
           <q-btn flat color="grey-7" @click="close">Cancel</q-btn>
           <q-btn 
             color="primary" 
@@ -761,17 +761,34 @@ const onBundleModeChange = (isBundle: boolean) => {
     }
     // Initialize with one bundle item
     if (form.value.bundle_items.length === 0) {
+      // Default to 'wall' if available, otherwise first available product type
+      const defaultProductType = form.value.product_type || 
+        (productTypeOptions.value.find(opt => opt.value === 'walls')?.value) ||
+        (productTypeOptions.value[0]?.value) ||
+        'wall'
+      
       form.value.bundle_items = [{
-        product_type: form.value.product_type,
+        product_type: defaultProductType,
         product_details: '',
         quantity: 1,
         description: ''
       }]
+      
+      // Initialize bundle item options and loading arrays
+      bundleItemProductOptions.value = [[]]
+      bundleItemLoading.value = [false]
+      
+      // Load products for the first bundle item
+      if (defaultProductType) {
+        loadBundleItemProducts(0, defaultProductType)
+      }
     }
     productMode.value = 'existing' // Bundle mode defaults to existing products
   } else {
-    // When switching from bundle mode, clear bundle items
+    // When switching from bundle mode, clear bundle items and their options
     form.value.bundle_items = []
+    bundleItemProductOptions.value = []
+    bundleItemLoading.value = []
   }
 }
 
@@ -801,9 +818,19 @@ const loadBundleItemProducts = async (index: number, productType: string) => {
   
   try {
     bundleItemLoading.value[index] = true
-    // Load existing SKUs of the specified product type for bundle items
+    
+    // Get the category ID for the selected product type (same logic as loadExistingSKUs)
+    const selectedCategory = productTypeOptions.value.find(opt => opt.value === productType)
+    
+    if (!selectedCategory || !selectedCategory.categoryId) {
+      console.error('No matching category found for product type:', productType)
+      bundleItemProductOptions.value[index] = []
+      return
+    }
+    
+    // Load existing SKUs filtered by the correct category ID
     const response = await skuApi.getSKUs({
-      search: productType,
+      category_id: selectedCategory.categoryId, // Use category ID instead of generic search
       status: 'active',
       limit: 100
     })
@@ -821,6 +848,8 @@ const loadBundleItemProducts = async (index: number, productType: string) => {
       type: 'negative',
       message: `Failed to load SKUs for ${productType}`
     })
+    // Initialize with empty array to avoid undefined
+    bundleItemProductOptions.value[index] = []
   } finally {
     bundleItemLoading.value[index] = false
   }
@@ -1015,6 +1044,36 @@ const onSubmit = async () => {
       return
     }
     
+    // Validation for bundle mode
+    if (form.value.is_bundle) {
+      if (!form.value.bundle_items || form.value.bundle_items.length === 0) {
+        $q.notify({
+          type: 'warning',
+          message: 'Bundle must have at least one component'
+        })
+        return
+      }
+      
+      // Validate each bundle item
+      for (let i = 0; i < form.value.bundle_items.length; i++) {
+        const item = form.value.bundle_items[i]
+        if (!item.product_details) {
+          $q.notify({
+            type: 'warning',
+            message: `Please select a product for bundle item ${i + 1}`
+          })
+          return
+        }
+        if (!item.quantity || item.quantity <= 0) {
+          $q.notify({
+            type: 'warning',
+            message: `Bundle item ${i + 1} must have a quantity greater than 0`
+          })
+          return
+        }
+      }
+    }
+    
     if (isEditing.value && props.sku) {
       // Update existing SKU - match backend API exactly from BACKEND_API_REFERENCE.md
       const updates: UpdateSKURequest = {
@@ -1078,6 +1137,16 @@ const onSubmit = async () => {
         updates.category_id = form.value.category_id
       }
       
+      // Handle bundle items if this is a bundle SKU
+      if (form.value.is_bundle && form.value.bundle_items.length > 0) {
+        updates.bundle_items = form.value.bundle_items.map(item => ({
+          sku_id: item.product_details, // product_details is the SKU ID selected from dropdown
+          quantity: item.quantity,
+          description: item.description || ''
+        }))
+        console.log('Bundle items to update:', updates.bundle_items)
+      }
+      
       console.log('Frontend: About to update SKU with data:', JSON.stringify(updates, null, 2))
       await skuStore.updateSKU(props.sku._id, updates)
       
@@ -1135,10 +1204,20 @@ const onSubmit = async () => {
       }
       
       if (form.value.is_bundle) {
-        // Bundle SKU: send bundle_items
-        skuData.bundle_items = form.value.bundle_items
-        // For bundle SKUs, we need a main product_details (first bundle item)
-        skuData.product_details = form.value.bundle_items[0]?.product_details
+        // Bundle SKU: Transform frontend bundle items to backend format
+        skuData.bundle_items = form.value.bundle_items.map(item => ({
+          sku_id: item.product_details, // product_details is the SKU ID selected from dropdown
+          quantity: item.quantity,
+          description: item.description || ''
+        }))
+        
+        // For bundle name generation, use first bundle item's name
+        const firstBundleItem = bundleItemProductOptions.value[0]?.find(opt => opt._id === form.value.bundle_items[0]?.product_details)
+        if (firstBundleItem) {
+          skuData.name = `Bundle: ${firstBundleItem.sku_code} + ${form.value.bundle_items.length - 1} more`
+        } else {
+          skuData.name = `Bundle (${form.value.bundle_items.length} items)`
+        }
       } else {
         // Regular SKU: send product_details or new_product
         if (productMode.value === 'existing') {
@@ -1286,7 +1365,7 @@ const initializeProductTypes = async () => {
   }
 }
 
-watch(() => props.modelValue, (newValue) => {
+watch(() => props.modelValue, async (newValue) => {
   console.log('🔄 SKUFormDialog modelValue changed to:', newValue)
   console.log('📋 props.sku:', props.sku)
   console.log('🔍 props.barcode:', props.barcode)
@@ -1333,7 +1412,7 @@ watch(() => props.modelValue, (newValue) => {
           ? props.sku.product_details 
           : (props.sku.product_details as any)?._id || '',
         is_bundle: props.sku.is_bundle || false,
-        bundle_items: props.sku.bundle_items || [],
+        bundle_items: [], // Will be populated below after transforming bundle items
         new_product: {
           product_line: '',
           color_name: '',
@@ -1366,19 +1445,64 @@ watch(() => props.modelValue, (newValue) => {
         finish: props.sku.details?.finish || ''
       }
       
-      // If editing a bundle, initialize bundle item options
-      if (props.sku.is_bundle && props.sku.bundle_items) {
+      // If editing a bundle, transform backend bundle items to frontend format
+      if (props.sku.is_bundle && props.sku.bundle_items && props.sku.bundle_items.length > 0) {
+        console.log('Initializing bundle editing mode with items:', props.sku.bundle_items)
+        
         bundleItemProductOptions.value = []
         bundleItemLoading.value = []
-        for (let i = 0; i < props.sku.bundle_items.length; i++) {
-          bundleItemProductOptions.value.push([])
-          bundleItemLoading.value.push(false)
-          // Load products for each bundle item
-          const item = props.sku.bundle_items[i]
-          if (item.product_type) {
-            loadBundleItemProducts(i, item.product_type)
-          }
-        }
+        
+        // Transform backend bundle items to frontend FormBundleItem format
+        const transformedBundleItems: FormBundleItem[] = await Promise.all(
+          props.sku.bundle_items.map(async (backendItem: any, index: number) => {
+            // Initialize arrays for this item
+            bundleItemProductOptions.value.push([])
+            bundleItemLoading.value.push(false)
+            
+            try {
+              // Fetch the SKU details to get the category info
+              const skuResponse = await skuApi.getSKU(backendItem.sku_id)
+              const bundledSku = skuResponse.sku
+              
+              // Determine product type from category
+              let productType = 'walls' // default fallback
+              if (bundledSku.category_id) {
+                if (typeof bundledSku.category_id === 'object' && bundledSku.category_id.name) {
+                  productType = bundledSku.category_id.name
+                } else {
+                  // Find category name by ID
+                  const category = [...categoryStore.productCategories, ...categoryStore.toolCategories].find(cat => cat._id === bundledSku.category_id)
+                  productType = category?.name || 'walls'
+                }
+              }
+              
+              console.log(`Bundle item ${index}: SKU ${bundledSku.sku_code} has product type: ${productType}`)
+              
+              // Load products for this item's category
+              await loadBundleItemProducts(index, productType)
+              
+              return {
+                product_type: productType,
+                product_details: backendItem.sku_id, // sku_id becomes product_details
+                quantity: backendItem.quantity,
+                description: backendItem.description || ''
+              }
+            } catch (error) {
+              console.error(`Failed to load bundle item ${index}:`, error)
+              // Return a fallback item
+              return {
+                product_type: 'walls',
+                product_details: backendItem.sku_id,
+                quantity: backendItem.quantity,
+                description: backendItem.description || ''
+              }
+            }
+          })
+        )
+        
+        // Set the transformed bundle items to the form
+        form.value.bundle_items = transformedBundleItems
+        console.log('Transformed bundle items for editing:', form.value.bundle_items)
       }
       
       productMode.value = 'existing'
@@ -1472,12 +1596,61 @@ watch(() => props.modelValue, (newValue) => {
 </script>
 
 <style scoped>
-/* Dialog positioning and dropdown fixes */
+/* Dialog positioning and scrollable fixes */
+.sku-form-dialog-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
 .sku-form-dialog {
   position: relative;
   z-index: 6000;
+  margin: auto;
+  width: 100%;
   /* Ensure the dialog card doesn't interfere with dropdowns */
   overflow: visible;
+}
+
+/* Scrollable content area */
+.sku-form-dialog .q-card-section {
+  scroll-behavior: smooth;
+}
+
+.sku-form-dialog .q-card-section::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sku-form-dialog .q-card-section::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.sku-form-dialog .q-card-section::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.sku-form-dialog .q-card-section::-webkit-scrollbar-thumb:hover {
+  background: #a1a1a1;
+}
+
+@media (max-width: 768px) {
+  .sku-form-dialog-container {
+    padding: 0.5rem;
+  }
+  
+  .sku-form-dialog {
+    min-width: auto !important;
+    max-width: 100% !important;
+    height: 95vh !important;
+    max-height: 95vh !important;
+  }
+  
+  .sku-form-dialog .q-card-section {
+    max-height: calc(95vh - 120px) !important;
+  }
 }
 
 /* Ensure dropdowns appear correctly within the dialog */

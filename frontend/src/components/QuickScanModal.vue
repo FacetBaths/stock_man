@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, nextTick } from 'vue'
 import { barcodeApi, inventoryApi, instancesApi, skuApi } from '@/utils/api'
 import type { SKU } from '@/types'
 import AddItemModal from './AddItemModal.vue'
@@ -18,6 +18,7 @@ interface ScannedItem {
 }
 
 const barcodeInput = ref('')
+const barcodeInputRef = ref<HTMLInputElement | null>(null)
 const scannedItems = ref<ScannedItem[]>([])
 const isLoading = ref(false)
 const isProcessing = ref(false)
@@ -27,6 +28,12 @@ const error = ref<string | null>(null)
 // Add Item Modal state for creating SKUs
 const showAddItemModal = ref(false)
 const selectedBarcodeForSKU = ref('')
+
+// Focus management
+const focusInput = async () => {
+  await nextTick()
+  barcodeInputRef.value?.focus()
+}
 
 const canScan = computed(() => barcodeInput.value.trim().length > 0)
 const foundItems = computed(() => scannedItems.value.filter(item => item.found))
@@ -45,12 +52,14 @@ const handleScan = async () => {
     if (existingItem.found) {
       existingItem.quantity += 1
       barcodeInput.value = ''
+      focusInput()
       return
     }
     
     error.value = 'Barcode already scanned'
     setTimeout(() => { error.value = null }, 3000)
     barcodeInput.value = ''
+    focusInput()
     return
   }
 
@@ -72,12 +81,15 @@ const handleScan = async () => {
     
     scannedItems.value.unshift(newItem)
     
-    // Clear input for next scan
+    // Clear input for next scan and refocus
     barcodeInput.value = ''
+    focusInput()
     
   } catch (err: any) {
     error.value = err.response?.data?.message || 'Failed to scan barcode'
     console.error('Scan error:', err)
+    // Refocus even on error
+    focusInput()
   } finally {
     isLoading.value = false
   }

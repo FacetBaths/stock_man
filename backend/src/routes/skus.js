@@ -282,8 +282,10 @@ router.get('/',
           { sku_code: searchRegex },
           { name: searchRegex },
           { description: searchRegex },
-          { manufacturer_model: searchRegex },
-          { barcode: searchRegex }
+          { brand: searchRegex },
+          { model: searchRegex },
+          { barcode: searchRegex },
+          { 'supplier_info.supplier_sku': searchRegex }
         ];
       }
 

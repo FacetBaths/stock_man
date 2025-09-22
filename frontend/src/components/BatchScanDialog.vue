@@ -243,6 +243,7 @@ import { useQuasar } from 'quasar'
 import { useSKUStore } from '@/stores/sku'
 import { useTagStore } from '@/stores/tag'
 import { PRODUCT_TYPES, type SKU } from '@/types'
+import { barcodeApi, instancesApi } from '@/utils/api'
 import SKUFormDialog from './SKUFormDialog.vue'
 
 const props = defineProps<{
@@ -364,16 +365,20 @@ const addBarcode = async () => {
 
 const lookupSKU = async (scanItem: ScanItem) => {
   try {
-    const sku = await skuStore.findSKUByBarcode(scanItem.barcode)
-    if (sku) {
-      scanItem.sku = sku
+    // Use the existing batch scan API that we know works
+    const response = await barcodeApi.batchScan({ barcodes: [scanItem.barcode] })
+    const foundItem = response.found?.find((item: any) => item.barcode === scanItem.barcode)
+    
+    if (foundItem?.sku) {
+      scanItem.sku = foundItem.sku
       scanItem.status = 'found'
     } else {
       scanItem.status = 'not_found'
     }
   } catch (error: any) {
+    console.error('Error looking up barcode:', error)
     scanItem.status = 'error'
-    scanItem.error = error.message
+    scanItem.error = error.message || 'Failed to lookup barcode'
   }
 }
 
@@ -433,74 +438,75 @@ const processAllScans = async () => {
       return
     }
 
-    // Aggregate quantities for each barcode from scanned items
-    const barcodeQuantities: Record<string, number> = {}
-    scannedItems.value.forEach(item => {
-      if (item.status === 'found') {
-        barcodeQuantities[item.barcode] = (barcodeQuantities[item.barcode] || 0) + 1
+    // Group found items by SKU and aggregate quantities
+    const skuGroups: Record<string, { sku: SKU, quantity: number, barcodes: string[] }> = {}
+    
+    foundItems.forEach(item => {
+      if (item.sku) {
+        const skuId = item.sku._id
+        if (!skuGroups[skuId]) {
+          skuGroups[skuId] = {
+            sku: item.sku,
+            quantity: 0,
+            barcodes: []
+          }
+        }
+        skuGroups[skuId].quantity += 1
+        skuGroups[skuId].barcodes.push(item.barcode)
       }
     })
 
-    // Create scanned items array with quantities for the API
-    const scannedItemsForAPI = foundItems.map(item => ({
-      barcode: item.barcode,
-      quantity: barcodeQuantities[item.barcode] || 1
-    }))
+    let processedCount = 0
+    let failedCount = 0
+    const results: any[] = []
 
-    // Remove duplicates by grouping by barcode
-    const uniqueScannedItems = Object.entries(barcodeQuantities).map(([barcode, quantity]) => ({
-      barcode,
-      quantity
-    }))
+    // Process each SKU group separately using instancesApi
+    for (const [skuId, group] of Object.entries(skuGroups)) {
+      try {
+        const stockData = {
+          sku_id: skuId,
+          quantity: group.quantity,
+          acquisition_cost: group.sku.unit_cost || 0,
+          location: 'HQ',
+          supplier: '',
+          reference_number: `Batch scan: ${group.barcodes.join(', ')}`,
+          notes: `Added from batch scan - Barcodes: ${group.barcodes.join(', ')}`
+        }
 
-    // Call the inventory update endpoint
-    const response = await fetch('/api/barcode/update-inventory', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      },
-      body: JSON.stringify({
-        scanned_items: uniqueScannedItems,
-        location: '',
-        notes: 'Updated from batch scan'
+        const result = await instancesApi.addStock(stockData)
+        results.push({ sku: group.sku, success: true, result })
+        processedCount += 1
+      } catch (error: any) {
+        console.error(`Failed to add stock for SKU ${group.sku.sku_code}:`, error)
+        results.push({ sku: group.sku, success: false, error: error.message })
+        failedCount += 1
+      }
+    }
+
+    // Show success/failure notification
+    if (failedCount === 0) {
+      $q.notify({
+        type: 'positive',
+        message: `Successfully processed ${processedCount} SKUs from batch scan`,
+        timeout: 5000
       })
-    })
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
+    } else {
+      $q.notify({
+        type: 'warning',
+        message: `Processed ${processedCount} SKUs successfully, ${failedCount} failed`,
+        timeout: 5000
+      })
     }
-
-    const results = await response.json()
-    
-    // Show detailed success notification
-    const { summary } = results
-    let message = ''
-    if (summary.updated > 0) {
-      message += `Updated ${summary.updated} existing items. `
-    }
-    if (summary.created > 0) {
-      message += `Created ${summary.created} new items. `
-    }
-    if (summary.failed > 0) {
-      message += `Failed to process ${summary.failed} items.`
-    }
-
-    $q.notify({
-      type: summary.failed === 0 ? 'positive' : 'warning',
-      message: message.trim() || `Processed ${foundItems.length} SKUs successfully`,
-      timeout: 5000
-    })
 
     // Log detailed results for debugging
-    console.log('Inventory update results:', results)
+    console.log('Batch scan processing results:', results)
 
     emit('processed')
   } catch (error: any) {
     console.error('Error processing scans:', error)
     $q.notify({
       type: 'negative',
-      message: error.message || 'Failed to update inventory from scanned items'
+      message: error.message || 'Failed to process batch scan items'
     })
   } finally {
     processing.value = false
