@@ -1033,6 +1033,9 @@ router.post('/:id/cancel',
       tag.cancel(req.user.username, req.body.reason);
       await tag.save();
 
+      // 🚨 FIX: Release all instances by setting tag_id to null
+      await tag.releaseInstances();
+
       // Release inventory reservations
       await updateInventoryForTag(tag.sku_items, tag.tag_type, 'release');
 
@@ -1073,8 +1076,224 @@ router.post('/:id/cancel',
   }
 );
 
+// PUT /api/tags/:id/items/add - Add items to existing tag
+router.put('/:id/items/add', 
+  auth,
+  requireWriteAccess,
+  [
+    param('id').isMongoId().withMessage('Invalid tag ID'),
+    body('items').isArray({ min: 1 }).withMessage('Items array is required'),
+    body('items.*.sku_id').isMongoId().withMessage('Valid SKU ID is required'),
+    body('items.*.quantity').isInt({ min: 1 }).withMessage('Quantity must be positive integer'),
+    body('items.*.selection_method').optional().isIn(['auto', 'manual', 'fifo', 'cost_based']),
+    body('items.*.notes').optional().isLength({ max: 500 })
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ 
+          message: 'Validation failed', 
+          errors: errors.array() 
+        });
+      }
+
+      const tag = await Tag.findById(req.params.id);
+      if (!tag) {
+        return res.status(404).json({ message: 'Tag not found' });
+      }
+
+      if (tag.status !== 'active') {
+        return res.status(400).json({ message: 'Can only edit active tags' });
+      }
+
+      // Add items to the tag
+      await tag.addItems(req.body.items, req.user.username);
+      await tag.save();
+
+      // Update inventory to reflect the new reservations
+      const inventoryUpdates = await updateInventoryForTag(
+        req.body.items, 
+        tag.tag_type, 
+        'reserve'
+      );
+
+      await tag.populate({
+        path: 'sku_items.sku_id',
+        populate: { path: 'category_id' }
+      });
+
+      const tagObj = tag.toObject();
+      tagObj.total_quantity = tag.getTotalQuantity();
+      tagObj.remaining_quantity = tag.getTotalRemainingQuantity();
+      tagObj.inventory_updates = inventoryUpdates;
+
+      res.json({
+        message: 'Items added to tag successfully',
+        tag: tagObj
+      });
+
+    } catch (error) {
+      console.error('Add items to tag error:', error);
+      res.status(500).json({ 
+        message: 'Failed to add items to tag', 
+        error: error.message 
+      });
+    }
+  }
+);
+
+// PUT /api/tags/:id/items/remove - Remove items from existing tag
+router.put('/:id/items/remove', 
+  auth,
+  requireWriteAccess,
+  [
+    param('id').isMongoId().withMessage('Invalid tag ID'),
+    body('items').isArray({ min: 1 }).withMessage('Items array is required'),
+    body('items.*.sku_id').isMongoId().withMessage('Valid SKU ID is required'),
+    body('items.*.quantity').isInt({ min: 1 }).withMessage('Quantity must be positive integer')
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ 
+          message: 'Validation failed', 
+          errors: errors.array() 
+        });
+      }
+
+      const tag = await Tag.findById(req.params.id);
+      if (!tag) {
+        return res.status(404).json({ message: 'Tag not found' });
+      }
+
+      if (tag.status !== 'active') {
+        return res.status(400).json({ message: 'Can only edit active tags' });
+      }
+
+      // Remove items from the tag
+      await tag.removeItems(req.body.items, req.user.username);
+      await tag.save();
+
+      // Update inventory to reflect the released reservations
+      const inventoryUpdates = await updateInventoryForTag(
+        req.body.items, 
+        tag.tag_type, 
+        'release'
+      );
+
+      await tag.populate({
+        path: 'sku_items.sku_id',
+        populate: { path: 'category_id' }
+      });
+
+      const tagObj = tag.toObject();
+      tagObj.total_quantity = tag.getTotalQuantity();
+      tagObj.remaining_quantity = tag.getTotalRemainingQuantity();
+      tagObj.inventory_updates = inventoryUpdates;
+
+      res.json({
+        message: 'Items removed from tag successfully',
+        tag: tagObj
+      });
+
+    } catch (error) {
+      console.error('Remove items from tag error:', error);
+      res.status(500).json({ 
+        message: 'Failed to remove items from tag', 
+        error: error.message 
+      });
+    }
+  }
+);
+
+// PUT /api/tags/:id/items/adjust - Adjust quantities of items in existing tag
+router.put('/:id/items/adjust', 
+  auth,
+  requireWriteAccess,
+  [
+    param('id').isMongoId().withMessage('Invalid tag ID'),
+    body('adjustments').isArray({ min: 1 }).withMessage('Adjustments array is required'),
+    body('adjustments.*.sku_id').isMongoId().withMessage('Valid SKU ID is required'),
+    body('adjustments.*.new_quantity').isInt({ min: 0 }).withMessage('New quantity must be non-negative integer')
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ 
+          message: 'Validation failed', 
+          errors: errors.array() 
+        });
+      }
+
+      const tag = await Tag.findById(req.params.id);
+      if (!tag) {
+        return res.status(404).json({ message: 'Tag not found' });
+      }
+
+      if (tag.status !== 'active') {
+        return res.status(400).json({ message: 'Can only edit active tags' });
+      }
+
+      // Calculate which items need inventory updates for reservation/release
+      const inventoryAdjustments = req.body.adjustments.map(adj => {
+        const existingItem = tag.sku_items.find(item => 
+          item.sku_id.toString() === adj.sku_id.toString()
+        );
+        const currentQuantity = existingItem ? existingItem.selected_instance_ids.length : 0;
+        const difference = adj.new_quantity - currentQuantity;
+        
+        return {
+          sku_id: adj.sku_id,
+          quantity: Math.abs(difference),
+          operation: difference > 0 ? 'reserve' : 'release'
+        };
+      }).filter(adj => adj.quantity > 0);
+
+      // Adjust quantities in the tag
+      await tag.adjustItemQuantities(req.body.adjustments, req.user.username);
+      await tag.save();
+
+      // Update inventory for each adjustment
+      const inventoryResults = [];
+      for (const adj of inventoryAdjustments) {
+        const updates = await updateInventoryForTag(
+          [{ sku_id: adj.sku_id, quantity: adj.quantity }], 
+          tag.tag_type, 
+          adj.operation
+        );
+        inventoryResults.push(...updates);
+      }
+
+      await tag.populate({
+        path: 'sku_items.sku_id',
+        populate: { path: 'category_id' }
+      });
+
+      const tagObj = tag.toObject();
+      tagObj.total_quantity = tag.getTotalQuantity();
+      tagObj.remaining_quantity = tag.getTotalRemainingQuantity();
+      tagObj.inventory_updates = inventoryResults;
+
+      res.json({
+        message: 'Tag quantities adjusted successfully',
+        tag: tagObj
+      });
+
+    } catch (error) {
+      console.error('Adjust tag quantities error:', error);
+      res.status(500).json({ 
+        message: 'Failed to adjust tag quantities', 
+        error: error.message 
+      });
+    }
+  }
+);
+
 // DELETE /api/tags/:id - Delete a tag (only if not started)
-router.delete('/:id', 
+router.delete('/:id',
   auth,
   requireWriteAccess,
   [
@@ -1106,6 +1325,9 @@ router.delete('/:id',
       if (tag.status === 'active') {
         await updateInventoryForTag(tag.sku_items, tag.tag_type, 'release');
       }
+
+      // 🚨 FIX: Release all instances by setting tag_id to null
+      await tag.releaseInstances();
 
       await Tag.findByIdAndDelete(req.params.id);
 

@@ -8,6 +8,7 @@ import type { Tag } from "@/types";
 import { TAG_TYPES } from "@/types";
 import CreateTagModal from "@/components/CreateTagModal.vue";
 import EditTagModal from "@/components/EditTagModal.vue";
+import EditTagItemsModal from "@/components/EditTagItemsModal.vue";
 import FulfillTagsDialog from "@/components/FulfillTagsDialog.vue";
 import StatsCarousel from "@/components/StatsCarousel.vue";
 import { useQuasar } from "quasar";
@@ -20,7 +21,9 @@ const $q = useQuasar();
 // Local state for modals
 const showCreateModal = ref(false);
 const showEditModal = ref(false);
+const showEditItemsModal = ref(false);
 const tagToEdit = ref<Tag | null>(null);
+const tagToEditItems = ref<Tag | null>(null);
 const showFulfillDialog = ref(false);
 const selectedTags = ref<Tag[]>([]);
 
@@ -157,6 +160,45 @@ const handleCreateSuccess = async () => {
 const handleEditSuccess = async () => {
   showEditModal.value = false;
   tagToEdit.value = null;
+  await Promise.all([loadTags(), loadStats()]);
+};
+
+const handleEditItems = async (tag: Tag) => {
+  try {
+    console.log("Opening edit items modal for tag:", tag);
+
+    // Fetch the tag with populated items to ensure we have all the details
+    const fullTag = await tagStore.fetchTag(tag._id, true);
+
+    console.log("Full tag data received for items editing:", fullTag);
+
+    // Validate that we have the tag data
+    if (!fullTag) {
+      throw new Error("Tag data not found");
+    }
+
+    tagToEditItems.value = fullTag;
+    showEditItemsModal.value = true;
+  } catch (err) {
+    console.error("Edit tag items error:", err);
+    $q.notify({
+      type: "negative",
+      message: `Failed to load tag details: ${err.message}`,
+      timeout: 3000,
+    });
+
+    // Fallback: Use the existing tag data if fetch fails
+    if (tag && tag._id) {
+      console.log("Using fallback tag data for items editing:", tag);
+      tagToEditItems.value = tag;
+      showEditItemsModal.value = true;
+    }
+  }
+};
+
+const handleEditItemsSuccess = async () => {
+  showEditItemsModal.value = false;
+  tagToEditItems.value = null;
   await Promise.all([loadTags(), loadStats()]);
 };
 
@@ -605,6 +647,18 @@ const tableColumns = [
                         <q-tooltip>Edit Tag</q-tooltip>
                       </q-btn>
                       <q-btn
+                        v-if="authStore.canWrite && tag.status === 'active'"
+                        @click="handleEditItems(tag)"
+                        color="secondary"
+                        icon="edit_note"
+                        size="sm"
+                        round
+                        flat
+                        dense
+                      >
+                        <q-tooltip>Edit Items</q-tooltip>
+                      </q-btn>
+                      <q-btn
                         v-if="authStore.canWrite"
                         @click="handleDeleteTag(tag)"
                         color="negative"
@@ -742,6 +796,14 @@ const tableColumns = [
       :tag="tagToEdit"
       @close="showEditModal = false"
       @success="handleEditSuccess"
+    />
+
+    <!-- Edit Tag Items Modal -->
+    <EditTagItemsModal
+      v-if="showEditItemsModal && tagToEditItems"
+      :tag="tagToEditItems"
+      @close="showEditItemsModal = false"
+      @success="handleEditItemsSuccess"
     />
 
     <!-- Fulfill Tags Dialog -->

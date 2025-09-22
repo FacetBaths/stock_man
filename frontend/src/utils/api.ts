@@ -784,6 +784,34 @@ export const tagApi = {
   getCustomers: async () => {
     const response = await api.get('/tags/customers')
     return response.data
+  },
+
+  // Add items to existing tag
+  addTagItems: async (id: string, items: Array<{
+    sku_id: string
+    quantity: number
+    notes?: string
+  }>): Promise<{ message: string; tag: Tag }> => {
+    const response = await api.put(`/tags/${id}/items/add`, { items })
+    return response.data
+  },
+
+  // Remove items from existing tag
+  removeTagItems: async (id: string, items: Array<{
+    sku_id: string
+    quantity: number
+  }>): Promise<{ message: string; tag: Tag }> => {
+    const response = await api.put(`/tags/${id}/items/remove`, { items })
+    return response.data
+  },
+
+  // Adjust quantities of items in existing tag
+  adjustTagQuantities: async (id: string, adjustments: Array<{
+    sku_id: string
+    new_quantity: number
+  }>): Promise<{ message: string; tag: Tag }> => {
+    const response = await api.put(`/tags/${id}/items/adjust`, { adjustments })
+    return response.data
   }
 }
 

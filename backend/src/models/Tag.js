@@ -386,4 +386,194 @@ tagSchema.index({ customer_name: 'text', project_name: 'text', notes: 'text' });
 tagSchema.index({ customer_name: 1, tag_type: 1, status: 1 });
 tagSchema.index({ tag_type: 1, status: 1, due_date: 1 });
 
+// Method to release all instances associated with this tag (set tag_id to null)
+tagSchema.methods.releaseInstances = async function() {
+  const Instance = mongoose.model('Instance');
+  // Prefer targeted release using selected_instance_ids, but also fallback to tag_id sweep
+  const allSelectedIds = this.sku_items
+    .flatMap(item => (item.selected_instance_ids || []))
+    .filter(Boolean);
+
+  if (allSelectedIds.length > 0) {
+    await Instance.updateMany(
+      { _id: { $in: allSelectedIds } },
+      { $set: { tag_id: null } }
+    );
+  }
+
+  // Also release any instances that still point to this tag (legacy/consistency)
+  await Instance.updateMany(
+    { tag_id: this._id },
+    { $set: { tag_id: null } }
+  );
+
+  return this;
+};
+
+// Method to add items to existing tag
+tagSchema.methods.addItems = async function(newItems, updatedBy) {
+  const Instance = mongoose.model('Instance');
+  
+  for (const newItem of newItems) {
+    const { sku_id, quantity, selection_method = 'auto' } = newItem;
+    
+    // Check if SKU already exists in the tag
+    let existingItem = this.sku_items.find(item => 
+      item.sku_id.toString() === sku_id.toString()
+    );
+    
+    if (existingItem) {
+      // Add to existing item - find additional instances
+      const additionalInstances = await Instance.find({ 
+        sku_id: sku_id, 
+        tag_id: null 
+      })
+      .sort({ acquisition_date: 1 })
+      .limit(quantity);
+      
+      if (additionalInstances.length < quantity) {
+        throw new Error(`Not enough available instances for SKU ${sku_id}. Need ${quantity}, found ${additionalInstances.length}`);
+      }
+      
+      // Assign instances to this tag
+      const instanceIds = additionalInstances.map(inst => inst._id);
+      await Instance.updateMany(
+        { _id: { $in: instanceIds } },
+        { tag_id: this._id }
+      );
+      
+      // Add to existing item's selected_instance_ids
+      existingItem.selected_instance_ids.push(...instanceIds);
+      existingItem.quantity = existingItem.selected_instance_ids.length;
+      existingItem.remaining_quantity = existingItem.quantity;
+      
+    } else {
+      // Create new item
+      const availableInstances = await Instance.find({ 
+        sku_id: sku_id, 
+        tag_id: null 
+      })
+      .sort({ acquisition_date: 1 })
+      .limit(quantity);
+      
+      if (availableInstances.length < quantity) {
+        throw new Error(`Not enough available instances for SKU ${sku_id}. Need ${quantity}, found ${availableInstances.length}`);
+      }
+      
+      // Assign instances to this tag
+      const instanceIds = availableInstances.map(inst => inst._id);
+      await Instance.updateMany(
+        { _id: { $in: instanceIds } },
+        { tag_id: this._id }
+      );
+      
+      // Add new item to tag
+      this.sku_items.push({
+        sku_id: sku_id,
+        selected_instance_ids: instanceIds,
+        selection_method: selection_method,
+        quantity: quantity,
+        remaining_quantity: quantity,
+        notes: newItem.notes || ''
+      });
+    }
+  }
+  
+  this.last_updated_by = updatedBy;
+  return this;
+};
+
+// Method to remove items from existing tag
+tagSchema.methods.removeItems = async function(itemsToRemove, updatedBy) {
+  const Instance = mongoose.model('Instance');
+  
+  for (const removalItem of itemsToRemove) {
+    const { sku_id, quantity } = removalItem;
+    
+    const existingItem = this.sku_items.find(item => 
+      item.sku_id.toString() === sku_id.toString()
+    );
+    
+    if (!existingItem) {
+      throw new Error(`SKU ${sku_id} not found in this tag`);
+    }
+    
+    const currentQuantity = existingItem.selected_instance_ids.length;
+    if (quantity > currentQuantity) {
+      throw new Error(`Cannot remove ${quantity} items. Only ${currentQuantity} available.`);
+    }
+    
+    if (quantity === currentQuantity) {
+      // Remove entire item
+      await Instance.updateMany(
+        { _id: { $in: existingItem.selected_instance_ids } },
+        { $set: { tag_id: null } }
+      );
+      
+      // Remove from sku_items array
+      this.sku_items = this.sku_items.filter(item => 
+        item.sku_id.toString() !== sku_id.toString()
+      );
+      
+    } else {
+      // Partial removal - release some instances (FIFO)
+      const instancesToRelease = await Instance.find({ 
+        _id: { $in: existingItem.selected_instance_ids }
+      })
+      .sort({ acquisition_date: 1 })
+      .limit(quantity);
+      
+      const releaseIds = instancesToRelease.map(inst => inst._id);
+      
+      // Release instances
+      await Instance.updateMany(
+        { _id: { $in: releaseIds } },
+        { $set: { tag_id: null } }
+      );
+      
+      // Update selected_instance_ids
+      existingItem.selected_instance_ids = existingItem.selected_instance_ids.filter(
+        id => !releaseIds.some(releaseId => releaseId.toString() === id.toString())
+      );
+      
+      existingItem.quantity = existingItem.selected_instance_ids.length;
+      existingItem.remaining_quantity = existingItem.quantity;
+    }
+  }
+  
+  this.last_updated_by = updatedBy;
+  return this;
+};
+
+// Method to adjust quantities in existing tag
+tagSchema.methods.adjustItemQuantities = async function(adjustments, updatedBy) {
+  for (const adjustment of adjustments) {
+    const { sku_id, new_quantity } = adjustment;
+    
+    const existingItem = this.sku_items.find(item => 
+      item.sku_id.toString() === sku_id.toString()
+    );
+    
+    if (!existingItem) {
+      throw new Error(`SKU ${sku_id} not found in this tag`);
+    }
+    
+    const currentQuantity = existingItem.selected_instance_ids.length;
+    
+    if (new_quantity > currentQuantity) {
+      // Need to add more instances
+      const additionalQuantity = new_quantity - currentQuantity;
+      await this.addItems([{ sku_id, quantity: additionalQuantity }], updatedBy);
+      
+    } else if (new_quantity < currentQuantity) {
+      // Need to remove instances
+      const removalQuantity = currentQuantity - new_quantity;
+      await this.removeItems([{ sku_id, quantity: removalQuantity }], updatedBy);
+    }
+    // If new_quantity === currentQuantity, no change needed
+  }
+  
+  return this;
+};
+
 module.exports = mongoose.model('Tag', tagSchema);
