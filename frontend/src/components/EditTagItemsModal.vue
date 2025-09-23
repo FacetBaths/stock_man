@@ -36,14 +36,22 @@ const skuSearch = ref('')
 
 // Computed properties
 const filteredSKUs = computed(() => {
-  if (!skuSearch.value.trim()) return availableSKUs.value.slice(0, 20)
+  const search = skuSearch.value.trim().toLowerCase()
   
-  const search = skuSearch.value.toLowerCase()
-  return availableSKUs.value.filter(sku => 
+  if (!search) {
+    // When no search, show first 50 SKUs for better performance
+    return availableSKUs.value.slice(0, 50)
+  }
+  
+  // When searching, show all matching results (up to 100 for performance)
+  const filtered = availableSKUs.value.filter(sku => 
     sku.sku_code.toLowerCase().includes(search) ||
     sku.name?.toLowerCase().includes(search) ||
-    sku.description?.toLowerCase().includes(search)
-  ).slice(0, 20)
+    sku.description?.toLowerCase().includes(search) ||
+    sku.brand?.toLowerCase().includes(search)
+  )
+  
+  return filtered.slice(0, 100)
 })
 
 const getSkuDisplayName = (sku: SKU) => {
@@ -73,8 +81,14 @@ const initializeRemoveItems = () => {
 const loadAvailableSKUs = async () => {
   try {
     isLoading.value = true
-    await skuStore.fetchSKUs({ include_inventory: false })
+    // Load ALL SKUs by setting a high limit - we need access to all SKUs for tag editing
+    await skuStore.fetchSKUs({ 
+      include_inventory: false,
+      limit: 1000, // High limit to get all SKUs
+      status: 'active' // Only load active SKUs for selection
+    })
     availableSKUs.value = skuStore.skus || []
+    console.log(`Loaded ${availableSKUs.value.length} SKUs for tag editing`)
   } catch (err) {
     console.error('Failed to load SKUs:', err)
     error.value = 'Failed to load available SKUs'
@@ -254,9 +268,13 @@ const handleClose = () => {
   emit('close')
 }
 
-// Watch for tab changes to reset error
+// Watch for tab changes to reset error and clear search
 watch(activeTab, () => {
   error.value = null
+  // Clear search when switching away from add tab to avoid confusion
+  if (activeTab.value !== 'add') {
+    skuSearch.value = ''
+  }
 })
 
 onMounted(() => {
@@ -362,8 +380,17 @@ onMounted(() => {
                   v-model="skuSearch"
                   type="text"
                   class="form-control"
-                  placeholder="Search by SKU code, name, or description..."
+                  placeholder="Search by SKU code, name, description, or brand..."
                 />
+                <div class="search-results-info">
+                  <span v-if="skuSearch.trim()">
+                    Found {{ filteredSKUs.length }} SKU{{ filteredSKUs.length === 1 ? '' : 's' }}
+                    {{ filteredSKUs.length === 100 ? '(showing first 100)' : '' }}
+                  </span>
+                  <span v-else>
+                    Showing {{ Math.min(availableSKUs.length, 50) }} of {{ availableSKUs.length }} SKUs
+                  </span>
+                </div>
               </div>
 
               <div class="items-to-add">
@@ -654,6 +681,13 @@ onMounted(() => {
   display: block;
   margin-bottom: 0.5rem;
   font-weight: 500;
+}
+
+.search-results-info {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: #6c757d;
+  font-style: italic;
 }
 
 .items-to-add {
