@@ -81,15 +81,8 @@ const columns = [
     sortable: true
   },
   {
-    name: 'totalQuantity',
-    label: 'Total Quantity',
-    field: (row: any) => row.inventory?.total_quantity || 0,
-    align: 'right',
-    sortable: true
-  },
-  {
     name: 'quantity_controls',
-    label: 'Quick Adjust',
+    label: 'Available Inventory',
     field: '',
     align: 'center',
     sortable: false
@@ -977,11 +970,6 @@ onMounted(async () => {
                   />
                 </div>
                 
-                <!-- Total Quantity -->
-                <div class="col-6">
-                  <div class="detail-label">Total Quantity</div>
-                  <div class="detail-value">{{ sku.inventory?.total_quantity || 0 }}</div>
-                </div>
               </div>
               
               <!-- Barcode (if available) -->
@@ -1220,16 +1208,6 @@ onMounted(async () => {
           </q-td>
         </template>
 
-        <template v-slot:body-cell-totalQuantity="props">
-          <q-td :props="props">
-            <div class="text-weight-medium">{{ props.value || 0 }}</div>
-            <div v-if="props.row.itemCount" class="text-caption text-grey-6">
-              {{ props.row.itemCount }} item{{
-                props.row.itemCount !== 1 ? "s" : ""
-              }}
-            </div>
-          </q-td>
-        </template>
 
         <template v-slot:body-cell-quantity_controls="props">
           <q-td :props="props">
