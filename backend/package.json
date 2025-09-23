@@ -1,6 +1,6 @@
 {
   "name": "stock-manager-backend",
-  "version": "2.1.0",
+  "version": "2.1.2",
   "description": "Stock Manager - Professional inventory management system backend API for Facet Renovations",
   "main": "src/server.js",
   "scripts": {

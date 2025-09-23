@@ -90,7 +90,7 @@ const loadAvailableSKUs = async () => {
     try {
       await skuStore.fetchSKUs({ 
         include_inventory: false,
-        limit: 500, // Reduced limit for better reliability
+        limit: 1000, // Increased limit to ensure we get all SKUs
         status: 'active'
       })
       availableSKUs.value = skuStore.skus || []
@@ -99,11 +99,11 @@ const loadAvailableSKUs = async () => {
     } catch (err1) {
       console.warn('Strategy 1 failed:', err1)
       
-      // Strategy 2: Try without status filter but with limit
+      // Strategy 2: Try without status filter but with high limit
       try {
         await skuStore.fetchSKUs({ 
           include_inventory: false,
-          limit: 500
+          limit: 1000 // Keep high limit in fallback
         })
         // Filter to active SKUs on frontend
         const allSKUs = skuStore.skus || []
@@ -113,13 +113,16 @@ const loadAvailableSKUs = async () => {
       } catch (err2) {
         console.warn('Strategy 2 failed:', err2)
         
-        // Strategy 3: Default parameters (fallback)
+        // Strategy 3: Fallback with explicit limit (don't use defaults)
         try {
-          await skuStore.fetchSKUs({ include_inventory: false })
+          await skuStore.fetchSKUs({ 
+            include_inventory: false,
+            limit: 1000 // Ensure high limit even in fallback
+          })
           const allSKUs = skuStore.skus || []
           availableSKUs.value = allSKUs.filter(sku => sku.status === 'active')
           loadSuccess = true
-          console.log(`Strategy 3: Loaded ${availableSKUs.value.length} SKUs (fallback) for tag editing`)
+          console.log(`Strategy 3: Loaded ${availableSKUs.value.length} SKUs (fallback with explicit limit) for tag editing`)
         } catch (err3) {
           console.error('All strategies failed:', { err1, err2, err3 })
           throw err3
