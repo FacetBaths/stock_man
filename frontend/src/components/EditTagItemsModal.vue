@@ -81,17 +81,63 @@ const initializeRemoveItems = () => {
 const loadAvailableSKUs = async () => {
   try {
     isLoading.value = true
-    // Load ALL SKUs by setting a high limit - we need access to all SKUs for tag editing
-    await skuStore.fetchSKUs({ 
-      include_inventory: false,
-      limit: 1000, // High limit to get all SKUs
-      status: 'active' // Only load active SKUs for selection
-    })
-    availableSKUs.value = skuStore.skus || []
-    console.log(`Loaded ${availableSKUs.value.length} SKUs for tag editing`)
+    error.value = null
+    
+    // Try different strategies to load SKUs with fallbacks
+    let loadSuccess = false
+    
+    // Strategy 1: Try to load with high limit and active filter
+    try {
+      await skuStore.fetchSKUs({ 
+        include_inventory: false,
+        limit: 500, // Reduced limit for better reliability
+        status: 'active'
+      })
+      availableSKUs.value = skuStore.skus || []
+      loadSuccess = true
+      console.log(`Strategy 1: Loaded ${availableSKUs.value.length} active SKUs for tag editing`)
+    } catch (err1) {
+      console.warn('Strategy 1 failed:', err1)
+      
+      // Strategy 2: Try without status filter but with limit
+      try {
+        await skuStore.fetchSKUs({ 
+          include_inventory: false,
+          limit: 500
+        })
+        // Filter to active SKUs on frontend
+        const allSKUs = skuStore.skus || []
+        availableSKUs.value = allSKUs.filter(sku => sku.status === 'active')
+        loadSuccess = true
+        console.log(`Strategy 2: Loaded ${availableSKUs.value.length} SKUs (filtered to active) for tag editing`)
+      } catch (err2) {
+        console.warn('Strategy 2 failed:', err2)
+        
+        // Strategy 3: Default parameters (fallback)
+        try {
+          await skuStore.fetchSKUs({ include_inventory: false })
+          const allSKUs = skuStore.skus || []
+          availableSKUs.value = allSKUs.filter(sku => sku.status === 'active')
+          loadSuccess = true
+          console.log(`Strategy 3: Loaded ${availableSKUs.value.length} SKUs (fallback) for tag editing`)
+        } catch (err3) {
+          console.error('All strategies failed:', { err1, err2, err3 })
+          throw err3
+        }
+      }
+    }
+    
+    if (!loadSuccess || availableSKUs.value.length === 0) {
+      throw new Error('No SKUs were loaded successfully')
+    }
+    
   } catch (err) {
     console.error('Failed to load SKUs:', err)
-    error.value = 'Failed to load available SKUs'
+    error.value = `Failed to load available SKUs: ${err.message || 'Unknown error'}`
+    // Keep any previously loaded SKUs
+    if (availableSKUs.value.length === 0) {
+      availableSKUs.value = []
+    }
   } finally {
     isLoading.value = false
   }
@@ -373,7 +419,23 @@ onMounted(() => {
             </div>
             
             <div class="add-items-form">
-              <div class="search-section">
+              <!-- Show loading or error state -->
+              <div v-if="isLoading" class="loading-section">
+                <q-spinner size="sm" /> Loading SKUs...
+              </div>
+              
+              <!-- Show error if SKUs failed to load -->
+              <div v-else-if="availableSKUs.length === 0" class="no-skus-section">
+                <div class="alert alert-warning">
+                  <q-icon name="warning" /> No SKUs available. 
+                  <button type="button" class="btn btn-sm btn-primary" @click="loadAvailableSKUs">
+                    Retry Loading SKUs
+                  </button>
+                </div>
+              </div>
+              
+              <!-- Normal search interface -->
+              <div v-else class="search-section">
                 <label for="sku-search">Search SKUs:</label>
                 <input
                   id="sku-search"
@@ -393,11 +455,11 @@ onMounted(() => {
                 </div>
               </div>
 
-              <div class="items-to-add">
+              <div class="items-to-add" v-if="availableSKUs.length > 0">
                 <div v-for="(item, index) in addItems" :key="`add-${index}`" class="add-item-row">
                   <div class="sku-select">
                     <label :for="`add-sku-${index}`">SKU:</label>
-                    <select :id="`add-sku-${index}`" v-model="item.sku_id" class="form-select">
+                    <select :id="`add-sku-${index}`" v-model="item.sku_id" class="form-select" :disabled="isLoading">
                       <option value="">Select a SKU...</option>
                       <option v-for="sku in filteredSKUs" :key="sku._id" :value="sku._id">
                         {{ getSkuDisplayName(sku) }}
@@ -688,6 +750,35 @@ onMounted(() => {
   font-size: 0.8rem;
   color: #6c757d;
   font-style: italic;
+}
+
+.loading-section,
+.no-skus-section {
+  text-align: center;
+  padding: 2rem;
+  border: 1px solid #dee2e6;
+  border-radius: 0.375rem;
+  margin-bottom: 1.5rem;
+}
+
+.loading-section {
+  color: #6c757d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.alert-warning {
+  color: #856404;
+  background-color: #fff3cd;
+  border: 1px solid #ffeaa7;
+  border-radius: 0.375rem;
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
 }
 
 .items-to-add {
