@@ -72,6 +72,12 @@ database.json
 # yarn.lock
 # *.lock
 
+# Yarn PnP (Plug'n'Play)
+.pnp.cjs
+.pnp.loader.mjs
+.yarn/
+yarn.lock
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache
@@ -253,3 +259,9 @@ test_*.js
 validate_*.js
 compare_*.js
 check_*.js
+
+# Debug and investigation scripts
+find_*.py
+find_*.js
+verify_*.py
+detailed_*.js

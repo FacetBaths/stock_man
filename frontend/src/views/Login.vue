@@ -1,22 +1,56 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { useQuasar } from "quasar";
+import { userApi } from "@/utils/api";
+import { User } from "@/types";
+import { capitalizeWords } from "@/utils/formatting";
 
 const router = useRouter();
 const authStore = useAuthStore();
 const $q = useQuasar();
 
 const credentials = ref({
-  username: "admin", // Default to admin
+  username: "", // Will be set automatically
   password: "",
 });
-
-const userOptions = [
+const userOptionsRef = ref([
   { label: "Admin", value: "admin" },
   { label: "Warehouse Manager", value: "warehouse" },
-];
+]);
+
+const getUserOptions = async () => {
+  try {
+    const userInfo = await userApi.getUsers();
+    console.log('Fetched users:', userInfo);
+    
+    // Filter out sales user and map to dropdown options
+    const dbUsers = userInfo.users
+      .filter((user: { username: string }) => user.username.toLowerCase() !== 'sales')
+      .map((user: { username: string }) => ({
+        label: capitalizeWords(user.username),
+        value: user.username,
+      }));
+    
+    console.log('Filtered DB users:', dbUsers);
+    
+    // Replace the hardcoded options with actual DB users
+    userOptionsRef.value = dbUsers;
+    
+    // Auto-select first user (preferably admin if available)
+    if (dbUsers.length > 0) {
+      const adminUser = dbUsers.find(user => user.value.toLowerCase() === 'admin');
+      credentials.value.username = adminUser ? adminUser.value : dbUsers[0].value;
+    }
+    
+    return dbUsers;
+  } catch (error) {
+    console.error('Failed to fetch users:', error);
+    // Keep the hardcoded options if API fails
+    return userOptionsRef.value;
+  }
+};
 
 const handleLogin = async () => {
   console.log(credentials.value);
@@ -46,6 +80,11 @@ const quickLoginAsSales = async () => {
     // Error is handled by the store
   }
 };
+
+// Load users when component mounts
+onMounted(async () => {
+  await getUserOptions();
+});
 </script>
 
 <template>
@@ -79,7 +118,7 @@ const quickLoginAsSales = async () => {
             <label for="username" class="input-label">Select User Type</label>
             <q-select
               v-model="credentials.username"
-              :options="userOptions"
+              :options="userOptionsRef"
               option-label="label"
               option-value="value"
               emit-value
