@@ -4,6 +4,10 @@ const cors = require('cors');
 const connectDB = require('./config/database');
 const { initJSONDB } = require('./config/jsonDB');
 
+// 🛡️  Initialize database protection BEFORE connecting to database
+const DatabaseProtection = require('./middleware/databaseProtection');
+DatabaseProtection.initialize();
+
 // Import routes
 const authRoutes = require('./routes/auth');
 const inventoryRoutes = require('./routes/inventory');
@@ -68,6 +72,10 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// 🛡️  Add database protection middleware to all routes
+app.use(DatabaseProtection.checkConnectionSafety);
+app.use(DatabaseProtection.blockDangerousRestoreOperations);
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/inventory', inventoryRoutes);
@@ -93,7 +101,17 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
     cors_origin: req.get('Origin'),
-    allowed_origins: allowedOrigins
+    allowed_origins: allowedOrigins,
+    database_protection: DatabaseProtection.getProtectionStatus()
+  });
+});
+
+// 🛡️  Database protection status endpoint
+app.get('/api/protection-status', (req, res) => {
+  res.json({
+    success: true,
+    ...DatabaseProtection.getProtectionStatus(),
+    userModelProtection: require('./models/User').getProtectionStatus()
   });
 });
 

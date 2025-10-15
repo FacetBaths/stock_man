@@ -7,7 +7,7 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "build": "echo 'No build step needed for backend'",
-    "test": "jest --detectOpenHandles",
+    "test": "echo '⚠️  Running tests - ensure MONGODB_TEST_URI points to TEST database only!' && jest --detectOpenHandles",
     "test:watch": "jest --watch --detectOpenHandles",
     "kill": "./kill-server.sh",
     "restart": "./kill-server.sh && npm run dev"

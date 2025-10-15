@@ -398,4 +398,141 @@ userSchema.set('toJSON', {
   }
 });
 
-module.exports = mongoose.model('User', userSchema);
+// Create the User model
+const User = mongoose.model('User', userSchema);
+
+// 🛡️  CRITICAL SAFETY: Protect User collection from accidental deletion
+// This prevents the devastating bug that wiped all users from production
+
+// Store original methods before overriding
+const originalDeleteMany = User.deleteMany;
+const originalDrop = User.collection.drop;
+const originalDeleteOne = User.deleteOne;
+
+// Override deleteMany to prevent mass deletion in production
+User.deleteMany = function(...args) {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const isTest = process.env.NODE_ENV === 'test';
+  
+  // BLOCK ALL deleteMany operations in production
+  if (isProduction) {
+    console.error('🚨 SECURITY BLOCK: User.deleteMany() attempted in production!');
+    throw new Error('🛡️  BLOCKED: User.deleteMany() is permanently disabled in production for data safety!');
+  }
+  
+  // In test environment, verify we're connected to a test database
+  if (isTest) {
+    const dbName = this.db?.databaseName || mongoose.connection.name || '';
+    if (!dbName.includes('test') && !dbName.includes('Test')) {
+      console.error(`🚨 SAFETY ABORT: deleteMany blocked on database '${dbName}' - not a test database!`);
+      throw new Error(`🛡️  BLOCKED: User.deleteMany() rejected - database '${dbName}' doesn't appear to be a test database!`);
+    }
+    console.warn(`⚠️  Test environment: Allowing User.deleteMany() on confirmed test database: ${dbName}`);
+  }
+  
+  // Log the operation for audit trail
+  console.log('🗑️  User.deleteMany() called with args:', JSON.stringify(args));
+  return originalDeleteMany.apply(this, args);
+};
+
+// Override collection drop to prevent dropping User collection
+User.collection.drop = function(...args) {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const isTest = process.env.NODE_ENV === 'test';
+  
+  // BLOCK collection drop in production
+  if (isProduction) {
+    console.error('🚨 SECURITY BLOCK: User collection drop attempted in production!');
+    throw new Error('🛡️  BLOCKED: User collection drop is permanently disabled in production for data safety!');
+  }
+  
+  // In test environment, verify we're connected to a test database
+  if (isTest) {
+    const dbName = this.db?.databaseName || mongoose.connection.name || '';
+    if (!dbName.includes('test') && !dbName.includes('Test')) {
+      console.error(`🚨 SAFETY ABORT: Collection drop blocked on database '${dbName}' - not a test database!`);
+      throw new Error(`🛡️  BLOCKED: User collection drop rejected - database '${dbName}' doesn't appear to be a test database!`);
+    }
+    console.warn(`⚠️  Test environment: Allowing User collection drop on confirmed test database: ${dbName}`);
+  }
+  
+  console.log('🗑️  User collection drop called');
+  return originalDrop.apply(this, args);
+};
+
+// Override deleteOne with logging and admin protection
+User.deleteOne = function(filter, options) {
+  console.log('🗑️  User.deleteOne called with filter:', JSON.stringify(filter));
+  
+  // Block deletion of admin users in production
+  if (process.env.NODE_ENV === 'production' && filter.role === 'admin') {
+    console.error('🚨 ADMIN PROTECTION: Attempt to delete admin user blocked!');
+    throw new Error('🛡️  BLOCKED: Cannot delete admin users in production for security!');
+  }
+  
+  return originalDeleteOne.apply(this, [filter, options]);
+};
+
+// Add a safe method for authorized user deletion
+User.safeDeleteUser = async function(userId, requestingUserId, reason = 'No reason provided') {
+  try {
+    // Find the user to delete
+    const userToDelete = await this.findById(userId);
+    if (!userToDelete) {
+      throw new Error('User not found');
+    }
+    
+    // Find the requesting user
+    const requestingUser = await this.findById(requestingUserId);
+    if (!requestingUser || requestingUser.role !== 'admin') {
+      throw new Error('Unauthorized: Only admin users can delete accounts');
+    }
+    
+    // Prevent admin self-deletion
+    if (userId.toString() === requestingUserId.toString()) {
+      throw new Error('Cannot delete your own admin account');
+    }
+    
+    // Prevent deletion of other admin users
+    if (userToDelete.role === 'admin') {
+      throw new Error('Cannot delete other admin users');
+    }
+    
+    // Log the deletion
+    console.log(`🗑️  Safe user deletion: ${userToDelete.username} (${userToDelete.role}) by ${requestingUser.username}. Reason: ${reason}`);
+    
+    // Perform the deletion
+    const result = await originalDeleteOne.call(this, { _id: userId });
+    
+    return {
+      success: true,
+      deletedUser: userToDelete.username,
+      deletedRole: userToDelete.role,
+      deletedBy: requestingUser.username,
+      reason: reason,
+      timestamp: new Date().toISOString()
+    };
+    
+  } catch (error) {
+    console.error('❌ Safe user deletion failed:', error.message);
+    throw error;
+  }
+};
+
+// Add method to check protection status
+User.getProtectionStatus = function() {
+  return {
+    environment: process.env.NODE_ENV,
+    protections: {
+      deleteMany: process.env.NODE_ENV === 'production' ? 'BLOCKED' : 'PROTECTED',
+      collectionDrop: process.env.NODE_ENV === 'production' ? 'BLOCKED' : 'PROTECTED',
+      adminDeletion: process.env.NODE_ENV === 'production' ? 'BLOCKED' : 'LOGGED'
+    },
+    message: 'User collection is protected against accidental mass deletion'
+  };
+};
+
+console.log('🛡️  User model loaded with enhanced protection against mass deletion');
+
+// Export the protected User model
+module.exports = User;
