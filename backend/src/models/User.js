@@ -398,6 +398,19 @@ userSchema.set('toJSON', {
   }
 });
 
+// Mongoose middleware to log ALL deletion attempts
+userSchema.pre('remove', function(next) {
+  console.error('🚨 USER DELETION: pre-remove hook triggered');
+  console.error('  User:', this.username, '(_id:', this._id, ')');
+  console.error('  Stack:', new Error().stack);
+  next();
+});
+
+userSchema.post('remove', function(doc) {
+  console.error('🚨 USER DELETED: post-remove hook');
+  console.error('  User:', doc.username, '(_id:', doc._id, ')');
+});
+
 // Create the User model
 const User = mongoose.model('User', userSchema);
 
@@ -518,6 +531,58 @@ User.safeDeleteUser = async function(userId, requestingUserId, reason = 'No reas
     throw error;
   }
 };
+
+// 🔍 CRITICAL: Monitor collection-level operations that bypass Mongoose
+// This catches direct MongoDB operations that don't trigger Mongoose middleware
+const originalCollectionMethods = {
+  deleteOne: User.collection.deleteOne,
+  deleteMany: User.collection.deleteMany,
+  findOneAndDelete: User.collection.findOneAndDelete,
+  drop: User.collection.drop
+};
+
+// Log and potentially block collection-level deletions
+User.collection.deleteOne = function(filter, options) {
+  console.error('🚨🚨🚨 DIRECT USER DELETION DETECTED 🚨🚨🚨');
+  console.error('Method: collection.deleteOne');
+  console.error('Filter:', JSON.stringify(filter));
+  console.error('Stack trace:');
+  console.error(new Error().stack);
+  console.error('🚨🚨🚨 END DELETION LOG 🚨🚨🚨\n');
+  
+  return originalCollectionMethods.deleteOne.call(this, filter, options);
+};
+
+User.collection.deleteMany = function(filter, options) {
+  console.error('🚨🚨🚨 MASS USER DELETION DETECTED 🚨🚨🚨');
+  console.error('Method: collection.deleteMany');
+  console.error('Filter:', JSON.stringify(filter));
+  console.error('Stack trace:');
+  console.error(new Error().stack);
+  console.error('🚨🚨🚨 END DELETION LOG 🚨🚨🚨\n');
+  
+  // BLOCK in production
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('🛡️  BLOCKED: Mass user deletion in production!');
+  }
+  
+  return originalCollectionMethods.deleteMany.call(this, filter, options);
+};
+
+User.collection.findOneAndDelete = function(filter, options) {
+  console.error('🚨🚨🚨 DIRECT USER DELETION DETECTED 🚨🚨🚨');
+  console.error('Method: collection.findOneAndDelete');
+  console.error('Filter:', JSON.stringify(filter));
+  console.error('Stack trace:');
+  console.error(new Error().stack);
+  console.error('🚨🚨🚨 END DELETION LOG 🚨🚨🚨\n');
+  
+  return originalCollectionMethods.findOneAndDelete.call(this, filter, options);
+};
+
+console.log('✅ User deletion monitoring hooks installed');
+
+module.exports = User;
 
 // Add method to check protection status
 User.getProtectionStatus = function() {
