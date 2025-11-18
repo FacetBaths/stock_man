@@ -1,0 +1,73 @@
+🚨 CRITICAL FIX: Remove TTL index causing automatic user deletion
+
+Problem:
+--------
+Users were being automatically deleted from the database after 7 days.
+Investigation revealed that a TTL (Time To Live) index on the 
+refreshTokens.createdAt field was causing MongoDB to delete entire 
+user documents when refresh tokens expired, rather than just removing 
+the expired tokens from the array.
+
+Root Cause:
+-----------
+In backend/src/models/User.js, the refreshTokens schema had:
+  createdAt: {
+    type: Date,
+    default: Date.now,
+    expires: '7d' // <- THIS WAS THE BUG
+  }
+
+MongoDB TTL indexes on array subdocument fields delete the PARENT 
+document when the TTL expires, not just the subdocument. This is a 
+well-known MongoDB pitfall.
+
+Solution:
+---------
+1. Removed the `expires: '7d'` TTL index from the schema
+2. Implemented manual token cleanup methods:
+   - cleanExpiredTokens() - Filters out tokens older than 7 days
+   - Updated addRefreshToken() to clean expired tokens before adding
+   - Updated findByRefreshToken() to check token age and clean up
+3. Created migration script to drop existing TTL index from MongoDB
+
+Changes:
+--------
+Modified:
+- backend/src/models/User.js - Removed TTL, added manual cleanup
+- backend/package.json - Added 'drop-ttl-index' script
+
+Added:
+- backend/scripts/drop-ttl-index.js - Migration to drop TTL index
+- backend/TTL_INDEX_FIX.md - Comprehensive technical documentation
+- backend/test/user-token-cleanup.test.js - Test suite for token cleanup
+- DEPLOYMENT_CHECKLIST.md - Step-by-step deployment guide
+- TTL_FIX_README.md - Quick reference guide
+
+Deployment:
+-----------
+CRITICAL: After deploying this code, you MUST run the migration:
+  cd backend && npm run drop-ttl-index
+
+The TTL index persists in MongoDB until explicitly dropped!
+
+Testing:
+--------
+- npm test -- user-token-cleanup.test.js
+- Verify no TTL indexes exist: db.users.getIndexes()
+- Monitor logs for "🧹 Cleaned X expired token(s)" messages
+- Confirm users persist beyond 7 days
+
+Impact:
+-------
+- No downtime required
+- Existing sessions unaffected
+- Security behavior unchanged (tokens still expire after 7 days)
+- Users will no longer be automatically deleted
+
+References:
+-----------
+- MongoDB TTL Indexes: https://docs.mongodb.com/manual/core/index-ttl/
+- Mongoose Issue: https://github.com/Automattic/mongoose/issues/5656
+
+Priority: CRITICAL
+Fixes: User deletion bug (recurring issue)

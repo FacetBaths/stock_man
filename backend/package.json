@@ -10,7 +10,8 @@
     "test": "echo '⚠️  Running tests - ensure MONGODB_TEST_URI points to TEST database only!' && jest --detectOpenHandles",
     "test:watch": "jest --watch --detectOpenHandles",
     "kill": "./kill-server.sh",
-    "restart": "./kill-server.sh && npm run dev"
+    "restart": "./kill-server.sh && npm run dev",
+    "drop-ttl-index": "node scripts/drop-ttl-index.js"
   },
   "dependencies": {
     "axios": "^1.11.0",

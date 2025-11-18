@@ -92,8 +92,9 @@ const userSchema = new mongoose.Schema({
     },
     createdAt: {
       type: Date,
-      default: Date.now,
-      expires: '7d' // Auto-expire after 7 days
+      default: Date.now
+      // NOTE: TTL index removed - was causing entire user deletion!
+      // Manual cleanup implemented in methods below
     },
     userAgent: String,
     ipAddress: String
@@ -226,8 +227,28 @@ userSchema.methods.changedPasswordAfter = function(JWTTimestamp) {
   return false;
 };
 
+// Method to clean expired refresh tokens (7 days old)
+userSchema.methods.cleanExpiredTokens = function() {
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  
+  const originalCount = this.refreshTokens.length;
+  this.refreshTokens = this.refreshTokens.filter(rt => {
+    const tokenAge = now - new Date(rt.createdAt).getTime();
+    return tokenAge < SEVEN_DAYS_MS;
+  });
+  
+  const removedCount = originalCount - this.refreshTokens.length;
+  if (removedCount > 0) {
+    console.log(`🧹 Cleaned ${removedCount} expired token(s) for user ${this.username}`);
+  }
+};
+
 // Method to add refresh token
 userSchema.methods.addRefreshToken = function(token, userAgent, ipAddress) {
+  // Clean expired tokens first
+  this.cleanExpiredTokens();
+  
   this.refreshTokens.push({
     token,
     userAgent,
@@ -292,11 +313,33 @@ userSchema.methods.generateTokens = async function() {
 };
 
 // Static method to find user by refresh token
-userSchema.statics.findByRefreshToken = function(token) {
-  return this.findOne({
+userSchema.statics.findByRefreshToken = async function(token) {
+  const user = await this.findOne({
     'refreshTokens.token': token,
     isActive: true
   });
+  
+  if (user) {
+    // Check if the specific token is expired (7 days)
+    const tokenEntry = user.refreshTokens.find(rt => rt.token === token);
+    if (tokenEntry) {
+      const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+      const tokenAge = Date.now() - new Date(tokenEntry.createdAt).getTime();
+      
+      if (tokenAge >= SEVEN_DAYS_MS) {
+        console.log(`⚠️  Expired refresh token detected for user ${user.username}`);
+        // Clean up and save
+        user.cleanExpiredTokens();
+        await user.save();
+        return null; // Token is expired
+      }
+    }
+    
+    // Clean any other expired tokens while we're at it
+    user.cleanExpiredTokens();
+  }
+  
+  return user;
 };
 
 // Static method to refresh access token using refresh token
