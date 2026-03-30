@@ -34,6 +34,8 @@ const showDialog = computed({
 
 // Form data for tool editing
 const formData = ref<ToolUpdateData>({
+  sku_code: '',
+  category_id: '',
   name: '',
   description: '',
   brand: '',
@@ -52,6 +54,35 @@ const formData = ref<ToolUpdateData>({
     weight: 0
   },
   unit_cost: 0
+})
+
+// Regenerate SKU code helper
+const isRegenerating = ref(false)
+const regenerateSKUCode = async () => {
+  if (!formData.value.category_id) return
+  try {
+    isRegenerating.value = true
+    const { useSKUStore } = await import('@/stores/sku')
+    const skuStore = useSKUStore()
+    const newCode = await skuStore.generateSKUCode({
+      category_id: formData.value.category_id
+    })
+    formData.value.sku_code = newCode
+  } catch (err: any) {
+    $q.notify({ type: 'negative', message: err.message || 'Failed to regenerate SKU code' })
+  } finally {
+    isRegenerating.value = false
+  }
+}
+
+// Tool category options (only tool-type categories)
+const toolCategoryOptions = computed(() => {
+  return categoryStore.categories
+    .filter(cat => cat.type === 'tool' && cat.status === 'active')
+    .map(cat => ({
+      label: formatCategoryName(cat.name),
+      value: cat._id
+    }))
 })
 
 // Check if user can edit cost information
@@ -115,6 +146,8 @@ const initializeForm = () => {
 
   // Initialize form with tool data
   formData.value = {
+    sku_code: tool.sku_code || '',
+    category_id: tool.category?._id || '',
     name: tool.name || '',
     description: tool.description || '',
     brand: tool.brand || '',
@@ -255,36 +288,66 @@ onMounted(async () => {
             </q-banner>
           </div>
 
-          <!-- Tool Information Card -->
+          <!-- SKU & Category Section -->
           <div v-if="props.tool" class="q-mb-lg">
             <q-card flat bordered class="q-pa-md bg-grey-1">
               <div class="text-subtitle2 text-weight-medium q-mb-sm">
-                <q-icon name="build" class="q-mr-xs" />
-                Current Tool Information
+                <q-icon name="qr_code" class="q-mr-xs" />
+                SKU Identity
               </div>
               <div class="row q-col-gutter-md">
+                <!-- SKU Code (editable) -->
                 <div class="col-12 col-sm-6">
-                  <div class="text-caption text-grey-6">SKU Code</div>
-                  <q-chip
-                    :label="props.tool.sku_code"
-                    color="primary"
-                    text-color="white"
-                    icon="qr_code"
+                  <div class="row q-col-gutter-sm items-end">
+                    <div class="col">
+                      <q-input
+                        v-model="formData.sku_code"
+                        label="SKU Code *"
+                        outlined
+                        dense
+                        :rules="[(val: string) => !!val || 'SKU Code is required']"
+                        hint="Change the SKU code if it was generated incorrectly"
+                      />
+                    </div>
+                    <div class="col-auto">
+                      <q-btn
+                        color="secondary"
+                        icon="autorenew"
+                        dense
+                        :loading="isRegenerating"
+                        :disable="!formData.category_id"
+                        @click="regenerateSKUCode"
+                      >
+                        <q-tooltip>Regenerate SKU code from current category</q-tooltip>
+                      </q-btn>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Category (editable) -->
+                <div class="col-12 col-sm-6">
+                  <q-select
+                    v-model="formData.category_id"
+                    :options="toolCategoryOptions"
+                    label="Tool Category *"
+                    outlined
+                    dense
+                    emit-value
+                    map-options
+                    :rules="[(val: string) => !!val || 'Category is required']"
+                    hint="Change category if tool was miscategorized"
                   />
                 </div>
+
+                <!-- Read-only inventory info -->
                 <div class="col-12 col-sm-6">
-                  <div class="text-caption text-grey-6">Total Quantity</div>
-                  <div class="text-body1 text-weight-medium">
-                    {{ props.tool.total_quantity }} ({{ props.tool.available_quantity }}
-                    available)
+                  <div class="text-caption text-grey-6">Inventory</div>
+                  <div class="text-body2 text-weight-medium">
+                    {{ props.tool.total_quantity }} total ({{ props.tool.available_quantity }} available)
                   </div>
                 </div>
                 <div class="col-12 col-sm-6">
-                  <div class="text-caption text-grey-6">Category</div>
-                  <div class="text-body1">{{ props.tool.category.name }}</div>
-                </div>
-                <div class="col-12 col-sm-6">
-                  <div class="text-caption text-grey-6">Condition Status</div>
+                  <div class="text-caption text-grey-6">Condition</div>
                   <q-chip
                     :color="
                       toolsStore.getConditionStatus(props.tool) === 'available'

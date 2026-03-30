@@ -897,12 +897,20 @@ router.post('/import/system-restore',
       const restoreMode = req.body.restore_mode || 'merge';
       const confirmDestructive = req.body.confirm_destructive === 'true';
       
-      if (restoreMode === 'replace' && !confirmDestructive) {
-        return res.status(400).json({ 
-          message: 'Destructive restore requires explicit confirmation',
-          required_parameter: 'confirm_destructive=true'
-        });
-      }
+  if (restoreMode === 'replace' && !confirmDestructive) {
+    return res.status(400).json({ 
+      message: 'Destructive restore requires explicit confirmation',
+      required_parameter: 'confirm_destructive=true'
+    });
+  }
+
+  // SAFETY: Prevent destructive operations in production
+  if (process.env.NODE_ENV === 'production' || process.env.MONGODB_URI?.includes('railway')) {
+    return res.status(403).json({ 
+      message: 'BLOCKED: Destructive system restore is disabled in production for safety',
+      suggestion: 'Use merge mode or perform restore in development environment first'
+    });
+  }
 
       const jsonContent = fs.readFileSync(req.file.path, 'utf8');
       const backupData = JSON.parse(jsonContent);

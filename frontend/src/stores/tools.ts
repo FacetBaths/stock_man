@@ -71,6 +71,8 @@ export interface ToolInventoryResponse {
 }
 
 export interface ToolUpdateData {
+  sku_code?: string;
+  category_id?: string;
   name: string;
   description?: string;
   brand: string;

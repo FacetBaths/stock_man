@@ -578,7 +578,7 @@ const handlePageSizeChange = (size: number) => {
           </div>
           <div class="header-section quantity-header">
             <q-icon name="tag" class="q-mr-xs" />
-            Qty
+            Available
           </div>
           <div class="header-section tag-header">
             <q-icon name="label" class="q-mr-xs" />
@@ -783,21 +783,20 @@ const handlePageSizeChange = (size: number) => {
                   </q-card-section>
                 </q-card>
               </q-card-section>
-              <!-- Total Quantity -->
+              <!-- Quantity -->
               <q-card-section>
                 <q-card
                   class="mobile-quantity-metric"
                   flat
-                  v-if="item.tag_summary?.totalTagged == 0"
                 >
                   <q-card-section class="metric-content">
                     <div
                       class="mobile-metric-value"
-                      :style="{ color: getStockStatusNew(item).color }"
+                      :style="{ color: getAvailableQuantity(item) === 0 ? '#dc3545' : getStockStatusNew(item).color }"
                     >
-                      {{ getQuantity(item) }}
+                      {{ getAvailableQuantity(item) }}
                     </div>
-                    <div class="mobile-metric-label">Total Qty</div>
+                    <div class="mobile-metric-label">Available</div>
                     <div
                       v-if="
                         item.tag_summary && item.tag_summary.totalTagged > 0
@@ -810,29 +809,17 @@ const handlePageSizeChange = (size: number) => {
                   </q-card-section>
                 </q-card>
 
-                <!-- Available Quantity (if different from total) -->
+                <!-- Total / Tagged breakdown (secondary info) -->
                 <q-card
                   v-if="item.tag_summary && item.tag_summary.totalTagged > 0"
                   class="mobile-available-metric tagged"
                   flat
                 >
-                  <q-card-section
-                    class="metric-content"
-                    v-if="item.tag_summary && item.tag_summary.totalTagged > 0"
-                    flat
-                  >
-                    <div
-                      class="mobile-metric-value"
-                      :style="{
-                        color:
-                          getAvailableQuantity(item) === 0
-                            ? '#dc3545'
-                            : '#FFFFFF',
-                      }"
-                    >
-                      {{ getAvailableQuantity(item) }}
+                  <q-card-section class="metric-content">
+                    <div class="mobile-metric-value text-white">
+                      {{ getQuantity(item) }}
                     </div>
-                    <div class="mobile-metric-label text-white">Available</div>
+                    <div class="mobile-metric-label text-white">Total</div>
                     <div
                       class="mobile-metric-label text-white"
                       style="font-size: 0.6rem; margin-top: 2px;"
@@ -879,22 +866,18 @@ const handlePageSizeChange = (size: number) => {
             <!-- Quantity Section -->
             <div class="item-section quantity-section">
               <div class="quantity-display">
-                <!-- Total Quantity Badge -->
+                <!-- Available Quantity Badge (primary/prominent) -->
                 <q-badge
-                  :color="getStockStatusNew(item).color"
-                  :label="getQuantity(item).toString()"
+                  :color="getAvailableQuantity(item) === 0 ? 'negative' : getStockStatusNew(item).color"
+                  :label="`${getAvailableQuantity(item)} Avail`"
                   class="total-quantity-badge"
-                  :title="`Total: ${getQuantity(item)} items`"
+                  :title="`${getAvailableQuantity(item)} available out of ${getQuantity(item)} total`"
                 />
 
-                <!-- Reserved/Available Breakdown -->
-                <div
-                  v-if="item.tag_summary && item.tag_summary.totalTagged > 0"
-                  class="quantity-breakdown"
-                >
+                <!-- Total / Tagged Breakdown -->
+                <div class="quantity-breakdown">
                   <div class="breakdown-text">
-                    {{ item.tag_summary.totalTagged }} tagged /
-                    {{ getAvailableQuantity(item) }} free
+                    {{ getQuantity(item) }} total<template v-if="item.tag_summary && item.tag_summary.totalTagged > 0"> · {{ item.tag_summary.totalTagged }} tagged</template>
                   </div>
                 </div>
             </div>

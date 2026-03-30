@@ -368,7 +368,11 @@ router.get('/', auth, async (req, res) => {
     }
 
     // Status-based filtering (after calculations)
-    if (status === 'low_stock') {
+    if (status === 'in_stock') {
+      pipeline.push({ $match: { total_quantity: { $gt: 0 } } });
+    } else if (status === 'available') {
+      pipeline.push({ $match: { available_quantity: { $gt: 0 } } });
+    } else if (status === 'low_stock') {
       pipeline.push({ $match: { is_low_stock: true } });
     } else if (status === 'out_of_stock') {
       pipeline.push({ $match: { is_out_of_stock: true } });

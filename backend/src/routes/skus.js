@@ -220,7 +220,8 @@ router.get('/',
     query('search').optional().trim(),
     query('sort_by').optional().isIn(['sku_code', 'name', 'unit_cost', 'created_at']).withMessage('Invalid sort field'),
     query('sort_order').optional().isIn(['asc', 'desc']).withMessage('Sort order must be "asc" or "desc"'),
-    query('include_inventory').optional().isBoolean().withMessage('include_inventory must be a boolean')
+    query('include_inventory').optional().isBoolean().withMessage('include_inventory must be a boolean'),
+    query('include_tools').optional().isBoolean().withMessage('include_tools must be a boolean')
   ],
   async (req, res) => {
     try {
@@ -236,35 +237,39 @@ router.get('/',
       const limit = parseInt(req.query.limit) || 50;
       const skip = (page - 1) * limit;
 
-      // ✅ FILTER: Get tool categories to exclude
-      const toolCategories = await Category.find({ type: 'tool' }).select('_id');
-      const toolCategoryIds = toolCategories.map(cat => cat._id.toString());
-      
       // Build filter
       const filter = {};
       
-      // ✅ FILTER: Exclude tool categories from product SKU view
-      if (toolCategoryIds.length > 0) {
-        filter.category_id = { $nin: toolCategoryIds };
-      }
+      // Only exclude tools when include_tools is not explicitly requested
+      const includeTools = req.query.include_tools === 'true';
       
-      if (req.query.category_id) {
-        // If specific category requested, ensure it's not a tool category
-        if (toolCategoryIds.includes(req.query.category_id)) {
-          // Return empty results if requesting a tool category
-          return res.json({
-            skus: [],
-            pagination: {
-              currentPage: page,
-              totalPages: 0,
-              totalSkus: 0,
-              limit,
-              hasNextPage: false,
-              hasPrevPage: false
-            }
-          });
+      if (!includeTools) {
+        // Get tool categories to exclude from product SKU view
+        const toolCategories = await Category.find({ type: 'tool' }).select('_id');
+        const toolCategoryIds = toolCategories.map(cat => cat._id.toString());
+        
+        if (toolCategoryIds.length > 0) {
+          filter.category_id = { $nin: toolCategoryIds };
         }
-        // Override the $nin with specific category if it's not a tool
+        
+        if (req.query.category_id) {
+          if (toolCategoryIds.includes(req.query.category_id)) {
+            return res.json({
+              skus: [],
+              pagination: {
+                currentPage: page,
+                totalPages: 0,
+                totalSkus: 0,
+                limit,
+                hasNextPage: false,
+                hasPrevPage: false
+              }
+            });
+          }
+          filter.category_id = req.query.category_id;
+        }
+      } else if (req.query.category_id) {
+        // When including tools, allow any category filter
         filter.category_id = req.query.category_id;
       }
       

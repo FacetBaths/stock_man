@@ -249,7 +249,7 @@ const handleClose = () => {
 </script>
 
 <template>
-  <div class="modal-overlay" @click.self="handleClose">
+  <div class="modal-overlay">
     <div class="modal-dialog">
       <div class="modal-content">
         <div class="modal-header">

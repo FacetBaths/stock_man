@@ -35,7 +35,8 @@ export const useSKUStore = defineStore('sku', () => {
     search: '',
     sort_by: 'sku_code' as 'sku_code' | 'name' | 'unit_cost' | 'created_at',
     sort_order: 'asc' as 'asc' | 'desc',
-    include_inventory: true
+    include_inventory: true,
+    include_tools: false
   })
 
   // Computed properties for new architecture
@@ -154,6 +155,7 @@ export const useSKUStore = defineStore('sku', () => {
     sort_by?: 'sku_code' | 'name' | 'unit_cost' | 'created_at'
     sort_order?: 'asc' | 'desc'
     include_inventory?: boolean
+    include_tools?: boolean
     page?: number
     limit?: number
   }) => {

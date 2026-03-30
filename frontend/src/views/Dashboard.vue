@@ -17,10 +17,9 @@ const inventoryStore = useInventoryStore();
 const categoryStore = useCategoryStore();
 
 // Updated for new inventory system
-const activeFilter = ref("all");
+const activeFilter = ref("in_stock");
 const selectedCategory = ref("");
 const searchQuery = ref("");
-const showLowStockOnly = ref(false);
 
 // Debug reactive changes (uncomment for debugging)
 // watch(
@@ -45,6 +44,8 @@ const itemToEdit = ref<any | null>(null);
 // Available filters for the new inventory system
 const availableFilters = computed(() => [
   { value: "all", label: "All Items" },
+  { value: "in_stock", label: "In Stock" },
+  { value: "available", label: "Available" },
   { value: "low_stock", label: "Low Stock" },
   { value: "out_of_stock", label: "Out of Stock" },
   { value: "needs_reorder", label: "Need Reorder" },
@@ -121,8 +122,6 @@ const getCurrentFilters = () => {
   // Apply status filter
   if (activeFilter.value !== "all") {
     filters.status = activeFilter.value;
-  } else if (showLowStockOnly.value) {
-    filters.status = "low_stock";
   }
 
   return {
@@ -152,14 +151,7 @@ const handleSearch = () => {
   }, 10);
 };
 
-const handleLowStockToggle = () => {
-  nextTick(() => {
-    const filters = getCurrentFilters();
-    inventoryTableRef.value?.refreshInventory(filters);
-  });
-};
-
-const handleAddItem = () => {
+const handleAddItem
   showAddModal.value = true;
 };
 
@@ -509,16 +501,6 @@ onMounted(async () => {
                 </q-select>
               </div>
 
-              <!-- Low Stock Filter -->
-              <div class="col-auto">
-                <q-checkbox
-                  v-model="showLowStockOnly"
-                  @update:model-value="handleLowStockToggle"
-                  label="Low Stock Only"
-                  class="text-dark"
-                  color="warning"
-                />
-              </div>
             </div>
           </div>
 
