@@ -577,8 +577,8 @@ const handlePageSizeChange = (size: number) => {
             SKU
           </div>
           <div class="header-section quantity-header">
-            <q-icon name="tag" class="q-mr-xs" />
-            Available
+            <q-icon name="inventory" class="q-mr-xs" />
+            Quantity
           </div>
           <div class="header-section tag-header">
             <q-icon name="label" class="q-mr-xs" />
@@ -866,21 +866,22 @@ const handlePageSizeChange = (size: number) => {
             <!-- Quantity Section -->
             <div class="item-section quantity-section">
               <div class="quantity-display">
-                <!-- Available Quantity Badge (primary/prominent) -->
-                <q-badge
-                  :color="getAvailableQuantity(item) === 0 ? 'negative' : getStockStatusNew(item).color"
-                  :label="`${getAvailableQuantity(item)} Avail`"
-                  class="total-quantity-badge"
-                  :title="`${getAvailableQuantity(item)} available out of ${getQuantity(item)} total`"
-                />
-
-                <!-- Total / Tagged Breakdown -->
-                <div class="quantity-breakdown">
-                  <div class="breakdown-text">
-                    {{ getQuantity(item) }} total<template v-if="item.tag_summary && item.tag_summary.totalTagged > 0"> · {{ item.tag_summary.totalTagged }} tagged</template>
-                  </div>
+                <!-- Available (hero number) -->
+                <div class="qty-available" :style="{ color: getAvailableQuantity(item) === 0 ? '#dc3545' : '#198754' }">
+                  {{ getAvailableQuantity(item) }}
                 </div>
-            </div>
+                <div class="qty-label">Available</div>
+
+                <!-- Total and Tagged row -->
+                <div class="qty-details">
+                  <span class="qty-detail-item">
+                    <span class="qty-detail-num">{{ getQuantity(item) }}</span> total
+                  </span>
+                  <span v-if="item.tag_summary && item.tag_summary.totalTagged > 0" class="qty-detail-item tagged">
+                    <span class="qty-detail-num">{{ item.tag_summary.totalTagged }}</span> tagged
+                  </span>
+                </div>
+              </div>
 
             <!-- Tag Section -->
               <q-chip
@@ -1442,7 +1443,7 @@ const handlePageSizeChange = (size: number) => {
 
 /* Quantity Section */
 .quantity-section {
-  min-width: 80px;
+  min-width: 100px;
   text-align: center;
 }
 
@@ -1450,30 +1451,47 @@ const handlePageSizeChange = (size: number) => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 2px;
 }
 
-/* Total Quantity Badge */
-.total-quantity-badge {
-  font-weight: 700;
-  font-size: 18px;
-  border-radius: 12px;
-  user-select: none;
-  cursor: default;
+.qty-available {
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.qty-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(33, 37, 41, 0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
   margin-bottom: 4px;
 }
 
-/* Quantity Breakdown */
-.quantity-breakdown {
-  margin: 4px 0;
+.qty-details {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
-.breakdown-text {
-  color: rgba(33, 37, 41, 0.75);
-  font-size: 11px;
-  font-weight: 500;
+.qty-detail-item {
+  font-size: 12px;
+  color: rgba(33, 37, 41, 0.6);
   white-space: nowrap;
-  user-select: none;
+}
+
+.qty-detail-item.tagged {
+  color: #e65100;
+}
+
+.qty-detail-num {
+  font-weight: 700;
+  color: rgba(33, 37, 41, 0.85);
+}
+
+.qty-detail-item.tagged .qty-detail-num {
+  color: #e65100;
 }
 
 .tag-badges-container {
