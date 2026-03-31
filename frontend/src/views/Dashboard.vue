@@ -151,7 +151,7 @@ const handleSearch = () => {
   }, 10);
 };
 
-const handleAddItem
+const handleAddItem = () => {
   showAddModal.value = true;
 };
 
