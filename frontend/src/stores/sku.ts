@@ -460,7 +460,8 @@ export const useSKUStore = defineStore('sku', () => {
       search: '',
       sort_by: 'sku_code',
       sort_order: 'asc',
-      include_inventory: true
+      include_inventory: true,
+      include_tools: false
     }
     fetchSKUs({ page: 1 })
   }

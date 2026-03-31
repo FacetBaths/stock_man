@@ -75,6 +75,48 @@ defineExpose({ refreshInventory })
 const showTagDialog = ref(false)
 const selectedItem = ref<Inventory | null>(null)
 
+// Quantity display mode: cycles through available -> total -> tagged
+type QtyMode = 'available' | 'total' | 'tagged'
+const qtyMode = ref<QtyMode>('available')
+const qtyModes: QtyMode[] = ['available', 'total', 'tagged']
+
+const cycleQtyMode = () => {
+  const currentIndex = qtyModes.indexOf(qtyMode.value)
+  qtyMode.value = qtyModes[(currentIndex + 1) % qtyModes.length]
+}
+
+const getQtyModeIcon = () => {
+  switch (qtyMode.value) {
+    case 'available': return 'check_circle'
+    case 'total': return 'inventory'
+    case 'tagged': return 'local_offer'
+  }
+}
+
+const getQtyModeLabel = () => {
+  switch (qtyMode.value) {
+    case 'available': return 'Available'
+    case 'total': return 'Total'
+    case 'tagged': return 'Tagged'
+  }
+}
+
+const getQtyValue = (item: any) => {
+  switch (qtyMode.value) {
+    case 'available': return getAvailableQuantity(item)
+    case 'total': return getQuantity(item)
+    case 'tagged': return item.tag_summary?.totalTagged || 0
+  }
+}
+
+const getQtyColor = (item: any) => {
+  switch (qtyMode.value) {
+    case 'available': return getAvailableQuantity(item) === 0 ? '#dc3545' : '#198754'
+    case 'total': return getQuantity(item) === 0 ? '#dc3545' : '#1976d2'
+    case 'tagged': return (item.tag_summary?.totalTagged || 0) > 0 ? '#e65100' : '#9e9e9e'
+  }
+}
+
 // Pagination state
 const currentPage = ref(1)
 const pageSize = ref(50)
@@ -577,8 +619,18 @@ const handlePageSizeChange = (size: number) => {
             SKU
           </div>
           <div class="header-section quantity-header">
-            <q-icon name="inventory" class="q-mr-xs" />
-            Quantity
+            <q-btn
+              flat
+              dense
+              no-caps
+              size="sm"
+              :icon="getQtyModeIcon()"
+              :label="`Qty: ${getQtyModeLabel()}`"
+              class="qty-mode-btn"
+              @click.stop="cycleQtyMode"
+            >
+              <q-tooltip>Click to cycle: Available → Total → Tagged</q-tooltip>
+            </q-btn>
           </div>
           <div class="header-section tag-header">
             <q-icon name="label" class="q-mr-xs" />
@@ -864,23 +916,12 @@ const handlePageSizeChange = (size: number) => {
             </div>
 
             <!-- Quantity Section -->
-            <div class="item-section quantity-section">
+            <div class="item-section quantity-section" @click.stop="cycleQtyMode">
               <div class="quantity-display">
-                <!-- Available (hero number) -->
-                <div class="qty-available" :style="{ color: getAvailableQuantity(item) === 0 ? '#dc3545' : '#198754' }">
-                  {{ getAvailableQuantity(item) }}
+                <div class="qty-hero" :style="{ color: getQtyColor(item) }">
+                  {{ getQtyValue(item) }}
                 </div>
-                <div class="qty-label">Available</div>
-
-                <!-- Total and Tagged row -->
-                <div class="qty-details">
-                  <span class="qty-detail-item">
-                    <span class="qty-detail-num">{{ getQuantity(item) }}</span> total
-                  </span>
-                  <span v-if="item.tag_summary && item.tag_summary.totalTagged > 0" class="qty-detail-item tagged">
-                    <span class="qty-detail-num">{{ item.tag_summary.totalTagged }}</span> tagged
-                  </span>
-                </div>
+                <div class="qty-label">{{ getQtyModeLabel() }}</div>
               </div>
 
             <!-- Tag Section -->
@@ -1445,6 +1486,12 @@ const handlePageSizeChange = (size: number) => {
 .quantity-section {
   min-width: 100px;
   text-align: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.quantity-section:hover {
+  opacity: 0.85;
 }
 
 .quantity-display {
@@ -1454,10 +1501,11 @@ const handlePageSizeChange = (size: number) => {
   gap: 2px;
 }
 
-.qty-available {
+.qty-hero {
   font-size: 28px;
   font-weight: 800;
   line-height: 1;
+  transition: color 0.2s ease;
 }
 
 .qty-label {
@@ -1466,32 +1514,16 @@ const handlePageSizeChange = (size: number) => {
   color: rgba(33, 37, 41, 0.5);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-bottom: 4px;
+  transition: color 0.2s ease;
 }
 
-.qty-details {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.qty-detail-item {
-  font-size: 12px;
-  color: rgba(33, 37, 41, 0.6);
-  white-space: nowrap;
-}
-
-.qty-detail-item.tagged {
-  color: #e65100;
-}
-
-.qty-detail-num {
-  font-weight: 700;
-  color: rgba(33, 37, 41, 0.85);
-}
-
-.qty-detail-item.tagged .qty-detail-num {
-  color: #e65100;
+/* Quantity mode toggle button in header */
+.qty-mode-btn {
+  font-weight: 600;
+  color: rgba(33, 37, 41, 0.8);
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .tag-badges-container {

@@ -743,6 +743,15 @@ onMounted(async () => {
           </div>
 
           <div class="col-xs-12 col-sm-6 col-md-3">
+            <q-toggle
+              v-model="skuStore.filters.include_tools"
+              label="Include Tools"
+              color="deep-purple"
+              @update:model-value="applyFilters"
+            />
+          </div>
+
+          <div class="col-xs-12 col-sm-6 col-md-3">
             <q-btn
               color="primary"
               label="Apply Filters"
