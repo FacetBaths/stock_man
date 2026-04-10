@@ -876,6 +876,12 @@ const tableColumns = [
                     Damaged — Do Not Ship
                   </q-chip>
                 </div>
+
+                <!-- Notes (shown inline when present) -->
+                <div v-if="tag.notes" class="tag-notes q-mt-sm">
+                  <q-icon name="notes" size="xs" class="q-mr-xs text-grey-6" />
+                  <span class="text-body2 text-grey-8">{{ tag.notes }}</span>
+                </div>
               </q-card-section>
 
               <q-separator v-if="expandedTags.has(tag._id)" />
