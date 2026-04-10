@@ -59,6 +59,10 @@ const validateTag = [
     .trim()
     .isLength({ max: 500 })
     .withMessage('SKU item notes cannot exceed 500 characters'),
+  body('is_complete')
+    .optional()
+    .isBoolean()
+    .withMessage('is_complete must be a boolean'),
   body('notes')
     .optional()
     .trim()
@@ -70,8 +74,8 @@ const validateTag = [
     .withMessage('Due date must be a valid date'),
   body('status')
     .optional()
-    .isIn(['active', 'fulfilled', 'cancelled'])
-    .withMessage('Status must be active, fulfilled, or cancelled')
+    .isIn(['active', 'staged', 'fulfilled', 'cancelled'])
+    .withMessage('Status must be active, staged, fulfilled, or cancelled')
 ];
 // Helper function to check SKU availability and validate quantities
 async function checkSKUAvailability(skuItems) {
@@ -257,6 +261,7 @@ router.get('/stats',
             _id: null,
             total_tags: { $sum: 1 },
             active_tags: { $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] } },
+            staged_tags: { $sum: { $cond: [{ $eq: ['$status', 'staged'] }, 1, 0] } },
             fulfilled_tags: { $sum: { $cond: [{ $eq: ['$status', 'fulfilled'] }, 1, 0] } },
             cancelled_tags: { $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] } }
           }
@@ -270,6 +275,7 @@ router.get('/stats',
             _id: '$tag_type',
             count: { $sum: 1 },
             active_count: { $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] } },
+            staged_count: { $sum: { $cond: [{ $eq: ['$status', 'staged'] }, 1, 0] } },
             fulfilled_count: { $sum: { $cond: [{ $eq: ['$status', 'fulfilled'] }, 1, 0] } },
             cancelled_count: { $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] } }
           }
@@ -311,6 +317,7 @@ router.get('/stats',
       const summary = tagStats.length > 0 ? tagStats[0] : {
         total_tags: 0,
         active_tags: 0,
+        staged_tags: 0,
         fulfilled_tags: 0,
         cancelled_tags: 0
       };
@@ -419,7 +426,7 @@ router.get('/',
     }).withMessage('Invalid tag type'),
     query('status').optional().custom((value) => {
       if (!value || value === '') return true; // Allow empty string
-      return ['active', 'fulfilled', 'cancelled'].includes(value);
+      return ['active', 'staged', 'fulfilled', 'cancelled'].includes(value);
     }).withMessage('Invalid status'),
     query('project_name').optional().trim(),
     query('search').optional().trim(),
@@ -534,12 +541,16 @@ router.get('/',
         tagObj.remaining_quantity = tag.getTotalRemainingQuantity();
         tagObj.is_partially_fulfilled = tag.isPartiallyFulfilled();
         tagObj.is_fully_fulfilled = tag.isFullyFulfilled();
-        tagObj.is_overdue = tag.due_date && new Date() > tag.due_date && tag.status === 'active';
+      tagObj.is_overdue = tag.due_date && new Date() > tag.due_date && tag.status === 'active';
         
         // Calculate fulfillment progress percentage
         const totalQty = tag.getTotalQuantity();
         const remainingQty = tag.getTotalRemainingQuantity();
         tagObj.fulfillment_progress = totalQty > 0 ? ((totalQty - remainingQty) / totalQty * 100) : 0;
+
+        // Staging progress
+        tagObj.staging_progress = tag.getStagingProgress();
+        tagObj.is_staging_complete = tag.isStagingComplete();
         
         return tagObj;
       });
@@ -623,6 +634,10 @@ router.get('/:id',
       const totalQty = tag.getTotalQuantity();
       const remainingQty = tag.getTotalRemainingQuantity();
       tagObj.fulfillment_progress = totalQty > 0 ? ((totalQty - remainingQty) / totalQty * 100) : 0;
+
+      // Staging progress
+      tagObj.staging_progress = tag.getStagingProgress();
+      tagObj.is_staging_complete = tag.isStagingComplete();
 
       // Enhance sku_items with additional inventory information for better display
       if (tagObj.sku_items && tagObj.sku_items.length > 0) {
@@ -741,6 +756,7 @@ router.post('/',
         tag_type: req.body.tag_type,
         project_name: req.body.project_name || '',
         sku_items: processedItems,
+        is_complete: req.body.is_complete || false,
         notes: req.body.notes || '',
         due_date: req.body.due_date || null,
         status: 'active',
@@ -842,7 +858,7 @@ router.put('/:id',
     body('project_name').optional().trim().isLength({ max: 200 }),
     body('notes').optional().trim().isLength({ max: 1000 }),
     body('due_date').optional().isISO8601(),
-    body('status').optional().isIn(['active', 'fulfilled', 'cancelled'])
+    body('status').optional().isIn(['active', 'staged', 'fulfilled', 'cancelled'])
   ],
   async (req, res) => {
     try {
@@ -867,6 +883,7 @@ router.put('/:id',
       // Only update provided fields
       if (req.body.customer_name !== undefined) updateData.customer_name = req.body.customer_name;
       if (req.body.project_name !== undefined) updateData.project_name = req.body.project_name;
+      if (req.body.is_complete !== undefined) updateData.is_complete = req.body.is_complete;
       if (req.body.notes !== undefined) updateData.notes = req.body.notes;
       if (req.body.due_date !== undefined) updateData.due_date = req.body.due_date;
       
@@ -874,11 +891,11 @@ router.put('/:id',
       if (req.body.status !== undefined && req.body.status !== tag.status) {
         updateData.status = req.body.status;
         
-        if (req.body.status === 'cancelled' && tag.status === 'active') {
-          // Release inventory when cancelling active tag
+        if (req.body.status === 'cancelled' && (tag.status === 'active' || tag.status === 'staged')) {
+          // Release inventory when cancelling active or staged tag
           await updateInventoryForTag(tag.sku_items, tag.tag_type, 'release');
-        } else if (req.body.status === 'fulfilled' && tag.status === 'active') {
-          // NEW: Use fulfillItems() method to delete Instances and mark as fulfilled
+        } else if (req.body.status === 'fulfilled' && (tag.status === 'active' || tag.status === 'staged')) {
+          // Fulfill from either active or staged
           await tag.fulfillItems();
           updateData.fulfilled_date = new Date();
           updateData.fulfilled_by = req.user.username;
@@ -939,8 +956,8 @@ router.post('/:id/fulfill',
         return res.status(404).json({ message: 'Tag not found' });
       }
 
-      if (tag.status !== 'active') {
-        return res.status(400).json({ message: 'Can only fulfill active tags' });
+      if (tag.status !== 'active' && tag.status !== 'staged') {
+        return res.status(400).json({ message: 'Can only fulfill active or staged tags' });
       }
 
       // FIXED: Use fulfillSpecificItems() method to fulfill only requested SKUs
@@ -1002,6 +1019,152 @@ router.post('/:id/fulfill',
   }
 );
 
+// POST /api/tags/:id/stage - Stage tag items (verify/load checklist)
+router.post('/:id/stage', 
+  auth,
+  requireWriteAccess,
+  [
+    param('id').isMongoId().withMessage('Invalid tag ID'),
+    body('staging_items').isArray({ min: 1 }).withMessage('Staging items required'),
+    body('staging_items.*.sku_id').isMongoId().withMessage('Invalid SKU ID'),
+    body('staging_items.*.instance_ids').isArray({ min: 1 }).withMessage('Instance IDs required'),
+    body('staging_items.*.instance_ids.*').isMongoId().withMessage('Each instance ID must be a valid MongoDB ID'),
+    body('stage_all').optional().isBoolean().withMessage('stage_all must be a boolean')
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ 
+          message: 'Validation failed', 
+          errors: errors.array() 
+        });
+      }
+
+      const tag = await Tag.findById(req.params.id);
+      if (!tag) {
+        return res.status(404).json({ message: 'Tag not found' });
+      }
+
+      if (tag.status !== 'active' && tag.status !== 'staged') {
+        return res.status(400).json({ message: 'Can only stage active or partially staged tags' });
+      }
+
+      if (req.body.stage_all) {
+        // Stage everything at once
+        tag.stageItems(req.user.username);
+      } else {
+        // Stage specific items
+        tag.stageSpecificItems(req.body.staging_items, req.user.username);
+      }
+
+      await tag.save();
+
+      await tag.populate({
+        path: 'sku_items.sku_id',
+        populate: { path: 'category_id' }
+      });
+
+      const tagObj = tag.toObject();
+      tagObj.total_quantity = tag.getTotalQuantity();
+      tagObj.remaining_quantity = tag.getTotalRemainingQuantity();
+      tagObj.staging_progress = tag.getStagingProgress();
+      tagObj.is_staging_complete = tag.isStagingComplete();
+
+      // Log staging event
+      await AuditLog.logTagEvent({
+        event_type: 'tag_staged',
+        tag_id: tag._id,
+        customer_id: tag.customer_name,
+        user_id: req.user.id,
+        user_name: req.user.username,
+        tag_type: tag.tag_type,
+        items_count: tag.sku_items.length,
+        total_quantity: tagObj.total_quantity,
+        reason: null
+      });
+
+      res.json({
+        message: tag.status === 'staged' ? 'Tag fully staged' : 'Tag staging updated',
+        tag: tagObj
+      });
+
+    } catch (error) {
+      console.error('Stage tag error:', error);
+      res.status(500).json({ 
+        message: 'Failed to stage tag', 
+        error: error.message 
+      });
+    }
+  }
+);
+
+// POST /api/tags/:id/unstage - Unstage tag items (revert staging)
+router.post('/:id/unstage', 
+  auth,
+  requireWriteAccess,
+  [
+    param('id').isMongoId().withMessage('Invalid tag ID'),
+    body('unstage_items').optional().isArray().withMessage('unstage_items must be an array'),
+    body('unstage_items.*.sku_id').optional().isMongoId().withMessage('Invalid SKU ID'),
+    body('unstage_items.*.instance_ids').optional().isArray(),
+    body('unstage_all').optional().isBoolean().withMessage('unstage_all must be a boolean')
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ 
+          message: 'Validation failed', 
+          errors: errors.array() 
+        });
+      }
+
+      const tag = await Tag.findById(req.params.id);
+      if (!tag) {
+        return res.status(404).json({ message: 'Tag not found' });
+      }
+
+      if (tag.status !== 'active' && tag.status !== 'staged') {
+        return res.status(400).json({ message: 'Can only unstage active or staged tags' });
+      }
+
+      if (req.body.unstage_all) {
+        tag.unstageAllItems(req.user.username);
+      } else if (req.body.unstage_items && req.body.unstage_items.length > 0) {
+        tag.unstageSpecificItems(req.body.unstage_items, req.user.username);
+      } else {
+        return res.status(400).json({ message: 'Provide unstage_items or set unstage_all to true' });
+      }
+
+      await tag.save();
+
+      await tag.populate({
+        path: 'sku_items.sku_id',
+        populate: { path: 'category_id' }
+      });
+
+      const tagObj = tag.toObject();
+      tagObj.total_quantity = tag.getTotalQuantity();
+      tagObj.remaining_quantity = tag.getTotalRemainingQuantity();
+      tagObj.staging_progress = tag.getStagingProgress();
+      tagObj.is_staging_complete = tag.isStagingComplete();
+
+      res.json({
+        message: 'Tag unstaged successfully',
+        tag: tagObj
+      });
+
+    } catch (error) {
+      console.error('Unstage tag error:', error);
+      res.status(500).json({ 
+        message: 'Failed to unstage tag', 
+        error: error.message 
+      });
+    }
+  }
+);
+
 // POST /api/tags/:id/cancel - Cancel a tag
 router.post('/:id/cancel', 
   auth,
@@ -1025,8 +1188,8 @@ router.post('/:id/cancel',
         return res.status(404).json({ message: 'Tag not found' });
       }
 
-      if (tag.status !== 'active') {
-        return res.status(400).json({ message: 'Can only cancel active tags' });
+      if (tag.status !== 'active' && tag.status !== 'staged') {
+        return res.status(400).json({ message: 'Can only cancel active or staged tags' });
       }
 
       // Cancel the tag

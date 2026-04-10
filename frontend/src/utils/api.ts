@@ -33,6 +33,7 @@ import type {
   UpdateCategoryRequest,
   UseItemsRequest,
   FulfillTagRequest,
+  StageTagRequest,
   Inventory
 } from '@/types'
 
@@ -811,6 +812,21 @@ export const tagApi = {
     new_quantity: number
   }>): Promise<{ message: string; tag: Tag }> => {
     const response = await api.put(`/tags/${id}/items/adjust`, { adjustments })
+    return response.data
+  },
+
+  // Stage tag items (verify/load checklist)
+  stageTag: async (id: string, stagingData: StageTagRequest): Promise<{ message: string; tag: Tag }> => {
+    const response = await api.post(`/tags/${id}/stage`, stagingData)
+    return response.data
+  },
+
+  // Unstage tag items (revert staging)
+  unstageTag: async (id: string, data: {
+    unstage_items?: Array<{ sku_id: string; instance_ids?: string[] }>
+    unstage_all?: boolean
+  }): Promise<{ message: string; tag: Tag }> => {
+    const response = await api.post(`/tags/${id}/unstage`, data)
     return response.data
   }
 }

@@ -22,6 +22,7 @@ const authStore = useAuthStore()
 const formData = ref<UpdateTagRequest>({
   customer_name: '',
   tag_type: 'reserved',
+  is_complete: false,
   notes: '',
   status: 'active',
   due_date: '',
@@ -137,6 +138,7 @@ const initializeForm = () => {
   formData.value = {
     customer_name: props.tag.customer_name,
     tag_type: props.tag.tag_type,
+    is_complete: props.tag.is_complete || false,
     notes: props.tag.notes || '',
     status: props.tag.status,
     due_date: props.tag.due_date ? new Date(props.tag.due_date).toISOString().split('T')[0] : '',
@@ -188,6 +190,7 @@ const handleSubmit = async () => {
     const submitData: UpdateTagRequest = {
       customer_name: formData.value.customer_name?.trim(),
       tag_type: formData.value.tag_type,
+      is_complete: formData.value.is_complete,
       notes: formData.value.notes?.trim(),
       status: formData.value.status,
       due_date: formData.value.due_date || undefined,
@@ -355,6 +358,22 @@ onMounted(() => {
               />
               <small class="form-text">
                 When this reservation is expected to be fulfilled
+              </small>
+            </div>
+
+            <!-- Complete Tag Checkbox -->
+            <div class="form-group">
+              <label class="form-check-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input
+                  type="checkbox"
+                  v-model="formData.is_complete"
+                  class="form-check-input"
+                  style="width: 18px; height: 18px;"
+                />
+                <span>This is the complete tag</span>
+              </label>
+              <small class="form-text">
+                Check this if all expected items are included. Leave unchecked if items are still missing or on order.
               </small>
             </div>
 

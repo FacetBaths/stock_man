@@ -20,7 +20,7 @@ const tagSchema = new mongoose.Schema({
   
   status: {
     type: String,
-    enum: ['active', 'fulfilled', 'cancelled'],
+    enum: ['active', 'staged', 'fulfilled', 'cancelled'],
     default: 'active',
     index: true
   },
@@ -48,6 +48,11 @@ const tagSchema = new mongoose.Schema({
       trim: true,
       default: ''
     },
+    // Per-item staging tracking (which instances have been verified/loaded)
+    staged_instance_ids: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Instance'
+    }],
     // Temporary fields for migration compatibility
     quantity: {
       type: Number,
@@ -63,6 +68,12 @@ const tagSchema = new mongoose.Schema({
     }
   }],
   
+  // Completeness tracking
+  is_complete: {
+    type: Boolean,
+    default: false
+  },
+
   // Metadata
   notes: {
     type: String,
@@ -94,6 +105,16 @@ const tagSchema = new mongoose.Schema({
     required: true
   },
   
+  // Staging tracking
+  staged_date: {
+    type: Date
+  },
+  
+  staged_by: {
+    type: String,
+    trim: true
+  },
+
   // Fulfillment tracking
   fulfilled_date: {
     type: Date
@@ -134,6 +155,128 @@ tagSchema.pre('save', function(next) {
   
   next();
 });
+
+// ===== STAGING METHODS =====
+
+// Method to check if staging is complete (all items fully verified)
+tagSchema.methods.isStagingComplete = function() {
+  return this.sku_items.every(item => {
+    const selectedCount = item.selected_instance_ids ? item.selected_instance_ids.length : 0;
+    const stagedCount = item.staged_instance_ids ? item.staged_instance_ids.length : 0;
+    return selectedCount > 0 && stagedCount >= selectedCount;
+  });
+};
+
+// Method to get staging progress
+tagSchema.methods.getStagingProgress = function() {
+  let staged = 0;
+  let total = 0;
+  this.sku_items.forEach(item => {
+    const selectedCount = item.selected_instance_ids ? item.selected_instance_ids.length : 0;
+    const stagedCount = item.staged_instance_ids ? item.staged_instance_ids.length : 0;
+    total += selectedCount;
+    staged += Math.min(stagedCount, selectedCount);
+  });
+  return {
+    staged,
+    total,
+    percentage: total > 0 ? Math.round((staged / total) * 100) : 0
+  };
+};
+
+// Stage all items at once
+tagSchema.methods.stageItems = function(stagedBy) {
+  this.sku_items.forEach(item => {
+    item.staged_instance_ids = [...(item.selected_instance_ids || [])];
+  });
+  this.status = 'staged';
+  this.staged_date = new Date();
+  this.staged_by = stagedBy;
+  this.last_updated_by = stagedBy;
+  return this;
+};
+
+// Stage specific items (partial staging per SKU)
+tagSchema.methods.stageSpecificItems = function(stagingData, stagedBy) {
+  for (const { sku_id, instance_ids } of stagingData) {
+    const item = this.sku_items.find(i => i.sku_id.toString() === sku_id.toString());
+    if (!item) {
+      throw new Error(`SKU ${sku_id} not found in this tag`);
+    }
+
+    // Validate that the instance_ids belong to this item's selected_instance_ids
+    const selectedSet = new Set((item.selected_instance_ids || []).map(id => id.toString()));
+    for (const instId of instance_ids) {
+      if (!selectedSet.has(instId.toString())) {
+        throw new Error(`Instance ${instId} is not part of the selected instances for SKU ${sku_id}`);
+      }
+    }
+
+    // Merge with existing staged ids (no duplicates)
+    const existingStaged = new Set((item.staged_instance_ids || []).map(id => id.toString()));
+    for (const instId of instance_ids) {
+      existingStaged.add(instId.toString());
+    }
+    item.staged_instance_ids = Array.from(existingStaged);
+  }
+
+  this.last_updated_by = stagedBy;
+
+  // If all items are now fully staged, mark tag as staged
+  if (this.isStagingComplete()) {
+    this.status = 'staged';
+    this.staged_date = new Date();
+    this.staged_by = stagedBy;
+  }
+
+  return this;
+};
+
+// Unstage specific items (revert staging per SKU)
+tagSchema.methods.unstageSpecificItems = function(unstagingData, updatedBy) {
+  for (const { sku_id, instance_ids } of unstagingData) {
+    const item = this.sku_items.find(i => i.sku_id.toString() === sku_id.toString());
+    if (!item) {
+      throw new Error(`SKU ${sku_id} not found in this tag`);
+    }
+
+    if (instance_ids && instance_ids.length > 0) {
+      // Remove specific instance_ids from staged
+      const toRemove = new Set(instance_ids.map(id => id.toString()));
+      item.staged_instance_ids = (item.staged_instance_ids || []).filter(
+        id => !toRemove.has(id.toString())
+      );
+    } else {
+      // Clear all staged for this SKU
+      item.staged_instance_ids = [];
+    }
+  }
+
+  this.last_updated_by = updatedBy;
+
+  // If tag was staged but now incomplete, revert to active
+  if (this.status === 'staged' && !this.isStagingComplete()) {
+    this.status = 'active';
+    this.staged_date = undefined;
+    this.staged_by = undefined;
+  }
+
+  return this;
+};
+
+// Unstage all items
+tagSchema.methods.unstageAllItems = function(updatedBy) {
+  this.sku_items.forEach(item => {
+    item.staged_instance_ids = [];
+  });
+  this.status = 'active';
+  this.staged_date = undefined;
+  this.staged_by = undefined;
+  this.last_updated_by = updatedBy;
+  return this;
+};
+
+// ===== FULFILLMENT CHECK METHODS =====
 
 // Method to check if tag is partially fulfilled
 tagSchema.methods.isPartiallyFulfilled = function() {

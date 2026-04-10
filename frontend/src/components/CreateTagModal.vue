@@ -45,6 +45,7 @@ const totalSteps = 3
 const tagDetails = ref({
   tag_type: 'reserved' as const,
   customer_name: '',
+  is_complete: false,
   notes: '',
   due_date: '',
   project_name: ''
@@ -413,6 +414,7 @@ const handleSubmit = async () => {
     const submitData: CreateTagRequest = {
       tag_type: tagDetails.value.tag_type,
       customer_name: tagDetails.value.customer_name.trim(),
+      is_complete: tagDetails.value.is_complete,
       notes: tagDetails.value.notes?.trim() || '',
       due_date: tagDetails.value.due_date || undefined,
       project_name: tagDetails.value.project_name?.trim() || '',
@@ -555,6 +557,22 @@ onMounted(async () => {
               />
               <small class="form-text">
                 When this reservation is expected to be fulfilled
+              </small>
+            </div>
+
+            <!-- Complete Tag Checkbox -->
+            <div class="form-group">
+              <label class="form-check-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input
+                  type="checkbox"
+                  v-model="tagDetails.is_complete"
+                  class="form-check-input"
+                  style="width: 18px; height: 18px;"
+                />
+                <span>This is the complete tag</span>
+              </label>
+              <small class="form-text">
+                Check this if all expected items are included. Leave unchecked if items are still missing or on order.
               </small>
             </div>
 

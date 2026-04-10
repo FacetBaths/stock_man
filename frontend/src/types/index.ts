@@ -393,7 +393,7 @@ export interface Tag {
   _id: string
   customer_name: string
   tag_type: 'reserved' | 'broken' | 'imperfect' | 'loaned' | 'stock'
-  status: 'active' | 'fulfilled' | 'cancelled'
+  status: 'active' | 'staged' | 'fulfilled' | 'cancelled'
 
   // ✅ SKU items with pure instance-based architecture
   sku_items: Array<{
@@ -406,15 +406,20 @@ export interface Tag {
     }
     // Single source of truth: quantity = selected_instance_ids.length
     selected_instance_ids: string[]
+    // Per-item staging tracking
+    staged_instance_ids?: string[]
     selection_method: 'auto' | 'manual' | 'fifo' | 'cost_based'
     notes: string
   }>
 
+  is_complete: boolean
   notes: string
   due_date?: string
   project_name: string
   created_by: string
   last_updated_by: string
+  staged_date?: string
+  staged_by?: string
   fulfilled_date?: string
   fulfilled_by?: string
   createdAt: string
@@ -424,6 +429,8 @@ export interface Tag {
   is_partially_fulfilled?: boolean
   is_fully_fulfilled?: boolean
   is_overdue?: boolean
+  is_staging_complete?: boolean
+  staging_progress?: { staged: number; total: number; percentage: number }
   total_quantity?: number
   fulfillment_progress?: number
 }
@@ -439,6 +446,7 @@ export interface CreateTagRequest {
     quantity?: number // Only for auto-selection methods
     notes?: string
   }>
+  is_complete?: boolean
   notes?: string
   due_date?: string
   project_name?: string
@@ -454,10 +462,20 @@ export interface UpdateTagRequest {
     selection_method: 'auto' | 'manual' | 'fifo' | 'cost_based'
     notes?: string
   }>
+  is_complete?: boolean
   notes?: string
-  status?: 'active' | 'fulfilled' | 'cancelled'
+  status?: 'active' | 'staged' | 'fulfilled' | 'cancelled'
   due_date?: string
   project_name?: string
+}
+
+// ✅ Stage tag request
+export interface StageTagRequest {
+  staging_items: Array<{
+    sku_id: string
+    instance_ids: string[]
+  }>
+  stage_all?: boolean
 }
 
 // ✅ Fulfill tag items request - matches backend structure

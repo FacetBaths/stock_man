@@ -75,6 +75,16 @@
                     >
                       {{ tag.tag_type }}
                     </q-chip>
+                    <q-chip
+                      v-if="tag.status === 'staged'"
+                      color="amber-8"
+                      text-color="white"
+                      size="sm"
+                      class="q-ml-sm"
+                      icon="local_shipping"
+                    >
+                      Staged
+                    </q-chip>
                     <span v-if="tag.project_name" class="text-grey-6 q-ml-sm">
                       - {{ tag.project_name }}
                     </span>
@@ -482,15 +492,28 @@ const loadActiveTags = async () => {
     loadingTags.value = true
     error.value = ''
     
-    // Get all active tags with populated SKU items
-    const response = await tagApi.getTags({
-      status: 'active',
-      include_items: true,
-      sort_by: 'customer_name',
-      sort_order: 'asc'
-    })
+    // Get all active AND staged tags with populated SKU items
+    // Staged tags are ready for fulfillment, active tags can also be fulfilled directly
+    const [activeResponse, stagedResponse] = await Promise.all([
+      tagApi.getTags({
+        status: 'active',
+        include_items: true,
+        sort_by: 'customer_name',
+        sort_order: 'asc'
+      }),
+      tagApi.getTags({
+        status: 'staged',
+        include_items: true,
+        sort_by: 'customer_name',
+        sort_order: 'asc'
+      })
+    ])
     
-    tags.value = response.tags || []
+    // Show staged tags first (they're ready), then active
+    tags.value = [
+      ...(stagedResponse.tags || []),
+      ...(activeResponse.tags || [])
+    ]
   } catch (err: any) {
     console.error('Failed to load tags:', err)
     error.value = err.response?.data?.message || 'Failed to load tags'

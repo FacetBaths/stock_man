@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { Tag, CreateTagRequest, UpdateTagRequest } from '@/types'
+import type { Tag, CreateTagRequest, UpdateTagRequest, StageTagRequest } from '@/types'
 import { tagApi } from '@/utils/api'
 
 export const useTagStore = defineStore('tag', () => {
@@ -12,6 +12,7 @@ export const useTagStore = defineStore('tag', () => {
   const isUpdating = ref(false)
   const isDeleting = ref(false)
   const isFulfilling = ref(false)
+  const isStaging = ref(false)
   const error = ref<string | null>(null)
   const pagination = ref({
     currentPage: 1,
@@ -48,6 +49,10 @@ export const useTagStore = defineStore('tag', () => {
     tags.value.filter(tag => tag.status === 'cancelled')
   )
   
+  const stagedTags = computed(() => 
+    tags.value.filter(tag => tag.status === 'staged')
+  )
+
   const overdueTags = computed(() => 
     tags.value.filter(tag => 
       tag.status === 'active' && 
@@ -92,6 +97,7 @@ export const useTagStore = defineStore('tag', () => {
   const tagStats = computed(() => {
     const total = tags.value.length
     const active = activeTags.value.length
+    const staged = stagedTags.value.length
     const fulfilled = fulfilledTags.value.length
     const overdue = overdueTags.value.length
     const partiallyFulfilled = partiallyFulfilledTags.value.length
@@ -107,6 +113,7 @@ export const useTagStore = defineStore('tag', () => {
     return {
       total,
       active,
+      staged,
       fulfilled,
       overdue,
       partiallyFulfilled,
@@ -319,6 +326,34 @@ export const useTagStore = defineStore('tag', () => {
     }
   }
 
+  // Stage tag items
+  const stageTag = async (id: string, stagingData: StageTagRequest) => {
+    try {
+      isStaging.value = true
+      error.value = null
+
+      const response = await tagApi.stageTag(id, stagingData)
+      
+      // Update in list
+      const index = tags.value.findIndex(t => t._id === id)
+      if (index !== -1) {
+        tags.value[index] = response.tag
+      }
+
+      // Update current tag if it's the same
+      if (currentTag.value?._id === id) {
+        currentTag.value = response.tag
+      }
+
+      return response
+    } catch (err: any) {
+      error.value = err.response?.data?.message || 'Failed to stage tag'
+      throw err
+    } finally {
+      isStaging.value = false
+    }
+  }
+
   // Get tag statistics
   const fetchStats = async () => {
     try {
@@ -413,12 +448,14 @@ export const useTagStore = defineStore('tag', () => {
     isUpdating,
     isDeleting,
     isFulfilling,
+    isStaging,
     error,
     pagination,
     filters,
 
     // Computed
     activeTags,
+    stagedTags,
     fulfilledTags,
     cancelledTags,
     overdueTags,
@@ -434,6 +471,7 @@ export const useTagStore = defineStore('tag', () => {
     updateTag,
     deleteTag,
     fulfillTag,
+    stageTag,
     fetchStats,
     fetchCustomers,
     

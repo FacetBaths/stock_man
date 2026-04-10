@@ -10,6 +10,7 @@ import CreateTagModal from "@/components/CreateTagModal.vue";
 import EditTagModal from "@/components/EditTagModal.vue";
 import EditTagItemsModal from "@/components/EditTagItemsModal.vue";
 import FulfillTagsDialog from "@/components/FulfillTagsDialog.vue";
+import StageTagsDialog from "@/components/StageTagsDialog.vue";
 import StatsCarousel from "@/components/StatsCarousel.vue";
 import { useQuasar } from "quasar";
 
@@ -25,6 +26,7 @@ const showEditItemsModal = ref(false);
 const tagToEdit = ref<Tag | null>(null);
 const tagToEditItems = ref<Tag | null>(null);
 const showFulfillDialog = ref(false);
+const showStageDialog = ref(false);
 const selectedTags = ref<Tag[]>([]);
 
 // Expansion state for tags
@@ -57,8 +59,45 @@ const customerFilter = computed({
   },
 });
 
-// Use store computed properties
-const filteredTags = computed(() => tagStore.tags);
+// Use store tags, but hide broken/imperfect from default view
+// They only show when explicitly filtered by type
+const hiddenTypesInDefaultView = ['broken', 'imperfect'] as const;
+
+const filteredTags = computed(() => {
+  const activeTypeFilter = tagStore.filters.tag_type;
+  // If user explicitly selected a type (including broken/imperfect), show all
+  if (activeTypeFilter && activeTypeFilter !== '') {
+    return tagStore.tags;
+  }
+  // Default view: hide broken and imperfect
+  return tagStore.tags.filter(tag => !hiddenTypesInDefaultView.includes(tag.tag_type as any));
+});
+
+// Group tags by tag_type for sectioned display
+const tagsByTypeGrouped = computed(() => {
+  const groups: Array<{ type: string; label: string; color: string; tags: Tag[] }> = [];
+  
+  for (const tt of TAG_TYPES) {
+    const matching = filteredTags.value.filter(tag => tag.tag_type === tt.value);
+    if (matching.length > 0) {
+      groups.push({
+        type: tt.value,
+        label: tt.label,
+        color: tt.color,
+        tags: matching
+      });
+    }
+  }
+  
+  // Catch any tags with types not in TAG_TYPES
+  const knownTypes = new Set(TAG_TYPES.map(t => t.value));
+  const other = filteredTags.value.filter(tag => !knownTypes.has(tag.tag_type));
+  if (other.length > 0) {
+    groups.push({ type: 'other', label: 'Other', color: '#6c757d', tags: other });
+  }
+  
+  return groups;
+});
 
 // Stats carousel configuration for StatsCarousel component
 const tagStatsCarousel = computed(() => {
@@ -76,6 +115,12 @@ const tagStatsCarousel = computed(() => {
       label: 'Customers',
       value: stats.value.uniqueCustomers || 0,
       color: '#388e3c',
+    },
+    {
+      icon: 'local_shipping',
+      label: 'Staged',
+      value: stats.value.staged || 0,
+      color: '#ff8f00',
     },
     {
       icon: 'done_all',
@@ -101,6 +146,8 @@ const getStatusColor = (status: string) => {
   switch (status) {
     case "active":
       return "positive";
+    case "staged":
+      return "amber-8";
     case "fulfilled":
       return "info";
     case "cancelled":
@@ -224,6 +271,47 @@ const handleFulfillTags = () => {
   showFulfillDialog.value = true;
 };
 
+// Stage Tags workflow
+const handleStageTags = () => {
+  showStageDialog.value = true;
+};
+
+// Unstage a tag
+const handleUnstageTag = async (tag: Tag) => {
+  $q.dialog({
+    title: 'Unstage Tag',
+    message: `Revert all staging for ${tag.customer_name}? Items will be marked as unstaged.`,
+    cancel: true,
+    persistent: true
+  }).onOk(async () => {
+    try {
+      await tagApi.unstageTag(tag._id, { unstage_all: true });
+      $q.notify({
+        type: 'positive',
+        message: 'Tag unstaged successfully',
+        timeout: 3000,
+      });
+      await Promise.all([loadTags(), loadStats()]);
+    } catch (err: any) {
+      $q.notify({
+        type: 'negative',
+        message: err.response?.data?.message || 'Failed to unstage tag',
+        timeout: 3000,
+      });
+    }
+  });
+};
+
+const handleStageSuccess = async () => {
+  showStageDialog.value = false;
+  await Promise.all([loadTags(), loadStats()]);
+  $q.notify({
+    type: "positive",
+    message: "Tag staged successfully",
+    timeout: 3000,
+  });
+};
+
 // Handle fulfill dialog success
 const handleFulfillSuccess = async (results: any) => {
   const fulfilledCount = results.fulfilled_tags?.length || 0;
@@ -307,6 +395,38 @@ const getTotalQuantity = (items: any[]) => {
       : 0;
     return sum + quantity;
   }, 0);
+};
+
+// Split sku_items into staged vs unstaged for the expansion view
+const getStagedItems = (skuItems: any[]) => {
+  if (!skuItems) return [];
+  return skuItems.filter(item => {
+    const stagedCount = item.staged_instance_ids?.length || 0;
+    const selectedCount = item.selected_instance_ids?.length || 0;
+    return stagedCount > 0 && stagedCount >= selectedCount;
+  });
+};
+
+const getPartiallyStagedItems = (skuItems: any[]) => {
+  if (!skuItems) return [];
+  return skuItems.filter(item => {
+    const stagedCount = item.staged_instance_ids?.length || 0;
+    const selectedCount = item.selected_instance_ids?.length || 0;
+    return stagedCount > 0 && stagedCount < selectedCount;
+  });
+};
+
+const getUnstagedItems = (skuItems: any[]) => {
+  if (!skuItems) return [];
+  return skuItems.filter(item => {
+    const stagedCount = item.staged_instance_ids?.length || 0;
+    return stagedCount === 0;
+  });
+};
+
+const hasAnyStagingData = (skuItems: any[]) => {
+  if (!skuItems) return false;
+  return skuItems.some(item => (item.staged_instance_ids?.length || 0) > 0);
 };
 
 // Toggle tag expansion
@@ -459,6 +579,7 @@ const tableColumns = [
                   :options="[
                     { label: 'All Status', value: 'all' },
                     { label: 'Active', value: 'active' },
+                    { label: 'Staged', value: 'staged' },
                     { label: 'Fulfilled', value: 'fulfilled' },
                     { label: 'Cancelled', value: 'cancelled' },
                   ]"
@@ -498,16 +619,29 @@ const tableColumns = [
           <!-- Action Buttons -->
           <div class="col-auto" v-if="authStore.canWrite">
             <div class="row q-gutter-sm">
+              <!-- Stage Tags -->
+              <q-btn
+                @click="handleStageTags"
+                color="amber-8"
+                text-color="white"
+                icon="local_shipping"
+                label="Stage"
+                class="add-btn"
+                no-caps
+              >
+                <q-tooltip>Verify & load items for pickup</q-tooltip>
+              </q-btn>
+
               <!-- Fulfill Tags -->
               <q-btn
                 @click="handleFulfillTags"
                 color="positive"
                 icon="done_all"
-                label="Fulfill Tags"
+                label="Fulfill"
                 class="add-btn"
                 no-caps
               >
-                <q-tooltip>Select and fulfill active tags</q-tooltip>
+                <q-tooltip>Complete fulfillment of staged/active tags</q-tooltip>
               </q-btn>
 
               <!-- Create Tag -->
@@ -564,28 +698,44 @@ const tableColumns = [
           </div>
         </div>
 
-        <!-- Tags Grid -->
+        <!-- Tags Grid - Grouped by Type -->
         <div class="tags-grid q-pa-md">
-          <div class="row q-gutter-md">
+          <div v-for="group in tagsByTypeGrouped" :key="group.type" class="q-mb-lg">
+            <!-- Section Header -->
+            <div class="type-section-header q-mb-sm row items-center">
+              <q-icon name="label" :style="{ color: group.color }" size="sm" class="q-mr-sm" />
+              <span class="text-subtitle1 text-weight-bold text-dark">{{ group.label }}</span>
+              <q-badge :style="{ backgroundColor: group.color }" text-color="white" class="q-ml-sm">
+                {{ group.tags.length }}
+              </q-badge>
+            </div>
+
+          <div class="tag-group-list">
             <q-card
-              v-for="tag in filteredTags"
+              v-for="tag in group.tags"
               :key="tag._id"
-              class="tag-card glass-card col-12"
-              flat
-              data-aos="fade-up"
-              data-aos-delay="100"
+              :class="[
+                'tag-card',
+                { 'tag-incomplete': !tag.is_complete && tag.status === 'active' },
+                { 'tag-broken': tag.tag_type === 'broken' }
+              ]"
+              :flat="!(!tag.is_complete && tag.status === 'active')"
             >
               <!-- Tag Header -->
               <q-card-section class="tag-header-section">
-                <div class="row items-center no-wrap q-gutter-md">
-                  <!-- Left Side - Customer Info -->
+                <!-- Top row: Customer + Actions -->
+                <div class="row items-center no-wrap q-mb-sm">
                   <div class="col">
                     <div class="row items-center q-gutter-sm">
-                      <q-avatar color="primary" text-color="white" size="md">
-                        <q-icon name="person" />
+                      <q-avatar 
+                        :color="tag.tag_type === 'broken' ? 'red-4' : 'primary'" 
+                        text-color="white" 
+                        size="md"
+                      >
+                        <q-icon :name="tag.tag_type === 'broken' ? 'broken_image' : 'person'" />
                       </q-avatar>
                       <div>
-                        <div class="text-h6 text-weight-bold text-dark">
+                        <div class="text-h6 text-weight-bold" :class="tag.tag_type === 'broken' ? 'text-red-8' : 'text-dark'">
                           {{ tag.customer_name }}
                         </div>
                         <div v-if="tag.project_name" class="text-caption text-grey-6">
@@ -600,38 +750,7 @@ const tableColumns = [
                     </div>
                   </div>
 
-                  <!-- Center - Status Chips -->
-                  <div class="col-auto">
-                    <div class="row q-gutter-xs items-center">
-                      <q-chip
-                        :style="{
-                          backgroundColor: getTagTypeColor(tag.tag_type),
-                          color: 'white',
-                        }"
-                        size="sm"
-                        class="text-weight-medium text-capitalize"
-                        icon="label"
-                      >
-                        {{ tag.tag_type }}
-                      </q-chip>
-                      
-                      <q-chip
-                        :color="getStatusColor(tag.status)"
-                        text-color="white"
-                        size="sm"
-                        class="text-weight-medium text-capitalize"
-                        icon="flag"
-                      >
-                        {{ tag.status }}
-                      </q-chip>
-                      
-                      <q-chip color="info" text-color="white" size="sm" icon="inventory">
-                        {{ getTotalQuantity(tag.sku_items) }} items
-                      </q-chip>
-                    </div>
-                  </div>
-
-                  <!-- Right Side - Actions -->
+                  <!-- Actions (right-aligned) -->
                   <div class="col-auto">
                     <div class="row q-gutter-xs">
                       <q-btn
@@ -659,6 +778,18 @@ const tableColumns = [
                         <q-tooltip>Edit Items</q-tooltip>
                       </q-btn>
                       <q-btn
+                        v-if="authStore.canWrite && hasAnyStagingData(tag.sku_items)"
+                        @click="handleUnstageTag(tag)"
+                        color="amber-8"
+                        icon="undo"
+                        size="sm"
+                        round
+                        flat
+                        dense
+                      >
+                        <q-tooltip>Unstage Items</q-tooltip>
+                      </q-btn>
+                      <q-btn
                         v-if="authStore.canWrite"
                         @click="handleDeleteTag(tag)"
                         color="negative"
@@ -681,10 +812,69 @@ const tableColumns = [
                         flat
                         dense
                       >
-                        <q-tooltip>{{ expandedTags.has(tag._id) ? 'Collapse' : 'View Items' }}</q-tooltip>
+                      <q-tooltip>{{ expandedTags.has(tag._id) ? 'Collapse' : 'View Items' }}</q-tooltip>
                       </q-btn>
                     </div>
                   </div>
+                </div>
+
+                <!-- Bottom row: Chips (wrapping naturally) -->
+                <div class="row q-gutter-xs items-center" style="flex-wrap: wrap;">
+                  <q-chip
+                    :color="getStatusColor(tag.status)"
+                    text-color="white"
+                    size="sm"
+                    class="text-weight-medium text-capitalize"
+                    icon="flag"
+                  >
+                    {{ tag.status }}
+                  </q-chip>
+                  
+                  <q-chip color="info" text-color="white" size="sm" icon="inventory">
+                    {{ getTotalQuantity(tag.sku_items) }} items
+                  </q-chip>
+                  
+                  <!-- Completeness -->
+                  <q-chip
+                    v-if="!tag.is_complete && tag.status === 'active'"
+                    color="red-8"
+                    text-color="white"
+                    size="sm"
+                    icon="warning"
+                  >
+                    Incomplete
+                  </q-chip>
+                  <q-chip
+                    v-if="tag.is_complete && tag.status === 'active'"
+                    color="green"
+                    text-color="white"
+                    size="sm"
+                    icon="check_circle"
+                  >
+                    Complete
+                  </q-chip>
+                  
+                  <!-- Staging progress -->
+                  <q-chip
+                    v-if="tag.staging_progress && tag.staging_progress.percentage > 0 && tag.status === 'active'"
+                    color="amber"
+                    text-color="white"
+                    size="sm"
+                    icon="local_shipping"
+                  >
+                    {{ tag.staging_progress.percentage }}% staged
+                  </q-chip>
+
+                  <!-- Broken notice -->
+                  <q-chip
+                    v-if="tag.tag_type === 'broken'"
+                    color="red-2"
+                    text-color="red-10"
+                    size="sm"
+                    icon="report_problem"
+                  >
+                    Damaged — Do Not Ship
+                  </q-chip>
                 </div>
               </q-card-section>
 
@@ -699,12 +889,97 @@ const tableColumns = [
                   </div>
 
                   <div v-if="tag.sku_items && tag.sku_items.length > 0">
-                    <!-- Compact Item List -->
-                    <div class="compact-items-container">
+                    
+                    <!-- STAGED section -->
+                    <div v-if="getStagedItems(tag.sku_items).length > 0" class="q-mb-md">
+                      <div class="section-label text-positive text-weight-bold q-mb-xs">
+                        <q-icon name="check_circle" size="xs" class="q-mr-xs" />
+                        Staged ({{ getStagedItems(tag.sku_items).length }})
+                      </div>
                       <q-list dense separator class="compact-items-list">
                         <q-item
-                          v-for="(skuItem, index) in tag.sku_items"
-                          :key="index"
+                          v-for="(skuItem, index) in getStagedItems(tag.sku_items)"
+                          :key="'staged-' + index"
+                          class="compact-item"
+                          dense
+                        >
+                          <q-item-section avatar>
+                            <q-avatar color="positive" text-color="white" size="xs">
+                              <q-icon name="check" size="xs" />
+                            </q-avatar>
+                          </q-item-section>
+                          <q-item-section>
+                            <q-item-label class="text-weight-medium text-dark">
+                              <template v-if="typeof skuItem.sku_id === 'object' && skuItem.sku_id?.sku_code">
+                                {{ skuItem.sku_id.sku_code || "Unknown SKU" }}
+                              </template>
+                              <template v-else>SKU {{ skuItem.sku_id }}</template>
+                              <span v-if="typeof skuItem.sku_id === 'object' && skuItem.sku_id?.name" class="text-grey-7 q-ml-sm">
+                                - {{ skuItem.sku_id.name }}
+                              </span>
+                            </q-item-label>
+                            <q-item-label v-if="typeof skuItem.sku_id === 'object' && skuItem.sku_id?.description" caption class="text-grey-6" lines="1">
+                              {{ skuItem.sku_id.description }}
+                            </q-item-label>
+                          </q-item-section>
+                          <q-item-section side>
+                            <q-badge color="positive" :label="skuItem.selected_instance_ids?.length || 0" class="text-weight-bold" />
+                          </q-item-section>
+                        </q-item>
+                      </q-list>
+                    </div>
+
+                    <!-- PARTIALLY STAGED section -->
+                    <div v-if="getPartiallyStagedItems(tag.sku_items).length > 0" class="q-mb-md">
+                      <div class="section-label text-amber-8 text-weight-bold q-mb-xs">
+                        <q-icon name="timelapse" size="xs" class="q-mr-xs" />
+                        Partially Staged ({{ getPartiallyStagedItems(tag.sku_items).length }})
+                      </div>
+                      <q-list dense separator class="compact-items-list">
+                        <q-item
+                          v-for="(skuItem, index) in getPartiallyStagedItems(tag.sku_items)"
+                          :key="'partial-' + index"
+                          class="compact-item"
+                          dense
+                        >
+                          <q-item-section avatar>
+                            <q-avatar color="amber" text-color="white" size="xs">
+                              <q-icon name="timelapse" size="xs" />
+                            </q-avatar>
+                          </q-item-section>
+                          <q-item-section>
+                            <q-item-label class="text-weight-medium text-dark">
+                              <template v-if="typeof skuItem.sku_id === 'object' && skuItem.sku_id?.sku_code">
+                                {{ skuItem.sku_id.sku_code || "Unknown SKU" }}
+                              </template>
+                              <template v-else>SKU {{ skuItem.sku_id }}</template>
+                              <span v-if="typeof skuItem.sku_id === 'object' && skuItem.sku_id?.name" class="text-grey-7 q-ml-sm">
+                                - {{ skuItem.sku_id.name }}
+                              </span>
+                            </q-item-label>
+                            <q-item-label v-if="typeof skuItem.sku_id === 'object' && skuItem.sku_id?.description" caption class="text-grey-6" lines="1">
+                              {{ skuItem.sku_id.description }}
+                            </q-item-label>
+                          </q-item-section>
+                          <q-item-section side>
+                            <q-badge color="amber" text-color="white" class="text-weight-bold">
+                              {{ skuItem.staged_instance_ids?.length || 0 }}/{{ skuItem.selected_instance_ids?.length || 0 }}
+                            </q-badge>
+                          </q-item-section>
+                        </q-item>
+                      </q-list>
+                    </div>
+
+                    <!-- UNSTAGED section -->
+                    <div v-if="getUnstagedItems(tag.sku_items).length > 0">
+                      <div v-if="hasAnyStagingData(tag.sku_items)" class="section-label text-grey-6 text-weight-bold q-mb-xs">
+                        <q-icon name="radio_button_unchecked" size="xs" class="q-mr-xs" />
+                        Unstaged ({{ getUnstagedItems(tag.sku_items).length }})
+                      </div>
+                      <q-list dense separator class="compact-items-list">
+                        <q-item
+                          v-for="(skuItem, index) in getUnstagedItems(tag.sku_items)"
+                          :key="'unstaged-' + index"
                           class="compact-item"
                           dense
                         >
@@ -713,59 +988,27 @@ const tableColumns = [
                               <q-icon name="inventory" size="xs" />
                             </q-avatar>
                           </q-item-section>
-                          
                           <q-item-section>
                             <q-item-label class="text-weight-medium text-dark">
-                              <template
-                                v-if="
-                                  typeof skuItem.sku_id === 'object' &&
-                                  skuItem.sku_id?.sku_code
-                                "
-                              >
+                              <template v-if="typeof skuItem.sku_id === 'object' && skuItem.sku_id?.sku_code">
                                 {{ skuItem.sku_id.sku_code || "Unknown SKU" }}
                               </template>
-                              <template v-else>
-                                SKU {{ skuItem.sku_id }}
-                              </template>
-                              
-                              <span
-                                v-if="
-                                  typeof skuItem.sku_id === 'object' &&
-                                  skuItem.sku_id?.name
-                                "
-                                class="text-grey-7 q-ml-sm"
-                              >
+                              <template v-else>SKU {{ skuItem.sku_id }}</template>
+                              <span v-if="typeof skuItem.sku_id === 'object' && skuItem.sku_id?.name" class="text-grey-7 q-ml-sm">
                                 - {{ skuItem.sku_id.name }}
                               </span>
                             </q-item-label>
-                            
-                            <q-item-label
-                              v-if="
-                                typeof skuItem.sku_id === 'object' &&
-                                skuItem.sku_id?.description
-                              "
-                              caption
-                              class="text-grey-6"
-                              lines="1"
-                            >
+                            <q-item-label v-if="typeof skuItem.sku_id === 'object' && skuItem.sku_id?.description" caption class="text-grey-6" lines="1">
                               {{ skuItem.sku_id.description }}
                             </q-item-label>
                           </q-item-section>
-                          
                           <q-item-section side>
-                            <q-badge
-                              color="primary"
-                              :label="
-                                skuItem.selected_instance_ids
-                                  ? skuItem.selected_instance_ids.length
-                                  : skuItem.remaining_quantity || skuItem.quantity
-                              "
-                              class="text-weight-bold"
-                            />
+                            <q-badge color="primary" :label="skuItem.selected_instance_ids?.length || 0" class="text-weight-bold" />
                           </q-item-section>
                         </q-item>
                       </q-list>
                     </div>
+
                   </div>
 
                   <div v-else class="text-center q-pa-lg">
@@ -780,6 +1023,7 @@ const tableColumns = [
               </q-slide-transition>
             </q-card>
           </div>
+        </div>
         </div>
       </div>
     </div>
@@ -804,6 +1048,13 @@ const tableColumns = [
       :tag="tagToEditItems"
       @close="showEditItemsModal = false"
       @success="handleEditItemsSuccess"
+    />
+
+    <!-- Stage Tags Dialog -->
+    <StageTagsDialog
+      :show="showStageDialog"
+      @close="showStageDialog = false"
+      @success="handleStageSuccess"
     />
 
     <!-- Fulfill Tags Dialog -->
@@ -899,7 +1150,7 @@ const tableColumns = [
 /* Tags List Container */
 .tags-list-container {
   border-radius: 20px;
-  overflow: hidden;
+  overflow: visible;
   padding: 0;
 }
 
@@ -1037,24 +1288,49 @@ const tableColumns = [
   opacity: 0.8;
 }
 
+/* Tag group list - simple vertical stack with even spacing */
+.tag-group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 /* New Tag Card Styles */
 .tag-card {
   background: rgba(255, 255, 255, 0.15) !important;
   backdrop-filter: blur(25px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 16px;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .tag-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
   background: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Incomplete tags: red left and bottom border */
+.tag-card.tag-incomplete {
+  border-left: 3px solid #d32f2f;
+  border-bottom: 3px solid #d32f2f;
+}
+
+/* Broken tags: muted, distinct treatment */
+.tag-card.tag-broken {
+  background: rgba(255, 235, 238, 0.3) !important;
+  border-color: rgba(211, 47, 47, 0.3);
+  border-style: dashed;
+  opacity: 0.85;
+}
+
+.tag-card.tag-broken:hover {
+  opacity: 1;
+  background: rgba(255, 235, 238, 0.45) !important;
 }
 
 .tag-header-section {
   background: rgba(255, 255, 255, 0.05);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .tag-items-section {
@@ -1072,6 +1348,21 @@ const tableColumns = [
   background: rgba(255, 255, 255, 0.15) !important;
   transform: translateY(-2px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+}
+
+/* Type section headers */
+.type-section-header {
+  padding: 8px 4px;
+  border-bottom: 2px solid rgba(0, 0, 0, 0.08);
+}
+
+/* Section labels for staged/unstaged groups */
+.section-label {
+  font-size: 0.8rem;
+  letter-spacing: 0.03em;
+  padding: 4px 8px;
+  display: flex;
+  align-items: center;
 }
 
 /* Compact Items List Styles */
