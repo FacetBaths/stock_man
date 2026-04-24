@@ -7,8 +7,54 @@ const Tag = require('../models/Tag');
 const SKU = require('../models/SKU');
 const Category = require('../models/Category');
 const Inventory = require('../models/Inventory');
-const { auth, requireRole, requireWriteAccess } = require('../middleware/authEnhanced');
+const { auth, requireRole, requireWriteAccess, logSecurityEvent } = require('../middleware/authEnhanced');
 const AuditLog = require('../models/AuditLog');
+
+// ===== NOTES THREAD HELPERS =====
+
+// Load the tag + note referenced by `:id` and `:noteId`, enforce that the
+// current user is either an admin or the note's original author, and attach
+// the resolved documents to the request so handlers can reuse them.
+//
+// Returns 404 for missing tag/note, 403 when the user isn't the author and
+// isn't an admin.
+async function requireNoteAuthorOrAdmin(req, res, next) {
+  try {
+    const tag = await Tag.findById(req.params.id);
+    if (!tag) {
+      return res.status(404).json({ message: 'Tag not found' });
+    }
+
+    const note = tag.notes.id(req.params.noteId);
+    if (!note) {
+      return res.status(404).json({ message: 'Note not found' });
+    }
+
+    const isAdmin = req.user.role === 'admin';
+    const isAuthor = note.author && note.author === req.user.username;
+    if (!isAdmin && !isAuthor) {
+      await logSecurityEvent(req.user.id, 'TAG_NOTE_FORBIDDEN', req, {
+        tag_id: tag._id?.toString(),
+        note_id: note._id?.toString(),
+        note_author: note.author
+      });
+      return res.status(403).json({
+        message: 'Only the note author or an admin can modify this note',
+        code: 'NOTE_FORBIDDEN'
+      });
+    }
+
+    req.tag = tag;
+    req.note = note;
+    next();
+  } catch (error) {
+    console.error('requireNoteAuthorOrAdmin error:', error);
+    res.status(500).json({
+      message: 'Failed to authorize note action',
+      error: error.message
+    });
+  }
+}
 
 // Validation middleware for tag creation/updates
 const validateTag = [
@@ -63,11 +109,15 @@ const validateTag = [
     .optional()
     .isBoolean()
     .withMessage('is_complete must be a boolean'),
+  // `notes` on create is the (optional) *initial* entry of the notes thread.
+  // Later edits go through POST /:id/notes so history is preserved.
   body('notes')
     .optional()
+    .isString()
+    .withMessage('notes must be a string')
     .trim()
-    .isLength({ max: 1000 })
-    .withMessage('Notes cannot exceed 1000 characters'),
+    .isLength({ max: 2000 })
+    .withMessage('Initial note cannot exceed 2000 characters'),
   body('due_date')
     .optional()
     .isISO8601()
@@ -496,7 +546,8 @@ router.get('/',
         filter.$or = [
           { customer_name: searchRegex },
           { project_name: searchRegex },
-          { notes: searchRegex }
+          // `notes` is now a thread of subdocuments; match on any entry body
+          { 'notes.message': searchRegex }
         ];
       }
       
@@ -728,6 +779,18 @@ router.post('/',
         });
       }
 
+      // Seed the notes thread with the optional initial note so history is
+      // preserved from day one.
+      const initialNotes = [];
+      if (typeof req.body.notes === 'string' && req.body.notes.trim().length > 0) {
+        initialNotes.push({
+          message: req.body.notes.trim(),
+          author: req.user.username,
+          author_role: req.user.role,
+          kind: 'user'
+        });
+      }
+
       // Create tag data with instance-based structure
       const processedItems = skuItemsToProcess.map(item => {
         const tagItem = {
@@ -757,7 +820,7 @@ router.post('/',
         project_name: req.body.project_name || '',
         sku_items: processedItems,
         is_complete: req.body.is_complete || false,
-        notes: req.body.notes || '',
+        notes: initialNotes,
         due_date: req.body.due_date || null,
         status: 'active',
         created_by: req.user.username,
@@ -856,7 +919,9 @@ router.put('/:id',
     param('id').isMongoId().withMessage('Invalid tag ID'),
     body('customer_name').optional().trim().isLength({ min: 1, max: 200 }),
     body('project_name').optional().trim().isLength({ max: 200 }),
-    body('notes').optional().trim().isLength({ max: 1000 }),
+    // NOTE: `notes` is intentionally omitted here. Use POST/PUT/DELETE
+    // /api/tags/:id/notes to modify the notes thread. Any `notes` field sent
+    // to this endpoint is ignored (see handler below).
     body('due_date').optional().isISO8601(),
     body('status').optional().isIn(['active', 'staged', 'fulfilled', 'cancelled'])
   ],
@@ -884,7 +949,8 @@ router.put('/:id',
       if (req.body.customer_name !== undefined) updateData.customer_name = req.body.customer_name;
       if (req.body.project_name !== undefined) updateData.project_name = req.body.project_name;
       if (req.body.is_complete !== undefined) updateData.is_complete = req.body.is_complete;
-      if (req.body.notes !== undefined) updateData.notes = req.body.notes;
+      // Intentionally ignore `notes` on PUT. The notes thread is managed via
+      // dedicated endpoints so we never silently overwrite prior context.
       if (req.body.due_date !== undefined) updateData.due_date = req.body.due_date;
       
       // Handle status changes with inventory implications
@@ -1510,6 +1576,254 @@ router.delete('/:id',
         message: 'Failed to delete tag', 
         error: error.message 
       });
+    }
+  }
+);
+
+// ===== NOTES THREAD CRUD =====
+// Authorization model (matches plan):
+//   - Read:   any authenticated user (`auth`).
+//   - Create: admins and warehouse managers only (`requireWriteAccess`).
+//   - Update/Delete: admin OR the note's original author (`requireNoteAuthorOrAdmin`).
+// Entries are append-only from the client's perspective: edits record
+// `edited_at`/`edited_by`, deletes are soft so history/audit survive.
+
+const validateNoteBody = [
+  body('message')
+    .exists({ checkFalsy: true })
+    .withMessage('Note message is required')
+    .bail()
+    .isString()
+    .withMessage('Note message must be a string')
+    .bail()
+    .trim()
+    .isLength({ min: 1, max: 2000 })
+    .withMessage('Note message must be between 1 and 2000 characters')
+];
+
+async function reloadTagWithDisplayData(tagId) {
+  const reloaded = await Tag.findById(tagId).populate({
+    path: 'sku_items.sku_id',
+    populate: { path: 'category_id' }
+  });
+  if (!reloaded) return null;
+  const tagObj = reloaded.toObject();
+  tagObj.total_quantity = reloaded.getTotalQuantity();
+  tagObj.remaining_quantity = reloaded.getTotalRemainingQuantity();
+  tagObj.is_partially_fulfilled = reloaded.isPartiallyFulfilled();
+  tagObj.is_fully_fulfilled = reloaded.isFullyFulfilled();
+  tagObj.is_overdue = reloaded.due_date && new Date() > reloaded.due_date && reloaded.status === 'active';
+  tagObj.staging_progress = reloaded.getStagingProgress();
+  tagObj.is_staging_complete = reloaded.isStagingComplete();
+  return tagObj;
+}
+
+// GET /api/tags/:id/notes - list the full notes thread for a tag.
+router.get('/:id/notes',
+  auth,
+  [
+    param('id').isMongoId().withMessage('Invalid tag ID')
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
+      }
+
+      const tag = await Tag.findById(req.params.id).select('notes');
+      if (!tag) {
+        return res.status(404).json({ message: 'Tag not found' });
+      }
+
+      res.json({ notes: tag.notes || [] });
+    } catch (error) {
+      console.error('List tag notes error:', error);
+      res.status(500).json({ message: 'Failed to fetch notes', error: error.message });
+    }
+  }
+);
+
+// POST /api/tags/:id/notes - append a new note to the thread.
+// Requires write access (admin + warehouse_manager; excludes sales + viewer).
+router.post('/:id/notes',
+  auth,
+  requireWriteAccess,
+  [
+    param('id').isMongoId().withMessage('Invalid tag ID'),
+    ...validateNoteBody
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
+      }
+
+      const tag = await Tag.findById(req.params.id);
+      if (!tag) {
+        return res.status(404).json({ message: 'Tag not found' });
+      }
+
+      let createdNote;
+      try {
+        createdNote = tag.addNote(req.body.message, req.user.username, {
+          authorRole: req.user.role
+        });
+      } catch (err) {
+        return res.status(400).json({ message: err.message });
+      }
+      await tag.save();
+
+      try {
+        await AuditLog.logEvent({
+          event_type: 'update',
+          entity_type: 'tag',
+          entity_id: tag._id,
+          user_id: req.user.id,
+          user_name: req.user.username,
+          action: 'tag_note_created',
+          description: `Added a note to tag for ${tag.customer_name}`,
+          metadata: { note_id: createdNote._id?.toString(), kind: createdNote.kind }
+        });
+      } catch (auditErr) {
+        console.warn('Failed to write audit log for note creation:', auditErr.message);
+      }
+
+      const tagObj = await reloadTagWithDisplayData(tag._id);
+      res.status(201).json({
+        message: 'Note added',
+        note: createdNote,
+        tag: tagObj
+      });
+    } catch (error) {
+      console.error('Add tag note error:', error);
+      res.status(500).json({ message: 'Failed to add note', error: error.message });
+    }
+  }
+);
+
+// PUT /api/tags/:id/notes/:noteId - edit a note (author or admin only).
+router.put('/:id/notes/:noteId',
+  auth,
+  [
+    param('id').isMongoId().withMessage('Invalid tag ID'),
+    param('noteId').isMongoId().withMessage('Invalid note ID'),
+    ...validateNoteBody
+  ],
+  requireNoteAuthorOrAdmin,
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
+      }
+
+      const tag = req.tag;
+      let updatedNote;
+      try {
+        updatedNote = tag.updateNote(req.params.noteId, req.body.message, req.user.username);
+      } catch (err) {
+        if (err.code === 'NOTE_NOT_FOUND') {
+          return res.status(404).json({ message: err.message });
+        }
+        if (err.code === 'NOTE_IMMUTABLE' || err.code === 'NOTE_DELETED') {
+          return res.status(409).json({ message: err.message, code: err.code });
+        }
+        return res.status(400).json({ message: err.message });
+      }
+      await tag.save();
+
+      try {
+        await AuditLog.logEvent({
+          event_type: 'update',
+          entity_type: 'tag',
+          entity_id: tag._id,
+          user_id: req.user.id,
+          user_name: req.user.username,
+          action: 'tag_note_updated',
+          description: `Edited a note on tag for ${tag.customer_name}`,
+          metadata: {
+            note_id: updatedNote._id?.toString(),
+            original_author: updatedNote.author,
+            is_admin_edit: req.user.role === 'admin' && updatedNote.author !== req.user.username
+          }
+        });
+      } catch (auditErr) {
+        console.warn('Failed to write audit log for note update:', auditErr.message);
+      }
+
+      const tagObj = await reloadTagWithDisplayData(tag._id);
+      res.json({
+        message: 'Note updated',
+        note: updatedNote,
+        tag: tagObj
+      });
+    } catch (error) {
+      console.error('Update tag note error:', error);
+      res.status(500).json({ message: 'Failed to update note', error: error.message });
+    }
+  }
+);
+
+// DELETE /api/tags/:id/notes/:noteId - soft-delete a note (author or admin).
+router.delete('/:id/notes/:noteId',
+  auth,
+  [
+    param('id').isMongoId().withMessage('Invalid tag ID'),
+    param('noteId').isMongoId().withMessage('Invalid note ID')
+  ],
+  requireNoteAuthorOrAdmin,
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ message: 'Validation failed', errors: errors.array() });
+      }
+
+      const tag = req.tag;
+      let deletedNote;
+      try {
+        deletedNote = tag.softDeleteNote(req.params.noteId, req.user.username);
+      } catch (err) {
+        if (err.code === 'NOTE_NOT_FOUND') {
+          return res.status(404).json({ message: err.message });
+        }
+        if (err.code === 'NOTE_IMMUTABLE') {
+          return res.status(409).json({ message: err.message, code: err.code });
+        }
+        return res.status(400).json({ message: err.message });
+      }
+      await tag.save();
+
+      try {
+        await AuditLog.logEvent({
+          event_type: 'update',
+          entity_type: 'tag',
+          entity_id: tag._id,
+          user_id: req.user.id,
+          user_name: req.user.username,
+          action: 'tag_note_deleted',
+          description: `Deleted a note on tag for ${tag.customer_name}`,
+          metadata: {
+            note_id: deletedNote._id?.toString(),
+            original_author: deletedNote.author,
+            is_admin_delete: req.user.role === 'admin' && deletedNote.author !== req.user.username
+          }
+        });
+      } catch (auditErr) {
+        console.warn('Failed to write audit log for note deletion:', auditErr.message);
+      }
+
+      const tagObj = await reloadTagWithDisplayData(tag._id);
+      res.json({
+        message: 'Note deleted',
+        note: deletedNote,
+        tag: tagObj
+      });
+    } catch (error) {
+      console.error('Delete tag note error:', error);
+      res.status(500).json({ message: 'Failed to delete note', error: error.message });
     }
   }
 );

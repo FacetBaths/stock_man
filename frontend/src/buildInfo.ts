@@ -1,10 +1,10 @@
 // Auto-generated build information - DO NOT EDIT MANUALLY
 export const buildInfo = {
   version: '2.2.0',
-  buildTime: '2026-04-10T03:09:38.403Z',
-  gitCommit: '08c04d7',
+  buildTime: '2026-04-24T15:01:20.875Z',
+  gitCommit: '556796d',
   gitBranch: 'main',
-  buildNumber: '1775790578408'
+  buildNumber: '1777042880880'
 } as const;
 
 export default buildInfo;

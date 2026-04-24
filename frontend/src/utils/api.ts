@@ -16,6 +16,8 @@ import type {
   CreateTagRequest,
   UpdateTagRequest,
   Tag,
+  TagNoteResponse,
+  TagNotesListResponse,
   SKU,
   SKUResponse,
   CreateSKURequest,
@@ -827,6 +829,31 @@ export const tagApi = {
     unstage_all?: boolean
   }): Promise<{ message: string; tag: Tag }> => {
     const response = await api.post(`/tags/${id}/unstage`, data)
+    return response.data
+  },
+
+  // === Notes thread ===
+  // List all notes on a tag (any authenticated user).
+  listNotes: async (id: string): Promise<TagNotesListResponse> => {
+    const response = await api.get(`/tags/${id}/notes`)
+    return response.data
+  },
+
+  // Append a new note (admin + warehouse_manager only on the server).
+  addNote: async (id: string, message: string): Promise<TagNoteResponse> => {
+    const response = await api.post(`/tags/${id}/notes`, { message })
+    return response.data
+  },
+
+  // Edit an existing note (admin OR the note's original author).
+  updateNote: async (id: string, noteId: string, message: string): Promise<TagNoteResponse> => {
+    const response = await api.put(`/tags/${id}/notes/${noteId}`, { message })
+    return response.data
+  },
+
+  // Soft-delete a note (admin OR the note's original author).
+  deleteNote: async (id: string, noteId: string): Promise<TagNoteResponse> => {
+    const response = await api.delete(`/tags/${id}/notes/${noteId}`)
     return response.data
   }
 }

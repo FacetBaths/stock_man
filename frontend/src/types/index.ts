@@ -388,6 +388,21 @@ export interface UpdateCategoryRequest {
   color?: string
 }
 
+// ✅ Tag note thread entry - matches backend tagNoteSchema
+export interface TagNote {
+  _id: string
+  message: string
+  author: string
+  author_role?: string
+  kind: 'user' | 'system'
+  edited_at?: string
+  edited_by?: string
+  deleted_at?: string
+  deleted_by?: string
+  createdAt: string
+  updatedAt?: string
+}
+
 // ✅ Tag model - Instance-based architecture (clean implementation)
 export interface Tag {
   _id: string
@@ -413,7 +428,9 @@ export interface Tag {
   }>
 
   is_complete: boolean
-  notes: string
+  // ✅ Append-only thread of notes. Edits set edited_at/edited_by; deletes are
+  // soft (deleted_at/deleted_by, message redacted to '[deleted]').
+  notes: TagNote[]
   due_date?: string
   project_name: string
   created_by: string
@@ -453,6 +470,9 @@ export interface CreateTagRequest {
 }
 
 // ✅ Update tag request - Pure instance-based structure
+// NOTE: `notes` is intentionally NOT part of the update payload. Use the
+// dedicated notes endpoints (`tagApi.addNote`/`updateNote`/`deleteNote`) so
+// history is preserved and nothing is silently overwritten.
 export interface UpdateTagRequest {
   customer_name?: string
   tag_type?: 'reserved' | 'broken' | 'imperfect' | 'loaned' | 'stock'
@@ -463,10 +483,28 @@ export interface UpdateTagRequest {
     notes?: string
   }>
   is_complete?: boolean
-  notes?: string
   status?: 'active' | 'staged' | 'fulfilled' | 'cancelled'
   due_date?: string
   project_name?: string
+}
+
+// ✅ Notes thread request/response shapes
+export interface CreateTagNoteRequest {
+  message: string
+}
+
+export interface UpdateTagNoteRequest {
+  message: string
+}
+
+export interface TagNoteResponse {
+  message: string
+  note: TagNote
+  tag: Tag
+}
+
+export interface TagNotesListResponse {
+  notes: TagNote[]
 }
 
 // ✅ Stage tag request

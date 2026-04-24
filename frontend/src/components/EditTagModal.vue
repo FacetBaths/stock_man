@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/auth'
 import { tagApi } from '@/utils/api'
 import { TAG_TYPES } from '@/types'
 import type { UpdateTagRequest, Tag } from '@/types'
+import NoteThread from '@/components/NoteThread.vue'
 
 interface Props {
   tag: Tag
@@ -23,7 +24,6 @@ const formData = ref<UpdateTagRequest>({
   customer_name: '',
   tag_type: 'reserved',
   is_complete: false,
-  notes: '',
   status: 'active',
   due_date: '',
   project_name: '',
@@ -135,11 +135,12 @@ const getStatusColor = (status: string) => {
 }
 
 const initializeForm = () => {
+  // Notes are intentionally omitted here: the thread is managed by the
+  // NoteThread component via its own dedicated endpoints.
   formData.value = {
     customer_name: props.tag.customer_name,
     tag_type: props.tag.tag_type,
     is_complete: props.tag.is_complete || false,
-    notes: props.tag.notes || '',
     status: props.tag.status,
     due_date: props.tag.due_date ? new Date(props.tag.due_date).toISOString().split('T')[0] : '',
     project_name: props.tag.project_name || '',
@@ -187,11 +188,13 @@ const handleSubmit = async () => {
     isSubmitting.value = true
     error.value = null
     
+    // `notes` is intentionally NOT sent here. The notes thread is managed
+    // through NoteThread + dedicated note endpoints so we can't silently
+    // overwrite prior context.
     const submitData: UpdateTagRequest = {
       customer_name: formData.value.customer_name?.trim(),
       tag_type: formData.value.tag_type,
       is_complete: formData.value.is_complete,
-      notes: formData.value.notes?.trim(),
       status: formData.value.status,
       due_date: formData.value.due_date || undefined,
       project_name: formData.value.project_name?.trim() || undefined,
@@ -377,18 +380,16 @@ onMounted(() => {
               </small>
             </div>
 
-            <!-- Notes -->
+            <!-- Notes thread (append-only chat) -->
             <div class="form-group">
-              <label for="notes" class="form-label">Notes (Optional)</label>
-              <textarea
-                id="notes"
-                v-model="formData.notes"
-                class="form-control"
-                rows="3"
-                :placeholder="formData.tag_type === 'broken' ? 'Describe the damage or issue...' : 
-                             formData.tag_type === 'imperfect' ? 'Describe the defect or cosmetic issue...' : 
-                             'Additional notes about this tag...'"
-              ></textarea>
+              <label class="form-label">
+                <q-icon name="forum" class="q-mr-xs" />
+                Notes Thread
+              </label>
+              <small class="form-text q-mb-sm" style="display:block;">
+                Add a new entry instead of overwriting previous notes. Only the original author or an admin can edit/delete individual entries; system notes (e.g. cancel reasons) are immutable.
+              </small>
+              <NoteThread :tag="props.tag" />
             </div>
 
             <!-- Tag Preview -->

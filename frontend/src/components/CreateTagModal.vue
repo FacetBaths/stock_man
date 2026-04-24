@@ -576,9 +576,9 @@ onMounted(async () => {
               </small>
             </div>
 
-            <!-- Notes -->
+            <!-- Initial Note -->
             <div class="form-group">
-              <label for="notes" class="form-label">Notes (Optional)</label>
+              <label for="notes" class="form-label">Initial Note (Optional)</label>
               <textarea
                 id="notes"
                 v-model="tagDetails.notes"
@@ -586,8 +586,11 @@ onMounted(async () => {
                 rows="3"
                 :placeholder="tagDetails.tag_type === 'broken' ? 'Describe the damage or issue...' : 
                              tagDetails.tag_type === 'imperfect' ? 'Describe the defect or cosmetic issue...' : 
-                             'Additional notes about these tags...'"
+                             'Kicks off the notes thread for this tag...'"
               ></textarea>
+              <small class="form-text">
+                This starts the notes thread. Future updates (“Vanity arrived”, “Waiting on flooring”, etc.) should be posted as new entries in the thread rather than overwriting this one.
+              </small>
             </div>
           </div>
 

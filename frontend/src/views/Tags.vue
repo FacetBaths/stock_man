@@ -12,6 +12,7 @@ import EditTagItemsModal from "@/components/EditTagItemsModal.vue";
 import FulfillTagsDialog from "@/components/FulfillTagsDialog.vue";
 import StageTagsDialog from "@/components/StageTagsDialog.vue";
 import StatsCarousel from "@/components/StatsCarousel.vue";
+import NoteThread from "@/components/NoteThread.vue";
 import { useQuasar } from "quasar";
 
 const authStore = useAuthStore();
@@ -436,6 +437,64 @@ const toggleTagExpansion = (tagId: string) => {
   } else {
     expandedTags.value.add(tagId);
   }
+};
+
+// ===== NOTES THREAD HELPERS =====
+
+// Notes may be undefined for tags that haven't been saved with the new
+// schema yet; treat missing/non-array values as empty threads.
+const getNotesArray = (tag: Tag) =>
+  Array.isArray((tag as any).notes) ? ((tag as any).notes as any[]) : [];
+
+const getNoteCount = (tag: Tag) => getNotesArray(tag).length;
+
+// Latest note by createdAt. Used for the inline preview on each tag card.
+const getLatestNote = (tag: Tag) => {
+  const notes = getNotesArray(tag);
+  if (notes.length === 0) return null;
+  return [...notes].sort((a, b) => {
+    const ta = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const tb = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return tb - ta;
+  })[0];
+};
+
+const formatNoteTimestamp = (iso?: string) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString();
+};
+
+const truncateNote = (text: string, max = 140) => {
+  if (!text) return "";
+  if (text.length <= max) return text;
+  return text.slice(0, max - 1) + "…";
+};
+
+// Legacy / author-less entries are normalized server-side to kind:'system';
+// fall back to the same label here so the preview never reads "Unknown".
+const displayNoteAuthor = (note: any) => {
+  const author = typeof note?.author === 'string' ? note.author.trim() : '';
+  if (!note) return 'System';
+  if (note.kind === 'system' || !author || author.toLowerCase() === 'system') {
+    return 'System';
+  }
+  return author;
+};
+
+// Warning heuristic: a tag marked complete whose most recent note was
+// written before the tag's last structural update is suspicious — it's the
+// exact shape of the bug that motivated the chat thread.
+const hasStaleCompletionNote = (tag: Tag) => {
+  if (!tag.is_complete) return false;
+  const latest = getLatestNote(tag);
+  if (!latest) return false;
+  const latestTime = latest.createdAt ? new Date(latest.createdAt).getTime() : 0;
+  const updatedTime = tag.updatedAt ? new Date(tag.updatedAt).getTime() : 0;
+  if (!latestTime || !updatedTime) return false;
+  // Allow a small buffer (60s) so we don't warn purely because of save ordering.
+  return updatedTime - latestTime > 60 * 1000;
 };
 
 onMounted(async () => {
@@ -877,10 +936,39 @@ const tableColumns = [
                   </q-chip>
                 </div>
 
-                <!-- Notes (shown inline when present) -->
-                <div v-if="tag.notes" class="tag-notes q-mt-sm">
-                  <q-icon name="notes" size="xs" class="q-mr-xs text-grey-6" />
-                  <span class="text-body2 text-grey-8">{{ tag.notes }}</span>
+                <!-- Notes thread preview (latest entry + count + stale warning) -->
+                <div class="tag-notes q-mt-sm" v-if="getNoteCount(tag) > 0 || hasStaleCompletionNote(tag)">
+                  <div class="row items-start q-gutter-xs">
+                    <q-icon name="forum" size="xs" class="q-mt-xs text-grey-6" />
+                    <div class="col">
+                      <div class="row items-center q-gutter-xs">
+                        <span class="text-caption text-grey-7" v-if="getLatestNote(tag)">
+                          <strong>{{ displayNoteAuthor(getLatestNote(tag)) }}</strong>
+                          &middot; {{ formatNoteTimestamp(getLatestNote(tag)?.createdAt) }}
+                        </span>
+                        <q-chip
+                          dense
+                          size="xs"
+                          color="grey-4"
+                          text-color="grey-9"
+                          icon="forum"
+                          :label="`${getNoteCount(tag)} note${getNoteCount(tag) === 1 ? '' : 's'}`"
+                        />
+                        <q-chip
+                          v-if="hasStaleCompletionNote(tag)"
+                          dense
+                          size="xs"
+                          color="warning"
+                          text-color="white"
+                          icon="warning"
+                          label="Marked complete after latest note — verify status"
+                        />
+                      </div>
+                      <div class="text-body2 text-grey-8 q-mt-xs" v-if="getLatestNote(tag)">
+                        {{ truncateNote(getLatestNote(tag)?.message || '') }}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </q-card-section>
 
@@ -1025,6 +1113,14 @@ const tableColumns = [
                     />
                     <div class="text-body1 text-grey-6">No items in this tag</div>
                   </div>
+
+                  <!-- Notes thread (full history + compose) -->
+                  <q-separator class="q-my-md" />
+                  <div class="text-subtitle1 text-weight-medium text-dark q-mb-md">
+                    <q-icon name="forum" class="q-mr-sm" color="primary" />
+                    Notes Thread ({{ getNoteCount(tag) }})
+                  </div>
+                  <NoteThread :tag="tag" />
                 </q-card-section>
               </q-slide-transition>
             </q-card>

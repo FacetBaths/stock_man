@@ -1,7 +1,9 @@
 import { defineStore } from 'pinia'
+
 import { ref, computed } from 'vue'
-import type { Tag, CreateTagRequest, UpdateTagRequest, StageTagRequest } from '@/types'
+import type { Tag, TagNote, CreateTagRequest, UpdateTagRequest, StageTagRequest } from '@/types'
 import { tagApi } from '@/utils/api'
+import { useAuthStore } from '@/stores/auth'
 
 export const useTagStore = defineStore('tag', () => {
   // State
@@ -13,6 +15,7 @@ export const useTagStore = defineStore('tag', () => {
   const isDeleting = ref(false)
   const isFulfilling = ref(false)
   const isStaging = ref(false)
+  const isSavingNote = ref(false)
   const error = ref<string | null>(null)
   const pagination = ref({
     currentPage: 1,
@@ -404,11 +407,88 @@ export const useTagStore = defineStore('tag', () => {
     if (!query.trim()) return tags.value
 
     const searchTerm = query.toLowerCase()
-    return tags.value.filter(tag => 
-      tag.customer_name.toLowerCase().includes(searchTerm) ||
-      tag.project_name?.toLowerCase().includes(searchTerm) ||
-      tag.notes?.toLowerCase().includes(searchTerm)
-    )
+    return tags.value.filter(tag => {
+      if (tag.customer_name.toLowerCase().includes(searchTerm)) return true
+      if (tag.project_name?.toLowerCase().includes(searchTerm)) return true
+      // `notes` is now a thread of entries; search across every message body.
+      const notesText = Array.isArray(tag.notes)
+        ? tag.notes.map(note => note?.message || '').join(' ').toLowerCase()
+        : ''
+      return notesText.includes(searchTerm)
+    })
+  }
+
+  // ===== NOTES THREAD =====
+
+  // Replace the tag in local state with the server response.
+  const replaceTagInState = (updated: Tag) => {
+    const index = tags.value.findIndex(t => t._id === updated._id)
+    if (index !== -1) {
+      tags.value[index] = updated
+    }
+    if (currentTag.value?._id === updated._id) {
+      currentTag.value = updated
+    }
+  }
+
+  // Append a new message to a tag's notes thread.
+  const addNote = async (tagId: string, message: string) => {
+    try {
+      isSavingNote.value = true
+      error.value = null
+      const response = await tagApi.addNote(tagId, message)
+      replaceTagInState(response.tag)
+      return response
+    } catch (err: any) {
+      error.value = err.response?.data?.message || 'Failed to add note'
+      throw err
+    } finally {
+      isSavingNote.value = false
+    }
+  }
+
+  // Edit an existing note (server enforces admin-or-author).
+  const updateNote = async (tagId: string, noteId: string, message: string) => {
+    try {
+      isSavingNote.value = true
+      error.value = null
+      const response = await tagApi.updateNote(tagId, noteId, message)
+      replaceTagInState(response.tag)
+      return response
+    } catch (err: any) {
+      error.value = err.response?.data?.message || 'Failed to update note'
+      throw err
+    } finally {
+      isSavingNote.value = false
+    }
+  }
+
+  // Soft-delete a note (server enforces admin-or-author).
+  const deleteNote = async (tagId: string, noteId: string) => {
+    try {
+      isSavingNote.value = true
+      error.value = null
+      const response = await tagApi.deleteNote(tagId, noteId)
+      replaceTagInState(response.tag)
+      return response
+    } catch (err: any) {
+      error.value = err.response?.data?.message || 'Failed to delete note'
+      throw err
+    } finally {
+      isSavingNote.value = false
+    }
+  }
+
+  // Is the current user allowed to edit/delete the given note?
+  // Mirrors the server rule: admin OR original author, not a system note,
+  // and not already deleted.
+  const canEditNote = (note: Pick<TagNote, 'author' | 'kind' | 'deleted_at'> | null | undefined) => {
+    if (!note) return false
+    if (note.kind === 'system') return false
+    if (note.deleted_at) return false
+    const auth = useAuthStore()
+    if (auth.isAdmin) return true
+    return !!auth.user && note.author === auth.user.username
   }
 
   const updateFilters = (newFilters: Partial<typeof filters.value>) => {
@@ -449,6 +529,7 @@ export const useTagStore = defineStore('tag', () => {
     isDeleting,
     isFulfilling,
     isStaging,
+    isSavingNote,
     error,
     pagination,
     filters,
@@ -472,6 +553,10 @@ export const useTagStore = defineStore('tag', () => {
     deleteTag,
     fulfillTag,
     stageTag,
+    addNote,
+    updateNote,
+    deleteNote,
+    canEditNote,
     fetchStats,
     fetchCustomers,
     

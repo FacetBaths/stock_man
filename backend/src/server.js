@@ -1,8 +1,10 @@
 require('dotenv').config();
 const express = require('express');
+const mongoose = require('mongoose');
 const cors = require('cors');
 const connectDB = require('./config/database');
 const { initJSONDB } = require('./config/jsonDB');
+const { runTagNotesMigration } = require('./migration/runTagNotesMigration');
 
 // 🛡️  Initialize database protection BEFORE connecting to database
 const DatabaseProtection = require('./middleware/databaseProtection');
@@ -25,6 +27,26 @@ const app = express();
 
 // Connect to database
 connectDB();
+
+// One-shot startup migrations. These run after the Mongo connection is
+// ready and are idempotent, so they're safe on every deploy (Railway boot,
+// local dev, etc.). We deliberately don't block the server from accepting
+// requests while they run — the `pre('init')` safety net in Tag.js covers
+// any tag read before the bulk migration has landed.
+const runStartupMigrations = async () => {
+  try {
+    await runTagNotesMigration();
+  } catch (err) {
+    // runTagNotesMigration already logs; keep server healthy regardless.
+    console.error('Startup migrations error (non-fatal):', err);
+  }
+};
+
+if (mongoose.connection.readyState === 1) {
+  runStartupMigrations();
+} else {
+  mongoose.connection.once('connected', runStartupMigrations);
+}
 
 // Middleware
 const allowedOrigins = process.env.NODE_ENV === 'production' 

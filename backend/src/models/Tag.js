@@ -1,5 +1,50 @@
 const mongoose = require('mongoose');
 
+// Embedded subdocument for the tag notes thread.
+// Entries are append-only from the UI; edits are recorded via edited_at/edited_by
+// and deletes are soft (deleted_at/deleted_by set, message redacted) so history
+// and audit trail stay intact.
+const tagNoteSchema = new mongoose.Schema({
+  message: {
+    type: String,
+    required: true,
+    trim: true,
+    maxlength: 2000
+  },
+  author: {
+    type: String,
+    required: true,
+    trim: true,
+    index: true
+  },
+  author_role: {
+    type: String,
+    trim: true
+  },
+  kind: {
+    type: String,
+    enum: ['user', 'system'],
+    default: 'user',
+    index: true
+  },
+  edited_at: {
+    type: Date
+  },
+  edited_by: {
+    type: String,
+    trim: true
+  },
+  deleted_at: {
+    type: Date
+  },
+  deleted_by: {
+    type: String,
+    trim: true
+  }
+}, {
+  timestamps: { createdAt: 'createdAt', updatedAt: 'updatedAt' }
+});
+
 // Redesigned Tag schema with proper relationships
 const tagSchema = new mongoose.Schema({
   // Customer/project/department name (simple string like original)
@@ -74,11 +119,10 @@ const tagSchema = new mongoose.Schema({
     default: false
   },
 
-  // Metadata
+  // Metadata: append-only thread of notes (see tagNoteSchema above).
   notes: {
-    type: String,
-    trim: true,
-    default: ''
+    type: [tagNoteSchema],
+    default: []
   },
   
   due_date: {
@@ -126,6 +170,96 @@ const tagSchema = new mongoose.Schema({
   }
 }, {
   timestamps: true
+});
+
+// Normalize the notes thread into a valid, saveable shape. Handles:
+//   1. Legacy documents where `notes` is still a raw string.
+//   2. Entries lacking a usable author (surfaced as immutable system notes
+//      instead of the confusing "Unknown" default).
+//   3. Entries lacking a message body (legacy/corrupt data that would
+//      otherwise fail `required: true` validation on save). Those get a
+//      placeholder message and are pinned as system so they stay visible
+//      in the thread but inert.
+function normalizeTagNotes(tag) {
+  // 1) Legacy string notes -> single-entry thread
+  if (typeof tag.notes === 'string') {
+    const legacy = tag.notes.trim();
+    if (legacy.length > 0) {
+      const rawAuthor = tag.last_updated_by || tag.created_by || '';
+      const kind = rawAuthor ? 'user' : 'system';
+      tag.notes = [{
+        message: legacy,
+        author: rawAuthor || 'system',
+        kind
+      }];
+    } else {
+      tag.notes = [];
+    }
+  }
+
+  if (!Array.isArray(tag.notes)) return;
+
+  // 2 & 3) Fix up each entry in place.
+  for (const note of tag.notes) {
+    if (!note) continue;
+
+    const rawMessage = typeof note.message === 'string' ? note.message.trim() : '';
+    if (!rawMessage) {
+      // No body = legacy/corrupt data. Replace with a placeholder so the
+      // thread stays chronologically intact without failing validation.
+      note.message = '[legacy note — content missing]';
+      note.kind = 'system';
+      if (!note.author || !String(note.author).trim()) {
+        note.author = 'system';
+      }
+      continue;
+    }
+
+    const rawAuthor = typeof note.author === 'string' ? note.author.trim() : '';
+    if (!rawAuthor) {
+      note.author = 'system';
+      note.kind = 'system';
+    }
+  }
+}
+
+// Pre-validate middleware: run normalization before Mongoose validates the
+// subdocument array so legacy/corrupt data never trips `required` rules.
+tagSchema.pre('validate', function(next) {
+  normalizeTagNotes(this);
+  next();
+});
+
+// Pre-init runs BEFORE Mongoose casts the raw MongoDB document into the
+// schema. For documents where `notes` is still stored as a raw string (the
+// legacy shape), we need to reshape it here or the cast layer will silently
+// drop the string content before anything else gets a chance to look at it.
+// This is synchronous and mutates the raw doc in-place.
+tagSchema.pre('init', function(rawDoc) {
+  if (!rawDoc || typeof rawDoc.notes !== 'string') return;
+
+  const legacy = rawDoc.notes.trim();
+  if (legacy.length === 0) {
+    rawDoc.notes = [];
+    return;
+  }
+
+  const rawAuthor = rawDoc.last_updated_by || rawDoc.created_by || '';
+  const when = rawDoc.updatedAt || rawDoc.createdAt || new Date();
+  rawDoc.notes = [{
+    message: legacy,
+    author: rawAuthor || 'system',
+    kind: rawAuthor ? 'user' : 'system',
+    createdAt: when,
+    updatedAt: when
+  }];
+});
+
+// Post-init: run the same normalization when documents are loaded from the
+// database so API responses never leak "Unknown" authors to the UI even
+// before the tag is saved again.
+tagSchema.post('init', function() {
+  normalizeTagNotes(this);
 });
 
 // Pre-save middleware to sync quantity fields and update last_updated_by
@@ -468,14 +602,93 @@ tagSchema.methods.fulfillSpecificItems = async function(fulfillmentData, fulfill
   return this;
 };
 
-// Method to cancel the tag
+// Method to cancel the tag.
+// Records the cancel reason as an immutable system note so history is preserved.
 tagSchema.methods.cancel = function(cancelledBy, reason = '') {
   this.status = 'cancelled';
   this.last_updated_by = cancelledBy;
-  if (reason) {
-    this.notes = this.notes ? `${this.notes}\nCancelled: ${reason}` : `Cancelled: ${reason}`;
-  }
+  const body = reason ? `Cancelled: ${reason}` : 'Cancelled';
+  this.addNote(body, cancelledBy, { kind: 'system' });
   return this;
+};
+
+// ===== NOTES THREAD METHODS =====
+
+// Append a new entry to the notes thread. Returns the created subdocument.
+tagSchema.methods.addNote = function(message, author, { kind = 'user', authorRole } = {}) {
+  if (!message || !String(message).trim()) {
+    throw new Error('Note message is required');
+  }
+  if (!author) {
+    throw new Error('Note author is required');
+  }
+
+  const note = {
+    message: String(message).trim(),
+    author: String(author).trim(),
+    kind
+  };
+  if (authorRole) {
+    note.author_role = String(authorRole).trim();
+  }
+
+  this.notes.push(note);
+  this.last_updated_by = author;
+  return this.notes[this.notes.length - 1];
+};
+
+// Update an existing note in-place. Records who edited it and when.
+// System notes are immutable.
+tagSchema.methods.updateNote = function(noteId, message, editedBy) {
+  const note = this.notes.id(noteId);
+  if (!note) {
+    const err = new Error('Note not found');
+    err.code = 'NOTE_NOT_FOUND';
+    throw err;
+  }
+  if (note.kind === 'system') {
+    const err = new Error('System notes cannot be edited');
+    err.code = 'NOTE_IMMUTABLE';
+    throw err;
+  }
+  if (note.deleted_at) {
+    const err = new Error('Deleted notes cannot be edited');
+    err.code = 'NOTE_DELETED';
+    throw err;
+  }
+  if (!message || !String(message).trim()) {
+    throw new Error('Note message is required');
+  }
+
+  note.message = String(message).trim();
+  note.edited_at = new Date();
+  note.edited_by = editedBy;
+  this.last_updated_by = editedBy;
+  return note;
+};
+
+// Soft-delete a note so history/audit trail is preserved.
+tagSchema.methods.softDeleteNote = function(noteId, deletedBy) {
+  const note = this.notes.id(noteId);
+  if (!note) {
+    const err = new Error('Note not found');
+    err.code = 'NOTE_NOT_FOUND';
+    throw err;
+  }
+  if (note.kind === 'system') {
+    const err = new Error('System notes cannot be deleted');
+    err.code = 'NOTE_IMMUTABLE';
+    throw err;
+  }
+  if (note.deleted_at) {
+    return note; // already deleted, treat as idempotent
+  }
+
+  note.message = '[deleted]';
+  note.deleted_at = new Date();
+  note.deleted_by = deletedBy;
+  this.last_updated_by = deletedBy;
+  return note;
 };
 
 // Method to calculate total value (requires populated SKU data)
@@ -522,8 +735,8 @@ tagSchema.index({ project_name: 1 });
 tagSchema.index({ 'sku_items.sku_id': 1 });
 tagSchema.index({ createdAt: -1 });
 
-// Text index for customer name searching
-tagSchema.index({ customer_name: 'text', project_name: 'text', notes: 'text' });
+// Text index for customer name and note body searching
+tagSchema.index({ customer_name: 'text', project_name: 'text', 'notes.message': 'text' });
 
 // Compound indexes for common queries
 tagSchema.index({ customer_name: 1, tag_type: 1, status: 1 });
