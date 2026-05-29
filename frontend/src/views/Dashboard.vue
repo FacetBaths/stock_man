@@ -106,10 +106,8 @@ const inventoryTableRef = ref<InstanceType<typeof InventoryTable> | null>(null);
 const getCurrentFilters = () => {
   const filters: any = {};
 
-  // Apply search filter
-  if (searchQuery.value.trim()) {
-    filters.search = searchQuery.value.trim();
-  }
+  // Always include search to clear stale values in the shared store
+  filters.search = searchQuery.value.trim() || '';
 
   // Apply category filter - explicitly set to undefined when clearing
   if (selectedCategory.value && selectedCategory.value !== "") {
@@ -119,10 +117,8 @@ const getCurrentFilters = () => {
     filters.category_id = undefined;
   }
 
-  // Apply status filter
-  if (activeFilter.value !== "all") {
-    filters.status = activeFilter.value;
-  }
+  // Always include status to clear stale values in the shared store
+  filters.status = activeFilter.value === "all" ? "all" : activeFilter.value;
 
   return {
     ...filters,

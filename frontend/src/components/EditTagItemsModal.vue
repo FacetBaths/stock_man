@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { useSKUStore } from '@/stores/sku'
-import { tagApi } from '@/utils/api'
+import { tagApi, skuApi } from '@/utils/api'
 import type { Tag, SKU } from '@/types'
 
 interface Props {
@@ -17,7 +16,6 @@ const emit = defineEmits<{
 }>()
 
 const authStore = useAuthStore()
-const skuStore = useSKUStore()
 
 // Component state
 const isLoading = ref(false)
@@ -83,64 +81,26 @@ const loadAvailableSKUs = async () => {
     isLoading.value = true
     error.value = null
     
-    // Try different strategies to load SKUs with fallbacks
-    let loadSuccess = false
+    // Call the API directly to avoid inheriting shared store filters
+    // (e.g. category/search filters from SKU Management page)
+    const response = await skuApi.getSKUs({
+      include_inventory: false,
+      limit: 1000,
+      status: 'active',
+      include_tools: false
+    })
     
-    // Strategy 1: Try to load with high limit and active filter
-    try {
-      await skuStore.fetchSKUs({ 
-        include_inventory: false,
-        limit: 1000, // Increased limit to ensure we get all SKUs
-        status: 'active'
-      })
-      availableSKUs.value = skuStore.skus || []
-      loadSuccess = true
-      console.log(`Strategy 1: Loaded ${availableSKUs.value.length} active SKUs for tag editing`)
-    } catch (err1) {
-      console.warn('Strategy 1 failed:', err1)
-      
-      // Strategy 2: Try without status filter but with high limit
-      try {
-        await skuStore.fetchSKUs({ 
-          include_inventory: false,
-          limit: 1000 // Keep high limit in fallback
-        })
-        // Filter to active SKUs on frontend
-        const allSKUs = skuStore.skus || []
-        availableSKUs.value = allSKUs.filter(sku => sku.status === 'active')
-        loadSuccess = true
-        console.log(`Strategy 2: Loaded ${availableSKUs.value.length} SKUs (filtered to active) for tag editing`)
-      } catch (err2) {
-        console.warn('Strategy 2 failed:', err2)
-        
-        // Strategy 3: Fallback with explicit limit (don't use defaults)
-        try {
-          await skuStore.fetchSKUs({ 
-            include_inventory: false,
-            limit: 1000 // Ensure high limit even in fallback
-          })
-          const allSKUs = skuStore.skus || []
-          availableSKUs.value = allSKUs.filter(sku => sku.status === 'active')
-          loadSuccess = true
-          console.log(`Strategy 3: Loaded ${availableSKUs.value.length} SKUs (fallback with explicit limit) for tag editing`)
-        } catch (err3) {
-          console.error('All strategies failed:', { err1, err2, err3 })
-          throw err3
-        }
-      }
+    const skus = response.skus || (Array.isArray(response) ? response : [])
+    availableSKUs.value = skus.filter((sku: SKU) => sku.status === 'active')
+    console.log(`Loaded ${availableSKUs.value.length} active SKUs for tag editing`)
+    
+    if (availableSKUs.value.length === 0) {
+      console.warn('No active SKUs found')
     }
     
-    if (!loadSuccess || availableSKUs.value.length === 0) {
-      throw new Error('No SKUs were loaded successfully')
-    }
-    
-  } catch (err) {
+  } catch (err: any) {
     console.error('Failed to load SKUs:', err)
     error.value = `Failed to load available SKUs: ${err.message || 'Unknown error'}`
-    // Keep any previously loaded SKUs
-    if (availableSKUs.value.length === 0) {
-      availableSKUs.value = []
-    }
   } finally {
     isLoading.value = false
   }

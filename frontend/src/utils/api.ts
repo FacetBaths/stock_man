@@ -875,6 +875,7 @@ export const skuApi = {
     sort_by?: 'sku_code' | 'name' | 'unit_cost' | 'created_at'
     sort_order?: 'asc' | 'desc'
     include_inventory?: boolean
+    include_tools?: boolean
     page?: number
     limit?: number
   }): Promise<{ 
