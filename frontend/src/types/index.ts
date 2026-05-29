@@ -701,6 +701,53 @@ export const STOCK_STATUS_CONFIG = {
 //   updatedAt: string
 // }
 
+// Bug Report types
+export type BugReportType = 'bug' | 'feature_request'
+export type BugReportArea = 'dashboard' | 'skus' | 'tags' | 'tools' | 'multiple' | 'other'
+export type BugReportStatus = 'open' | 'in_progress' | 'resolved'
+
+export interface BugReportReply {
+  _id: string
+  message: string
+  author: string
+  author_role: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface BugReport {
+  _id: string
+  type: BugReportType
+  area: BugReportArea
+  description: string
+  status: BugReportStatus
+  created_by: string
+  created_by_role: string
+  replies: BugReportReply[]
+  createdAt: string
+  updatedAt: string
+}
+
+export const BUG_REPORT_TYPES = [
+  { value: 'bug', label: 'Bug Report', icon: 'bug_report', color: '#dc3545' },
+  { value: 'feature_request', label: 'Feature Request', icon: 'lightbulb', color: '#007bff' }
+] as const
+
+export const BUG_REPORT_AREAS = [
+  { value: 'dashboard', label: 'Dashboard' },
+  { value: 'skus', label: 'SKU Management' },
+  { value: 'tags', label: 'Tag Management' },
+  { value: 'tools', label: 'Tool Management' },
+  { value: 'multiple', label: 'Multiple Areas' },
+  { value: 'other', label: 'Other' }
+] as const
+
+export const BUG_REPORT_STATUSES = [
+  { value: 'open', label: 'Open', color: '#dc3545' },
+  { value: 'in_progress', label: 'In Progress', color: '#fd7e14' },
+  { value: 'resolved', label: 'Resolved', color: '#28a745' }
+] as const
+
 // Export types
 export interface ExportOptions {
   format?: 'csv'

@@ -4,6 +4,8 @@ import { RouterView, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import UserProfile from "@/components/UserProfile.vue";
 import AdminSettings from "@/components/AdminSettings.vue";
+import BugReportModal from "@/components/BugReportModal.vue";
+import BugReportsPanel from "@/components/BugReportsPanel.vue";
 import packageInfo from "../../package.json";
 import { capitalizeWords } from "./utils/formatting";
 
@@ -12,6 +14,8 @@ const router = useRouter();
 const isDesktop = ref(window.innerWidth >= 1200);
 const showProfileDialog = ref(false);
 const showAdminDialog = ref(false);
+const showBugReportModal = ref(false);
+const showBugReportsPanel = ref(false);
 
 const updateScreenSize = () => {
   isDesktop.value = window.innerWidth >= 1200;
@@ -257,6 +261,17 @@ const hasAdminAccess = computed(() => {
                     </q-item-section>
                     <q-item-section class="text-dark">User Management</q-item-section>
                   </q-item>
+                  <q-item
+                    clickable
+                    v-close-popup
+                    @click="showBugReportsPanel = true"
+                    class="menu-item"
+                  >
+                    <q-item-section avatar>
+                      <q-icon name="assignment" class="text-primary" />
+                    </q-item-section>
+                    <q-item-section class="text-dark">My Reports</q-item-section>
+                  </q-item>
                   <q-separator class="q-my-sm" />
                   <q-item
                     clickable
@@ -306,6 +321,30 @@ const hasAdminAccess = computed(() => {
       v-model="showAdminDialog"
       @close="showAdminDialog = false"
     />
+
+    <!-- Bug Report Modal (submit form) -->
+    <BugReportModal
+      v-if="showBugReportModal"
+      @close="showBugReportModal = false"
+    />
+
+    <!-- Bug Reports Panel (view/manage reports) -->
+    <BugReportsPanel
+      v-if="showBugReportsPanel"
+      @close="showBugReportsPanel = false"
+    />
+
+    <!-- Floating bug report button -->
+    <q-btn
+      v-if="authStore.isAuthenticated"
+      fab
+      icon="bug_report"
+      color="negative"
+      class="bug-report-fab"
+      @click="showBugReportModal = true"
+    >
+      <q-tooltip>Report a Bug or Request a Feature</q-tooltip>
+    </q-btn>
   </q-app>
 </template>
 
@@ -971,6 +1010,22 @@ body {
   
   .nav-icon {
     font-size: 16px;
+  }
+}
+
+/* Bug report floating action button */
+.bug-report-fab {
+  position: fixed !important;
+  bottom: 24px;
+  right: 24px;
+  z-index: 999;
+  box-shadow: 0 4px 12px rgba(220, 53, 69, 0.4);
+}
+
+@media (max-width: 768px) {
+  .bug-report-fab {
+    bottom: 16px;
+    right: 16px;
   }
 }
 </style>

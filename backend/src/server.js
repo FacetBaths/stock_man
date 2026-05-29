@@ -22,6 +22,7 @@ const categoryRoutes = require('./routes/categories');
 const usersRoutes = require('./routes/users');
 const instancesRoutes = require('./routes/instances');
 const toolsRoutes = require('./routes/tools');
+const bugReportRoutes = require('./routes/bugReports');
 
 const app = express();
 
@@ -110,6 +111,7 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/instances', instancesRoutes);
 app.use('/api/tools', toolsRoutes);
+app.use('/api/bug-reports', bugReportRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

@@ -1158,6 +1158,44 @@ export const userApi = {
   }
 }
 
+// Bug Report API
+export const bugReportApi = {
+  getReports: async (params?: {
+    status?: string
+    type?: string
+    area?: string
+    page?: number
+    limit?: number
+  }) => {
+    const response = await api.get('/bug-reports', { params })
+    return response.data
+  },
+
+  createReport: async (data: {
+    type: 'bug' | 'feature_request'
+    area: string
+    description?: string
+  }) => {
+    const response = await api.post('/bug-reports', data)
+    return response.data
+  },
+
+  addReply: async (id: string, message: string) => {
+    const response = await api.post(`/bug-reports/${id}/replies`, { message })
+    return response.data
+  },
+
+  updateStatus: async (id: string, status: string) => {
+    const response = await api.put(`/bug-reports/${id}/status`, { status })
+    return response.data
+  },
+
+  deleteReport: async (id: string) => {
+    const response = await api.delete(`/bug-reports/${id}`)
+    return response.data
+  }
+}
+
 export const healthApi = {
   check: async (): Promise<{ status: string; timestamp: string; environment: string }> => {
     const response = await api.get('/health')
