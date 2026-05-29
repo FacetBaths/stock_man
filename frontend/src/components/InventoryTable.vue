@@ -316,13 +316,12 @@ const getPrimaryTagStatus = (item: any) => {
   return { text: 'Available', color: 'positive', clickable: false }
 }
 
-// Helper function to get product type from the inventory data structure
+// Helper function to get product type for CSS class / color lookup
 const getProductType = (item: any) => {
-  // First, try to use the category data that's actually provided by the backend
-  // The backend DOES populate category information via the aggregation pipeline
+  // Use category name directly when available (handles all categories including new ones)
   if (item.category && item.category.name) {
     const categoryName = item.category.name.toLowerCase()
-    // Map category names to product types for styling consistency
+    // Map known category names to legacy type codes for color consistency
     const categoryToTypeMap: { [key: string]: string } = {
       'walls': 'wall',
       'accessories': 'accessory',
@@ -335,39 +334,7 @@ const getProductType = (item: any) => {
       'miscellaneous': 'miscellaneous',
       'tools': 'accessory'
     }
-    const mappedType = categoryToTypeMap[categoryName] || categoryName.replace(/s$/, '') // remove plural 's'
-    if (mappedType !== categoryName) return mappedType
-  }
-
-  // Fallback to SKU code analysis if category isn't available or mapped
-  if (item.sku && item.sku.sku_code) {
-    const skuCode = item.sku.sku_code.toLowerCase()
-    // Extract product type from SKU code patterns
-    if (skuCode.includes('toilet')) return 'toilet'
-    if (skuCode.includes('wall')) return 'wall'
-    if (skuCode.includes('base')) return 'base'
-    if (skuCode.includes('tub')) return 'tub'
-    if (skuCode.includes('vanity')) return 'vanity'
-    if (skuCode.includes('shower')) return 'shower_door'
-    if (skuCode.includes('door')) return 'shower_door'
-    if (skuCode.includes('access')) return 'accessory'
-    if (skuCode.includes('raw')) return 'raw_material'
-    if (skuCode.includes('material')) return 'raw_material'
-  }
-
-  // Check description if available
-  if (item.sku && item.sku.description) {
-    const desc = item.sku.description.toLowerCase()
-    if (desc.includes('toilet')) return 'toilet'
-    if (desc.includes('wall')) return 'wall'
-    if (desc.includes('base')) return 'base'
-    if (desc.includes('tub')) return 'tub'
-    if (desc.includes('vanity')) return 'vanity'
-    if (desc.includes('shower')) return 'shower_door'
-    if (desc.includes('door')) return 'shower_door'
-    if (desc.includes('access')) return 'accessory'
-    if (desc.includes('raw')) return 'raw_material'
-    if (desc.includes('material')) return 'raw_material'
+    return categoryToTypeMap[categoryName] || categoryName
   }
 
   // Handle legacy item structure
@@ -377,6 +344,16 @@ const getProductType = (item: any) => {
 
   // Fallback
   return 'miscellaneous'
+}
+
+// Helper to get the display label for the category banner
+const getCategoryDisplayName = (item: any) => {
+  // Always prefer the actual category name from the backend
+  if (item.category && item.category.name) {
+    return item.category.name
+  }
+  // Fallback to product type
+  return getProductType(item).replace(/_/g, ' ')
 }
 
 // Helper to get SKU code from either structure
@@ -777,7 +754,7 @@ const handlePageSizeChange = (size: number) => {
                   color: getContrastColor(getCategoryColor(item))
                 }"
               >
-                {{ getProductType(item).replace("_", " ").toUpperCase() }}
+                {{ getCategoryDisplayName(item).toUpperCase() }}
               </div>
               <div class="item-title">
                 {{ formatProductDetailsNew(item).primary }}
