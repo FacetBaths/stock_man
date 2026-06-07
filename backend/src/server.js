@@ -53,7 +53,8 @@ if (mongoose.connection.readyState === 1) {
 const allowedOrigins = process.env.NODE_ENV === 'production' 
   ? [
       'https://facetbaths.github.io',
-      'https://stock.facetrenovations.us'
+      'https://stock.facetrenovations.us', 
+'https://stock.facetrenovations.us.'
     ] 
   : [
       'http://localhost:3000', 
