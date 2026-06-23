@@ -45,9 +45,22 @@ const items = computed(() => props.items || inventoryStore.inventory)
 const emit = defineEmits<{
   edit: [item: Inventory]
   delete: [item: Inventory]
+  'edit-tag': [tagId: string]
   'page-change': [page: number]
   'page-size-change': [size: number]
 }>()
+
+// Helper to get tag type color
+const getTagTypeChipColor = (tagType: string) => {
+  switch (tagType) {
+    case 'reserved': return 'blue'
+    case 'broken': return 'red'
+    case 'imperfect': return 'orange'
+    case 'loaned': return 'purple'
+    case 'stock': return 'green'
+    default: return 'grey'
+  }
+}
 
 // Expose a method to refresh data when filters change
 const refreshInventory = async (filters?: any) => {
@@ -902,7 +915,29 @@ const handlePageSizeChange = (size: number) => {
               </div>
 
             <!-- Tag Section -->
+              <!-- Show individual tag labels when tag_details available -->
+              <div v-if="item.tag_details && item.tag_details.length > 0" class="tag-details-chips">
+                <q-chip
+                  v-for="tag in item.tag_details"
+                  :key="tag._id"
+                  :color="getTagTypeChipColor(tag.tag_type)"
+                  text-color="white"
+                  size="xs"
+                  clickable
+                  class="tag-customer-chip"
+                  @click.stop="emit('edit-tag', tag._id)"
+                >
+                  {{ tag.customer_name }}
+                  <span class="q-ml-xs">({{ tag.quantity }})</span>
+                  <q-tooltip>
+                    {{ tag.tag_type }} — {{ tag.customer_name }}{{ tag.project_name ? ' / ' + tag.project_name : '' }}<br>
+                    Click to edit tag
+                  </q-tooltip>
+                </q-chip>
+              </div>
+              <!-- Fallback to summary chip when no tag_details -->
               <q-chip
+                v-else
                 :color="getPrimaryTagStatus(item).color"
                 text-color="white"
                 size="sm"
@@ -1582,6 +1617,22 @@ const handlePageSizeChange = (size: number) => {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   border-radius: 12px;
+}
+
+.tag-details-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tag-customer-chip {
+  cursor: pointer;
+  font-size: 11px;
+  text-transform: none;
+}
+
+.tag-customer-chip:hover {
+  filter: brightness(1.15);
 }
 
 /* Cost Section */

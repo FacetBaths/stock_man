@@ -6,8 +6,11 @@ import { useCategoryStore } from "@/stores/category";
 import InventoryTable from "@/components/InventoryTable.vue";
 import AddItemModal from "@/components/AddItemModal.vue";
 import EditItemModal from "@/components/EditItemModal.vue";
+import EditTagModal from "@/components/EditTagModal.vue";
 import QuickScanModal from "@/components/QuickScanModal.vue";
 import StatsCarousel from "@/components/StatsCarousel.vue";
+import { tagApi } from "@/utils/api";
+import type { Tag } from "@/types";
 import { formatCategoryName } from "@/utils/formatting";
 import { formatCurrency } from "@/utils/currency";
 import type { Inventory } from "@/types";
@@ -38,8 +41,10 @@ const searchQuery = ref("");
 // );
 const showAddModal = ref(false);
 const showEditModal = ref(false);
+const showEditTagModal = ref(false);
 const showQuickScanModal = ref(false);
 const itemToEdit = ref<any | null>(null);
+const tagToEdit = ref<Tag | null>(null);
 
 // Available filters for the new inventory system
 const availableFilters = computed(() => [
@@ -149,6 +154,22 @@ const handleSearch = () => {
 
 const handleAddItem = () => {
   showAddModal.value = true;
+};
+
+const handleEditTag = async (tagId: string) => {
+  try {
+    const response = await tagApi.getTag(tagId, true);
+    tagToEdit.value = response.tag;
+    showEditTagModal.value = true;
+  } catch (err: any) {
+    console.error('Failed to load tag:', err);
+  }
+};
+
+const handleEditTagSuccess = () => {
+  showEditTagModal.value = false;
+  tagToEdit.value = null;
+  inventoryTableRef.value?.refreshInventory(getCurrentFilters());
 };
 
 const handleQuickScan = () => {
@@ -624,6 +645,7 @@ onMounted(async () => {
           :loading="inventoryStore.isLoading"
           @edit="handleEditItem"
           @delete="handleDeleteItem"
+          @edit-tag="handleEditTag"
           @page-change="handlePageChange"
           @page-size-change="handlePageSizeChange"
         />
@@ -647,6 +669,13 @@ onMounted(async () => {
       v-if="showQuickScanModal"
       @close="showQuickScanModal = false"
       @success="handleQuickScanSuccess"
+    />
+
+    <EditTagModal
+      v-if="showEditTagModal && tagToEdit"
+      :tag="tagToEdit"
+      @close="showEditTagModal = false; tagToEdit = null"
+      @success="handleEditTagSuccess"
     />
   </q-page>
 </template>

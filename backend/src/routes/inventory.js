@@ -132,6 +132,43 @@ router.get('/', auth, async (req, res) => {
           as: 'tag_breakdown'
         }
       },
+
+      // Get individual tag details for tagged instances (for clickable tag labels)
+      {
+        $lookup: {
+          from: 'instances',
+          let: { skuId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ['$sku_id', '$$skuId'] },
+                tag_id: { $ne: null }
+              }
+            },
+            {
+              $lookup: {
+                from: 'tags',
+                localField: 'tag_id',
+                foreignField: '_id',
+                as: 'tag'
+              }
+            },
+            { $unwind: '$tag' },
+            {
+              $group: {
+                _id: '$tag._id',
+                customer_name: { $first: '$tag.customer_name' },
+                project_name: { $first: '$tag.project_name' },
+                tag_type: { $first: '$tag.tag_type' },
+                status: { $first: '$tag.status' },
+                is_complete: { $first: '$tag.is_complete' },
+                quantity: { $sum: 1 }
+              }
+            }
+          ],
+          as: 'tag_details'
+        }
+      },
       
       // ✅ CALCULATE REAL-TIME QUANTITIES FROM ACTUAL INSTANCES
       {
