@@ -9,7 +9,7 @@ const Category = require('../models/Category');
 const Inventory = require('../models/Inventory');
 const { auth, requireRole, requireWriteAccess, logSecurityEvent } = require('../middleware/authEnhanced');
 const AuditLog = require('../models/AuditLog');
-const { notifyTagComplete } = require('../utils/discord');
+const { notifyTagComplete, notifyTagIncomplete } = require('../utils/discord');
 
 // ===== NOTES THREAD HELPERS =====
 
@@ -987,9 +987,11 @@ router.put('/:id',
       tagObj.total_quantity = updatedTag.getTotalQuantity();
       tagObj.remaining_quantity = updatedTag.getTotalRemainingQuantity();
 
-      // Send Discord notification when tag becomes complete
+      // Send Discord notification when completeness changes
       if (wasIncomplete && nowComplete) {
         notifyTagComplete(updatedTag, req.user.username).catch(() => {});
+      } else if (!wasIncomplete && req.body.is_complete === false) {
+        notifyTagIncomplete(updatedTag, req.user.username).catch(() => {});
       }
 
       res.json({ 

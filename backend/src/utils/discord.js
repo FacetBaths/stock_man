@@ -94,4 +94,26 @@ async function notifyTagComplete(tag, markedBy) {
   });
 }
 
-module.exports = { sendDiscordNotification, notifyTagComplete };
+/**
+ * Notify Discord when a tag is unmarked as complete (was a mistake).
+ */
+async function notifyTagIncomplete(tag, unmarkedBy) {
+  const fields = [
+    { name: 'Customer', value: tag.customer_name, inline: true },
+    { name: 'Unmarked By', value: unmarkedBy, inline: true }
+  ];
+
+  if (tag.project_name) {
+    fields.push({ name: 'Project', value: tag.project_name, inline: true });
+  }
+
+  await sendDiscordNotification({
+    title: '⚠️ Tag Marked Incomplete',
+    description: `**${tag.customer_name}**'s tag was marked back to incomplete — do NOT schedule yet.`,
+    color: 0xd32f2f, // red
+    fields,
+    footer: 'Stock Manager'
+  });
+}
+
+module.exports = { sendDiscordNotification, notifyTagComplete, notifyTagIncomplete };
