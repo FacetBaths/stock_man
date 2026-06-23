@@ -63,26 +63,28 @@ const customerFilter = computed({
 });
 
 // Completeness filter (local, not sent to backend)
-const completenessFilter = ref<'all' | 'complete' | 'incomplete'>('all');
+const completenessFilter = ref<"all" | "complete" | "incomplete">("all");
 
 // Use store tags, but hide broken/imperfect from default view
 // They only show when explicitly filtered by type
-const hiddenTypesInDefaultView = ['broken', 'imperfect'] as const;
+const hiddenTypesInDefaultView = ["broken", "imperfect"] as const;
 
 const filteredTags = computed(() => {
   let tags = tagStore.tags;
 
   const activeTypeFilter = tagStore.filters.tag_type;
   // Default view: hide broken and imperfect unless explicitly filtered
-  if (!activeTypeFilter || activeTypeFilter === '') {
-    tags = tags.filter(tag => !hiddenTypesInDefaultView.includes(tag.tag_type as any));
+  if (!activeTypeFilter || activeTypeFilter === "") {
+    tags = tags.filter(
+      (tag) => !hiddenTypesInDefaultView.includes(tag.tag_type as any),
+    );
   }
 
   // Apply completeness filter
-  if (completenessFilter.value === 'complete') {
-    tags = tags.filter(tag => tag.is_complete);
-  } else if (completenessFilter.value === 'incomplete') {
-    tags = tags.filter(tag => !tag.is_complete);
+  if (completenessFilter.value === "complete") {
+    tags = tags.filter((tag) => tag.is_complete);
+  } else if (completenessFilter.value === "incomplete") {
+    tags = tags.filter((tag) => !tag.is_complete);
   }
 
   return tags;
@@ -90,64 +92,78 @@ const filteredTags = computed(() => {
 
 // Group tags by tag_type for sectioned display
 const tagsByTypeGrouped = computed(() => {
-  const groups: Array<{ type: string; label: string; color: string; tags: Tag[] }> = [];
-  
+  const groups: Array<{
+    type: string;
+    label: string;
+    color: string;
+    tags: Tag[];
+  }> = [];
+
   for (const tt of TAG_TYPES) {
-    const matching = filteredTags.value.filter(tag => tag.tag_type === tt.value);
+    const matching = filteredTags.value.filter(
+      (tag) => tag.tag_type === tt.value,
+    );
     if (matching.length > 0) {
       groups.push({
         type: tt.value,
         label: tt.label,
         color: tt.color,
-        tags: matching
+        tags: matching,
       });
     }
   }
-  
+
   // Catch any tags with types not in TAG_TYPES
-  const knownTypes = new Set(TAG_TYPES.map(t => t.value));
-  const other = filteredTags.value.filter(tag => !knownTypes.has(tag.tag_type));
+  const knownTypes = new Set(TAG_TYPES.map((t) => t.value));
+  const other = filteredTags.value.filter(
+    (tag) => !knownTypes.has(tag.tag_type),
+  );
   if (other.length > 0) {
-    groups.push({ type: 'other', label: 'Other', color: '#6c757d', tags: other });
+    groups.push({
+      type: "other",
+      label: "Other",
+      color: "#6c757d",
+      tags: other,
+    });
   }
-  
+
   return groups;
 });
 
 // Stats carousel configuration for StatsCarousel component
 const tagStatsCarousel = computed(() => {
   if (!stats.value) return [];
-  
+
   return [
     {
-      icon: 'local_offer',
-      label: 'Active Tags',
+      icon: "local_offer",
+      label: "Active Tags",
       value: stats.value.active || 0,
-      color: '#1976d2',
+      color: "#1976d2",
     },
     {
-      icon: 'people',
-      label: 'Customers',
+      icon: "people",
+      label: "Customers",
       value: stats.value.uniqueCustomers || 0,
-      color: '#388e3c',
+      color: "#388e3c",
     },
     {
-      icon: 'local_shipping',
-      label: 'Staged',
+      icon: "local_shipping",
+      label: "Staged",
       value: stats.value.staged || 0,
-      color: '#ff8f00',
+      color: "#ff8f00",
     },
     {
-      icon: 'done_all',
-      label: 'Fulfilled',
+      icon: "done_all",
+      label: "Fulfilled",
       value: stats.value.fulfilled || 0,
-      color: '#00796b',
+      color: "#00796b",
     },
     {
-      icon: 'cancel',
-      label: 'Cancelled',
+      icon: "cancel",
+      label: "Cancelled",
       value: stats.value.cancelled || 0,
-      color: '#d32f2f',
+      color: "#d32f2f",
     },
   ];
 });
@@ -301,23 +317,23 @@ const handleStageTag = (tag: Tag) => {
 // Unstage a tag
 const handleUnstageTag = async (tag: Tag) => {
   $q.dialog({
-    title: 'Unstage Tag',
+    title: "Unstage Tag",
     message: `Revert all staging for ${tag.customer_name}? Items will be marked as unstaged.`,
     cancel: true,
-    persistent: true
+    persistent: true,
   }).onOk(async () => {
     try {
       await tagApi.unstageTag(tag._id, { unstage_all: true });
       $q.notify({
-        type: 'positive',
-        message: 'Tag unstaged successfully',
+        type: "positive",
+        message: "Tag unstaged successfully",
         timeout: 3000,
       });
       await Promise.all([loadTags(), loadStats()]);
     } catch (err: any) {
       $q.notify({
-        type: 'negative',
-        message: err.response?.data?.message || 'Failed to unstage tag',
+        type: "negative",
+        message: err.response?.data?.message || "Failed to unstage tag",
         timeout: 3000,
       });
     }
@@ -330,14 +346,14 @@ const handleSendReadyList = async () => {
     sendingReadyList.value = true;
     const result = await tagApi.notifyReady();
     $q.notify({
-      type: result.count > 0 ? 'positive' : 'info',
+      type: result.count > 0 ? "positive" : "info",
       message: result.message,
       timeout: 3000,
     });
   } catch (err: any) {
     $q.notify({
-      type: 'negative',
-      message: err.response?.data?.message || 'Failed to send ready list',
+      type: "negative",
+      message: err.response?.data?.message || "Failed to send ready list",
       timeout: 3000,
     });
   } finally {
@@ -444,7 +460,7 @@ const getTotalQuantity = (items: any[]) => {
 // Split sku_items into staged vs unstaged for the expansion view
 const getStagedItems = (skuItems: any[]) => {
   if (!skuItems) return [];
-  return skuItems.filter(item => {
+  return skuItems.filter((item) => {
     const stagedCount = item.staged_instance_ids?.length || 0;
     const selectedCount = item.selected_instance_ids?.length || 0;
     return stagedCount > 0 && stagedCount >= selectedCount;
@@ -453,7 +469,7 @@ const getStagedItems = (skuItems: any[]) => {
 
 const getPartiallyStagedItems = (skuItems: any[]) => {
   if (!skuItems) return [];
-  return skuItems.filter(item => {
+  return skuItems.filter((item) => {
     const stagedCount = item.staged_instance_ids?.length || 0;
     const selectedCount = item.selected_instance_ids?.length || 0;
     return stagedCount > 0 && stagedCount < selectedCount;
@@ -462,7 +478,7 @@ const getPartiallyStagedItems = (skuItems: any[]) => {
 
 const getUnstagedItems = (skuItems: any[]) => {
   if (!skuItems) return [];
-  return skuItems.filter(item => {
+  return skuItems.filter((item) => {
     const stagedCount = item.staged_instance_ids?.length || 0;
     return stagedCount === 0;
   });
@@ -470,7 +486,7 @@ const getUnstagedItems = (skuItems: any[]) => {
 
 const hasAnyStagingData = (skuItems: any[]) => {
   if (!skuItems) return false;
-  return skuItems.some(item => (item.staged_instance_ids?.length || 0) > 0);
+  return skuItems.some((item) => (item.staged_instance_ids?.length || 0) > 0);
 };
 
 // Toggle tag expansion
@@ -518,10 +534,10 @@ const truncateNote = (text: string, max = 140) => {
 // Legacy / author-less entries are normalized server-side to kind:'system';
 // fall back to the same label here so the preview never reads "Unknown".
 const displayNoteAuthor = (note: any) => {
-  const author = typeof note?.author === 'string' ? note.author.trim() : '';
-  if (!note) return 'System';
-  if (note.kind === 'system' || !author || author.toLowerCase() === 'system') {
-    return 'System';
+  const author = typeof note?.author === "string" ? note.author.trim() : "";
+  if (!note) return "System";
+  if (note.kind === "system" || !author || author.toLowerCase() === "system") {
+    return "System";
   }
   return author;
 };
@@ -533,7 +549,9 @@ const hasStaleCompletionNote = (tag: Tag) => {
   if (!tag.is_complete) return false;
   const latest = getLatestNote(tag);
   if (!latest) return false;
-  const latestTime = latest.createdAt ? new Date(latest.createdAt).getTime() : 0;
+  const latestTime = latest.createdAt
+    ? new Date(latest.createdAt).getTime()
+    : 0;
   const updatedTime = tag.updatedAt ? new Date(tag.updatedAt).getTime() : 0;
   if (!latestTime || !updatedTime) return false;
   // Allow a small buffer (60s) so we don't warn purely because of save ordering.
@@ -641,10 +659,7 @@ const tableColumns = [
         data-aos="fade-up"
         data-aos-delay="100"
       >
-        <StatsCarousel
-          :stats="tagStatsCarousel"
-          :is-loading="isLoading"
-        />
+        <StatsCarousel :stats="tagStatsCarousel" :is-loading="isLoading" />
       </div>
 
       <!-- Controls -->
@@ -653,7 +668,7 @@ const tableColumns = [
         data-aos="fade-up"
         data-aos-delay="200"
       >
-        <div class="row items-center justify-between">
+        <div class="row items-center justify-evenly">
           <div class="col-auto">
             <div class="row q-gutter-md items-center">
               <!-- Customer Search -->
@@ -664,7 +679,7 @@ const tableColumns = [
                   filled
                   placeholder="Search by customer..."
                   class="search-input"
-                  style="min-width: 250px;"
+                  style="min-width: 250px"
                 >
                   <template v-slot:prepend>
                     <q-icon name="search" class="text-dark" />
@@ -690,7 +705,7 @@ const tableColumns = [
                   emit-value
                   map-options
                   class="filter-select"
-                  style="min-width: 140px;"
+                  style="min-width: 140px"
                 />
               </div>
 
@@ -712,7 +727,7 @@ const tableColumns = [
                   emit-value
                   map-options
                   class="filter-select"
-                  style="min-width: 140px;"
+                  style="min-width: 140px"
                 />
               </div>
 
@@ -731,15 +746,15 @@ const tableColumns = [
                   emit-value
                   map-options
                   class="filter-select"
-                  style="min-width: 140px;"
+                  style="min-width: 140px"
                 />
               </div>
             </div>
           </div>
 
           <!-- Action Buttons -->
-          <div class="col-auto" v-if="authStore.canWrite">
-            <div class="row q-gutter-sm">
+          <div class="col-auto action-buttons" v-if="authStore.canWrite">
+            <div class="row q-gutter-md">
               <!-- Stage Tags -->
               <q-btn
                 @click="handleStageTags"
@@ -762,7 +777,9 @@ const tableColumns = [
                 class="add-btn"
                 no-caps
               >
-                <q-tooltip>Complete fulfillment of staged/active tags</q-tooltip>
+                <q-tooltip
+                  >Complete fulfillment of staged/active tags</q-tooltip
+                >
               </q-btn>
 
               <!-- Create Tag -->
@@ -833,385 +850,607 @@ const tableColumns = [
 
         <!-- Tags Grid - Grouped by Type -->
         <div class="tags-grid q-pa-md">
-          <div v-for="group in tagsByTypeGrouped" :key="group.type" class="q-mb-lg">
+          <div
+            v-for="group in tagsByTypeGrouped"
+            :key="group.type"
+            class="q-mb-lg"
+          >
             <!-- Section Header -->
             <div class="type-section-header q-mb-sm row items-center">
-              <q-icon name="label" :style="{ color: group.color }" size="sm" class="q-mr-sm" />
-              <span class="text-subtitle1 text-weight-bold text-dark">{{ group.label }}</span>
-              <q-badge :style="{ backgroundColor: group.color }" text-color="white" class="q-ml-sm">
+              <q-icon
+                name="label"
+                :style="{ color: group.color }"
+                size="sm"
+                class="q-mr-sm"
+              />
+              <span class="text-subtitle1 text-weight-bold text-dark">{{
+                group.label
+              }}</span>
+              <q-badge
+                :style="{ backgroundColor: group.color }"
+                text-color="white"
+                class="q-ml-sm"
+              >
                 {{ group.tags.length }}
               </q-badge>
             </div>
 
-          <div class="tag-group-list">
-            <q-card
-              v-for="tag in group.tags"
-              :key="tag._id"
-              :class="[
-                'tag-card',
-                { 'tag-incomplete': !tag.is_complete && tag.status === 'active' },
-                { 'tag-broken': tag.tag_type === 'broken' }
-              ]"
-              :flat="!(!tag.is_complete && tag.status === 'active')"
-            >
-              <!-- Tag Header -->
-              <q-card-section class="tag-header-section">
-                <!-- Top row: Customer + Actions -->
-                <div class="row items-center no-wrap q-mb-sm">
-                  <div class="col">
-                    <div class="row items-center q-gutter-sm">
-                      <q-avatar 
-                        :color="tag.tag_type === 'broken' ? 'red-4' : 'primary'" 
-                        text-color="white" 
-                        size="md"
-                      >
-                        <q-icon :name="tag.tag_type === 'broken' ? 'broken_image' : 'person'" />
-                      </q-avatar>
-                      <div>
-                        <div class="text-h6 text-weight-bold" :class="tag.tag_type === 'broken' ? 'text-red-8' : 'text-dark'">
-                          {{ tag.customer_name }}
-                        </div>
-                        <div v-if="tag.project_name" class="text-caption text-grey-6">
-                          <q-icon name="folder" size="xs" class="q-mr-xs" />
-                          {{ tag.project_name }}
-                        </div>
-                        <div class="text-caption text-grey-7">
-                          <q-icon name="schedule" size="xs" class="q-mr-xs" />
-                          Created: {{ formatDate(tag.createdAt) }}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- Actions (right-aligned) -->
-                  <div class="col-auto">
-                    <div class="row q-gutter-xs">
-                      <q-btn
-                        v-if="authStore.canWrite"
-                        @click="handleEditTag(tag)"
-                        color="primary"
-                        icon="edit"
-                        size="sm"
-                        round
-                        flat
-                        dense
-                      >
-                        <q-tooltip>Edit Tag</q-tooltip>
-                      </q-btn>
-                      <q-btn
-                        v-if="authStore.canWrite && tag.status === 'active'"
-                        @click="handleEditItems(tag)"
-                        color="secondary"
-                        icon="edit_note"
-                        size="sm"
-                        round
-                        flat
-                        dense
-                      >
-                        <q-tooltip>Edit Items</q-tooltip>
-                      </q-btn>
-                      <q-btn
-                        v-if="authStore.canWrite && tag.status === 'active'"
-                        @click="handleStageTag(tag)"
-                        color="amber-8"
-                        icon="local_shipping"
-                        size="sm"
-                        round
-                        flat
-                        dense
-                      >
-                        <q-tooltip>Stage this tag</q-tooltip>
-                      </q-btn>
-                      <q-btn
-                        v-if="authStore.canWrite && hasAnyStagingData(tag.sku_items)"
-                        @click="handleUnstageTag(tag)"
-                        color="amber-8"
-                        icon="undo"
-                        size="sm"
-                        round
-                        flat
-                        dense
-                      >
-                        <q-tooltip>Unstage Items</q-tooltip>
-                      </q-btn>
-                      <q-btn
-                        v-if="authStore.canWrite"
-                        @click="handleDeleteTag(tag)"
-                        color="negative"
-                        icon="delete"
-                        size="sm"
-                        round
-                        flat
-                        dense
-                      >
-                        <q-tooltip>Delete Tag</q-tooltip>
-                      </q-btn>
-                      
-                      <!-- Expand/Collapse Button -->
-                      <q-btn
-                        @click="toggleTagExpansion(tag._id)"
-                        :color="expandedTags.has(tag._id) ? 'primary' : 'grey-6'"
-                        :icon="expandedTags.has(tag._id) ? 'expand_less' : 'expand_more'"
-                        size="sm"
-                        round
-                        flat
-                        dense
-                      >
-                      <q-tooltip>{{ expandedTags.has(tag._id) ? 'Collapse' : 'View Items' }}</q-tooltip>
-                      </q-btn>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Bottom row: Chips (wrapping naturally) -->
-                <div class="row q-gutter-xs items-center" style="flex-wrap: wrap;">
-                  <q-chip
-                    :color="getStatusColor(tag.status)"
-                    text-color="white"
-                    size="sm"
-                    class="text-weight-medium text-capitalize"
-                    icon="flag"
-                  >
-                    {{ tag.status }}
-                  </q-chip>
-                  
-                  <q-chip color="info" text-color="white" size="sm" icon="inventory">
-                    {{ getTotalQuantity(tag.sku_items) }} items
-                  </q-chip>
-                  
-                  <!-- Completeness -->
-                  <q-chip
-                    v-if="!tag.is_complete && tag.status === 'active'"
-                    color="red-8"
-                    text-color="white"
-                    size="sm"
-                    icon="warning"
-                  >
-                    Incomplete
-                  </q-chip>
-                  <q-chip
-                    v-if="tag.is_complete && tag.status === 'active'"
-                    color="green"
-                    text-color="white"
-                    size="sm"
-                    icon="check_circle"
-                  >
-                    Complete
-                  </q-chip>
-                  
-                  <!-- Staging progress -->
-                  <q-chip
-                    v-if="tag.staging_progress && tag.staging_progress.percentage > 0 && tag.status === 'active'"
-                    color="amber"
-                    text-color="white"
-                    size="sm"
-                    icon="local_shipping"
-                  >
-                    {{ tag.staging_progress.percentage }}% staged
-                  </q-chip>
-
-                  <!-- Broken notice -->
-                  <q-chip
-                    v-if="tag.tag_type === 'broken'"
-                    color="red-2"
-                    text-color="red-10"
-                    size="sm"
-                    icon="report_problem"
-                  >
-                    Damaged — Do Not Ship
-                  </q-chip>
-                </div>
-
-                <!-- Notes thread preview (latest entry + count + stale warning) -->
-                <div class="tag-notes q-mt-sm" v-if="getNoteCount(tag) > 0 || hasStaleCompletionNote(tag)">
-                  <div class="row items-start q-gutter-xs">
-                    <q-icon name="forum" size="xs" class="q-mt-xs text-grey-6" />
+            <div class="tag-group-list">
+              <q-card
+                v-for="tag in group.tags"
+                :key="tag._id"
+                :class="[
+                  'tag-card',
+                  {
+                    'tag-incomplete':
+                      !tag.is_complete && tag.status === 'active',
+                  },
+                  { 'tag-broken': tag.tag_type === 'broken' },
+                ]"
+                :flat="!(!tag.is_complete && tag.status === 'active')"
+              >
+                <!-- Tag Header -->
+                <q-card-section class="tag-header-section">
+                  <!-- Top row: Customer + Actions -->
+                  <div class="row items-center no-wrap q-mb-sm">
                     <div class="col">
-                      <div class="row items-center q-gutter-xs">
-                        <span class="text-caption text-grey-7" v-if="getLatestNote(tag)">
-                          <strong>{{ displayNoteAuthor(getLatestNote(tag)) }}</strong>
-                          &middot; {{ formatNoteTimestamp(getLatestNote(tag)?.createdAt) }}
-                        </span>
-                        <q-chip
-                          dense
-                          size="xs"
-                          color="grey-4"
-                          text-color="grey-9"
-                          icon="forum"
-                          :label="`${getNoteCount(tag)} note${getNoteCount(tag) === 1 ? '' : 's'}`"
-                        />
-                        <q-chip
-                          v-if="hasStaleCompletionNote(tag)"
-                          dense
-                          size="xs"
-                          color="warning"
+                      <div class="row items-center q-gutter-sm">
+                        <q-avatar
+                          :color="
+                            tag.tag_type === 'broken' ? 'red-4' : 'primary'
+                          "
                           text-color="white"
-                          icon="warning"
-                          label="Marked complete after latest note — verify status"
-                        />
-                      </div>
-                      <div class="text-body2 text-grey-8 q-mt-xs" v-if="getLatestNote(tag)">
-                        {{ truncateNote(getLatestNote(tag)?.message || '') }}
+                          size="md"
+                        >
+                          <q-icon
+                            :name="
+                              tag.tag_type === 'broken'
+                                ? 'broken_image'
+                                : 'person'
+                            "
+                          />
+                        </q-avatar>
+                        <div>
+                          <div
+                            class="text-h6 text-weight-bold"
+                            :class="
+                              tag.tag_type === 'broken'
+                                ? 'text-red-8'
+                                : 'text-dark'
+                            "
+                          >
+                            {{ tag.customer_name }}
+                          </div>
+                          <div
+                            v-if="tag.project_name"
+                            class="text-caption text-grey-6"
+                          >
+                            <q-icon name="folder" size="xs" class="q-mr-xs" />
+                            {{ tag.project_name }}
+                          </div>
+                          <div class="text-caption text-grey-7">
+                            <q-icon name="schedule" size="xs" class="q-mr-xs" />
+                            Created: {{ formatDate(tag.createdAt) }}
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </div>
-              </q-card-section>
 
-              <q-separator v-if="expandedTags.has(tag._id)" />
-
-              <!-- Expandable Items Section -->
-              <q-slide-transition>
-                <q-card-section v-if="expandedTags.has(tag._id)" class="tag-items-section">
-                  <div class="text-subtitle1 text-weight-medium text-dark q-mb-md">
-                    <q-icon name="inventory_2" class="q-mr-sm" color="primary" />
-                    Tagged Items ({{ tag.sku_items?.length || 0 }})
-                  </div>
-
-                  <div v-if="tag.sku_items && tag.sku_items.length > 0">
-                    
-                    <!-- STAGED section -->
-                    <div v-if="getStagedItems(tag.sku_items).length > 0" class="q-mb-md">
-                      <div class="section-label text-positive text-weight-bold q-mb-xs">
-                        <q-icon name="check_circle" size="xs" class="q-mr-xs" />
-                        Staged ({{ getStagedItems(tag.sku_items).length }})
-                      </div>
-                      <q-list dense separator class="compact-items-list">
-                        <q-item
-                          v-for="(skuItem, index) in getStagedItems(tag.sku_items)"
-                          :key="'staged-' + index"
-                          class="compact-item"
+                    <!-- Actions (right-aligned) -->
+                    <div class="col-auto">
+                      <div class="row q-gutter-xs">
+                        <q-btn
+                          v-if="authStore.canWrite"
+                          @click="handleEditTag(tag)"
+                          color="primary"
+                          icon="edit"
+                          size="sm"
+                          round
+                          flat
                           dense
                         >
-                          <q-item-section avatar>
-                            <q-avatar color="positive" text-color="white" size="xs">
-                              <q-icon name="check" size="xs" />
-                            </q-avatar>
-                          </q-item-section>
-                          <q-item-section>
-                            <q-item-label class="text-weight-medium text-dark">
-                              <template v-if="typeof skuItem.sku_id === 'object' && skuItem.sku_id?.sku_code">
-                                {{ skuItem.sku_id.sku_code || "Unknown SKU" }}
-                              </template>
-                              <template v-else>SKU {{ skuItem.sku_id }}</template>
-                              <span v-if="typeof skuItem.sku_id === 'object' && skuItem.sku_id?.name" class="text-grey-7 q-ml-sm">
-                                - {{ skuItem.sku_id.name }}
-                              </span>
-                            </q-item-label>
-                            <q-item-label v-if="typeof skuItem.sku_id === 'object' && skuItem.sku_id?.description" caption class="text-grey-6" lines="1">
-                              {{ skuItem.sku_id.description }}
-                            </q-item-label>
-                          </q-item-section>
-                          <q-item-section side>
-                            <q-badge color="positive" :label="skuItem.selected_instance_ids?.length || 0" class="text-weight-bold" />
-                          </q-item-section>
-                        </q-item>
-                      </q-list>
-                    </div>
-
-                    <!-- PARTIALLY STAGED section -->
-                    <div v-if="getPartiallyStagedItems(tag.sku_items).length > 0" class="q-mb-md">
-                      <div class="section-label text-amber-8 text-weight-bold q-mb-xs">
-                        <q-icon name="timelapse" size="xs" class="q-mr-xs" />
-                        Partially Staged ({{ getPartiallyStagedItems(tag.sku_items).length }})
-                      </div>
-                      <q-list dense separator class="compact-items-list">
-                        <q-item
-                          v-for="(skuItem, index) in getPartiallyStagedItems(tag.sku_items)"
-                          :key="'partial-' + index"
-                          class="compact-item"
+                          <q-tooltip>Edit Tag</q-tooltip>
+                        </q-btn>
+                        <q-btn
+                          v-if="authStore.canWrite && tag.status === 'active'"
+                          @click="handleEditItems(tag)"
+                          color="secondary"
+                          icon="edit_note"
+                          size="sm"
+                          round
+                          flat
                           dense
                         >
-                          <q-item-section avatar>
-                            <q-avatar color="amber" text-color="white" size="xs">
-                              <q-icon name="timelapse" size="xs" />
-                            </q-avatar>
-                          </q-item-section>
-                          <q-item-section>
-                            <q-item-label class="text-weight-medium text-dark">
-                              <template v-if="typeof skuItem.sku_id === 'object' && skuItem.sku_id?.sku_code">
-                                {{ skuItem.sku_id.sku_code || "Unknown SKU" }}
-                              </template>
-                              <template v-else>SKU {{ skuItem.sku_id }}</template>
-                              <span v-if="typeof skuItem.sku_id === 'object' && skuItem.sku_id?.name" class="text-grey-7 q-ml-sm">
-                                - {{ skuItem.sku_id.name }}
-                              </span>
-                            </q-item-label>
-                            <q-item-label v-if="typeof skuItem.sku_id === 'object' && skuItem.sku_id?.description" caption class="text-grey-6" lines="1">
-                              {{ skuItem.sku_id.description }}
-                            </q-item-label>
-                          </q-item-section>
-                          <q-item-section side>
-                            <q-badge color="amber" text-color="white" class="text-weight-bold">
-                              {{ skuItem.staged_instance_ids?.length || 0 }}/{{ skuItem.selected_instance_ids?.length || 0 }}
-                            </q-badge>
-                          </q-item-section>
-                        </q-item>
-                      </q-list>
-                    </div>
-
-                    <!-- UNSTAGED section -->
-                    <div v-if="getUnstagedItems(tag.sku_items).length > 0">
-                      <div v-if="hasAnyStagingData(tag.sku_items)" class="section-label text-grey-6 text-weight-bold q-mb-xs">
-                        <q-icon name="radio_button_unchecked" size="xs" class="q-mr-xs" />
-                        Unstaged ({{ getUnstagedItems(tag.sku_items).length }})
-                      </div>
-                      <q-list dense separator class="compact-items-list">
-                        <q-item
-                          v-for="(skuItem, index) in getUnstagedItems(tag.sku_items)"
-                          :key="'unstaged-' + index"
-                          class="compact-item"
+                          <q-tooltip>Edit Items</q-tooltip>
+                        </q-btn>
+                        <q-btn
+                          v-if="authStore.canWrite && tag.status === 'active'"
+                          @click="handleStageTag(tag)"
+                          color="amber-8"
+                          icon="local_shipping"
+                          size="sm"
+                          round
+                          flat
                           dense
                         >
-                          <q-item-section avatar>
-                            <q-avatar color="primary" text-color="white" size="xs">
-                              <q-icon name="inventory" size="xs" />
-                            </q-avatar>
-                          </q-item-section>
-                          <q-item-section>
-                            <q-item-label class="text-weight-medium text-dark">
-                              <template v-if="typeof skuItem.sku_id === 'object' && skuItem.sku_id?.sku_code">
-                                {{ skuItem.sku_id.sku_code || "Unknown SKU" }}
-                              </template>
-                              <template v-else>SKU {{ skuItem.sku_id }}</template>
-                              <span v-if="typeof skuItem.sku_id === 'object' && skuItem.sku_id?.name" class="text-grey-7 q-ml-sm">
-                                - {{ skuItem.sku_id.name }}
-                              </span>
-                            </q-item-label>
-                            <q-item-label v-if="typeof skuItem.sku_id === 'object' && skuItem.sku_id?.description" caption class="text-grey-6" lines="1">
-                              {{ skuItem.sku_id.description }}
-                            </q-item-label>
-                          </q-item-section>
-                          <q-item-section side>
-                            <q-badge color="primary" :label="skuItem.selected_instance_ids?.length || 0" class="text-weight-bold" />
-                          </q-item-section>
-                        </q-item>
-                      </q-list>
+                          <q-tooltip>Stage this tag</q-tooltip>
+                        </q-btn>
+                        <q-btn
+                          v-if="
+                            authStore.canWrite &&
+                            hasAnyStagingData(tag.sku_items)
+                          "
+                          @click="handleUnstageTag(tag)"
+                          color="amber-8"
+                          icon="undo"
+                          size="sm"
+                          round
+                          flat
+                          dense
+                        >
+                          <q-tooltip>Unstage Items</q-tooltip>
+                        </q-btn>
+                        <q-btn
+                          v-if="authStore.canWrite"
+                          @click="handleDeleteTag(tag)"
+                          color="negative"
+                          icon="delete"
+                          size="sm"
+                          round
+                          flat
+                          dense
+                        >
+                          <q-tooltip>Delete Tag</q-tooltip>
+                        </q-btn>
+
+                        <!-- Expand/Collapse Button -->
+                        <q-btn
+                          @click="toggleTagExpansion(tag._id)"
+                          :color="
+                            expandedTags.has(tag._id) ? 'primary' : 'grey-6'
+                          "
+                          :icon="
+                            expandedTags.has(tag._id)
+                              ? 'expand_less'
+                              : 'expand_more'
+                          "
+                          size="sm"
+                          round
+                          flat
+                          dense
+                        >
+                          <q-tooltip>{{
+                            expandedTags.has(tag._id)
+                              ? "Collapse"
+                              : "View Items"
+                          }}</q-tooltip>
+                        </q-btn>
+                      </div>
                     </div>
-
                   </div>
 
-                  <div v-else class="text-center q-pa-lg">
-                    <q-icon
-                      name="inventory_2"
-                      size="64px"
-                      class="text-grey-4 q-mb-md"
-                    />
-                    <div class="text-body1 text-grey-6">No items in this tag</div>
+                  <!-- Bottom row: Chips (wrapping naturally) -->
+                  <div
+                    class="row q-gutter-xs items-center"
+                    style="flex-wrap: wrap"
+                  >
+                    <q-chip
+                      :color="getStatusColor(tag.status)"
+                      text-color="white"
+                      size="sm"
+                      class="text-weight-medium text-capitalize"
+                      icon="flag"
+                    >
+                      {{ tag.status }}
+                    </q-chip>
+
+                    <q-chip
+                      color="info"
+                      text-color="white"
+                      size="sm"
+                      icon="inventory"
+                    >
+                      {{ getTotalQuantity(tag.sku_items) }} items
+                    </q-chip>
+
+                    <!-- Completeness -->
+                    <q-chip
+                      v-if="!tag.is_complete && tag.status === 'active'"
+                      color="red-8"
+                      text-color="white"
+                      size="sm"
+                      icon="warning"
+                    >
+                      Incomplete
+                    </q-chip>
+                    <q-chip
+                      v-if="tag.is_complete && tag.status === 'active'"
+                      color="green"
+                      text-color="white"
+                      size="sm"
+                      icon="check_circle"
+                    >
+                      Complete
+                    </q-chip>
+
+                    <!-- Staging progress -->
+                    <q-chip
+                      v-if="
+                        tag.staging_progress &&
+                        tag.staging_progress.percentage > 0 &&
+                        tag.status === 'active'
+                      "
+                      color="amber"
+                      text-color="white"
+                      size="sm"
+                      icon="local_shipping"
+                    >
+                      {{ tag.staging_progress.percentage }}% staged
+                    </q-chip>
+
+                    <!-- Broken notice -->
+                    <q-chip
+                      v-if="tag.tag_type === 'broken'"
+                      color="red-2"
+                      text-color="red-10"
+                      size="sm"
+                      icon="report_problem"
+                    >
+                      Damaged — Do Not Ship
+                    </q-chip>
                   </div>
 
-                  <!-- Notes thread (full history + compose) -->
-                  <q-separator class="q-my-md" />
-                  <div class="text-subtitle1 text-weight-medium text-dark q-mb-md">
-                    <q-icon name="forum" class="q-mr-sm" color="primary" />
-                    Notes Thread ({{ getNoteCount(tag) }})
+                  <!-- Notes thread preview (latest entry + count + stale warning) -->
+                  <div
+                    class="tag-notes q-mt-sm"
+                    v-if="getNoteCount(tag) > 0 || hasStaleCompletionNote(tag)"
+                  >
+                    <div class="row items-start q-gutter-xs">
+                      <q-icon
+                        name="forum"
+                        size="xs"
+                        class="q-mt-xs text-grey-6"
+                      />
+                      <div class="col">
+                        <div class="row items-center q-gutter-xs">
+                          <span
+                            class="text-caption text-grey-7"
+                            v-if="getLatestNote(tag)"
+                          >
+                            <strong>{{
+                              displayNoteAuthor(getLatestNote(tag))
+                            }}</strong>
+                            &middot;
+                            {{
+                              formatNoteTimestamp(getLatestNote(tag)?.createdAt)
+                            }}
+                          </span>
+                          <q-chip
+                            dense
+                            size="xs"
+                            color="grey-4"
+                            text-color="grey-9"
+                            icon="forum"
+                            :label="`${getNoteCount(tag)} note${getNoteCount(tag) === 1 ? '' : 's'}`"
+                          />
+                          <q-chip
+                            v-if="hasStaleCompletionNote(tag)"
+                            dense
+                            size="xs"
+                            color="warning"
+                            text-color="white"
+                            icon="warning"
+                            label="Marked complete after latest note — verify status"
+                          />
+                        </div>
+                        <div
+                          class="text-body2 text-grey-8 q-mt-xs"
+                          v-if="getLatestNote(tag)"
+                        >
+                          {{ truncateNote(getLatestNote(tag)?.message || "") }}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <NoteThread :tag="tag" />
                 </q-card-section>
-              </q-slide-transition>
-            </q-card>
+
+                <q-separator v-if="expandedTags.has(tag._id)" />
+
+                <!-- Expandable Items Section -->
+                <q-slide-transition>
+                  <q-card-section
+                    v-if="expandedTags.has(tag._id)"
+                    class="tag-items-section"
+                  >
+                    <div
+                      class="text-subtitle1 text-weight-medium text-dark q-mb-md"
+                    >
+                      <q-icon
+                        name="inventory_2"
+                        class="q-mr-sm"
+                        color="primary"
+                      />
+                      Tagged Items ({{ tag.sku_items?.length || 0 }})
+                    </div>
+
+                    <div v-if="tag.sku_items && tag.sku_items.length > 0">
+                      <!-- STAGED section -->
+                      <div
+                        v-if="getStagedItems(tag.sku_items).length > 0"
+                        class="q-mb-md"
+                      >
+                        <div
+                          class="section-label text-positive text-weight-bold q-mb-xs"
+                        >
+                          <q-icon
+                            name="check_circle"
+                            size="xs"
+                            class="q-mr-xs"
+                          />
+                          Staged ({{ getStagedItems(tag.sku_items).length }})
+                        </div>
+                        <q-list dense separator class="compact-items-list">
+                          <q-item
+                            v-for="(skuItem, index) in getStagedItems(
+                              tag.sku_items,
+                            )"
+                            :key="'staged-' + index"
+                            class="compact-item"
+                            dense
+                          >
+                            <q-item-section avatar>
+                              <q-avatar
+                                color="positive"
+                                text-color="white"
+                                size="xs"
+                              >
+                                <q-icon name="check" size="xs" />
+                              </q-avatar>
+                            </q-item-section>
+                            <q-item-section>
+                              <q-item-label
+                                class="text-weight-medium text-dark"
+                              >
+                                <template
+                                  v-if="
+                                    typeof skuItem.sku_id === 'object' &&
+                                    skuItem.sku_id?.sku_code
+                                  "
+                                >
+                                  {{ skuItem.sku_id.sku_code || "Unknown SKU" }}
+                                </template>
+                                <template v-else
+                                  >SKU {{ skuItem.sku_id }}</template
+                                >
+                                <span
+                                  v-if="
+                                    typeof skuItem.sku_id === 'object' &&
+                                    skuItem.sku_id?.name
+                                  "
+                                  class="text-grey-7 q-ml-sm"
+                                >
+                                  - {{ skuItem.sku_id.name }}
+                                </span>
+                              </q-item-label>
+                              <q-item-label
+                                v-if="
+                                  typeof skuItem.sku_id === 'object' &&
+                                  skuItem.sku_id?.description
+                                "
+                                caption
+                                class="text-grey-6"
+                                lines="1"
+                              >
+                                {{ skuItem.sku_id.description }}
+                              </q-item-label>
+                            </q-item-section>
+                            <q-item-section side>
+                              <q-badge
+                                color="positive"
+                                :label="
+                                  skuItem.selected_instance_ids?.length || 0
+                                "
+                                class="text-weight-bold"
+                              />
+                            </q-item-section>
+                          </q-item>
+                        </q-list>
+                      </div>
+
+                      <!-- PARTIALLY STAGED section -->
+                      <div
+                        v-if="getPartiallyStagedItems(tag.sku_items).length > 0"
+                        class="q-mb-md"
+                      >
+                        <div
+                          class="section-label text-amber-8 text-weight-bold q-mb-xs"
+                        >
+                          <q-icon name="timelapse" size="xs" class="q-mr-xs" />
+                          Partially Staged ({{
+                            getPartiallyStagedItems(tag.sku_items).length
+                          }})
+                        </div>
+                        <q-list dense separator class="compact-items-list">
+                          <q-item
+                            v-for="(skuItem, index) in getPartiallyStagedItems(
+                              tag.sku_items,
+                            )"
+                            :key="'partial-' + index"
+                            class="compact-item"
+                            dense
+                          >
+                            <q-item-section avatar>
+                              <q-avatar
+                                color="amber"
+                                text-color="white"
+                                size="xs"
+                              >
+                                <q-icon name="timelapse" size="xs" />
+                              </q-avatar>
+                            </q-item-section>
+                            <q-item-section>
+                              <q-item-label
+                                class="text-weight-medium text-dark"
+                              >
+                                <template
+                                  v-if="
+                                    typeof skuItem.sku_id === 'object' &&
+                                    skuItem.sku_id?.sku_code
+                                  "
+                                >
+                                  {{ skuItem.sku_id.sku_code || "Unknown SKU" }}
+                                </template>
+                                <template v-else
+                                  >SKU {{ skuItem.sku_id }}</template
+                                >
+                                <span
+                                  v-if="
+                                    typeof skuItem.sku_id === 'object' &&
+                                    skuItem.sku_id?.name
+                                  "
+                                  class="text-grey-7 q-ml-sm"
+                                >
+                                  - {{ skuItem.sku_id.name }}
+                                </span>
+                              </q-item-label>
+                              <q-item-label
+                                v-if="
+                                  typeof skuItem.sku_id === 'object' &&
+                                  skuItem.sku_id?.description
+                                "
+                                caption
+                                class="text-grey-6"
+                                lines="1"
+                              >
+                                {{ skuItem.sku_id.description }}
+                              </q-item-label>
+                            </q-item-section>
+                            <q-item-section side>
+                              <q-badge
+                                color="amber"
+                                text-color="white"
+                                class="text-weight-bold"
+                              >
+                                {{
+                                  skuItem.staged_instance_ids?.length || 0
+                                }}/{{
+                                  skuItem.selected_instance_ids?.length || 0
+                                }}
+                              </q-badge>
+                            </q-item-section>
+                          </q-item>
+                        </q-list>
+                      </div>
+
+                      <!-- UNSTAGED section -->
+                      <div v-if="getUnstagedItems(tag.sku_items).length > 0">
+                        <div
+                          v-if="hasAnyStagingData(tag.sku_items)"
+                          class="section-label text-grey-6 text-weight-bold q-mb-xs"
+                        >
+                          <q-icon
+                            name="radio_button_unchecked"
+                            size="xs"
+                            class="q-mr-xs"
+                          />
+                          Unstaged ({{
+                            getUnstagedItems(tag.sku_items).length
+                          }})
+                        </div>
+                        <q-list dense separator class="compact-items-list">
+                          <q-item
+                            v-for="(skuItem, index) in getUnstagedItems(
+                              tag.sku_items,
+                            )"
+                            :key="'unstaged-' + index"
+                            class="compact-item"
+                            dense
+                          >
+                            <q-item-section avatar>
+                              <q-avatar
+                                color="primary"
+                                text-color="white"
+                                size="xs"
+                              >
+                                <q-icon name="inventory" size="xs" />
+                              </q-avatar>
+                            </q-item-section>
+                            <q-item-section>
+                              <q-item-label
+                                class="text-weight-medium text-dark"
+                              >
+                                <template
+                                  v-if="
+                                    typeof skuItem.sku_id === 'object' &&
+                                    skuItem.sku_id?.sku_code
+                                  "
+                                >
+                                  {{ skuItem.sku_id.sku_code || "Unknown SKU" }}
+                                </template>
+                                <template v-else
+                                  >SKU {{ skuItem.sku_id }}</template
+                                >
+                                <span
+                                  v-if="
+                                    typeof skuItem.sku_id === 'object' &&
+                                    skuItem.sku_id?.name
+                                  "
+                                  class="text-grey-7 q-ml-sm"
+                                >
+                                  - {{ skuItem.sku_id.name }}
+                                </span>
+                              </q-item-label>
+                              <q-item-label
+                                v-if="
+                                  typeof skuItem.sku_id === 'object' &&
+                                  skuItem.sku_id?.description
+                                "
+                                caption
+                                class="text-grey-6"
+                                lines="1"
+                              >
+                                {{ skuItem.sku_id.description }}
+                              </q-item-label>
+                            </q-item-section>
+                            <q-item-section side>
+                              <q-badge
+                                color="primary"
+                                :label="
+                                  skuItem.selected_instance_ids?.length || 0
+                                "
+                                class="text-weight-bold"
+                              />
+                            </q-item-section>
+                          </q-item>
+                        </q-list>
+                      </div>
+                    </div>
+
+                    <div v-else class="text-center q-pa-lg">
+                      <q-icon
+                        name="inventory_2"
+                        size="64px"
+                        class="text-grey-4 q-mb-md"
+                      />
+                      <div class="text-body1 text-grey-6">
+                        No items in this tag
+                      </div>
+                    </div>
+
+                    <!-- Notes thread (full history + compose) -->
+                    <q-separator class="q-my-md" />
+                    <div
+                      class="text-subtitle1 text-weight-medium text-dark q-mb-md"
+                    >
+                      <q-icon name="forum" class="q-mr-sm" color="primary" />
+                      Notes Thread ({{ getNoteCount(tag) }})
+                    </div>
+                    <NoteThread :tag="tag" />
+                  </q-card-section>
+                </q-slide-transition>
+              </q-card>
+            </div>
           </div>
-        </div>
         </div>
       </div>
     </div>
@@ -1242,7 +1481,10 @@ const tableColumns = [
     <StageTagsDialog
       :show="showStageDialog"
       :preselected-tag="tagToStage"
-      @close="showStageDialog = false; tagToStage = null"
+      @close="
+        showStageDialog = false;
+        tagToStage = null;
+      "
       @success="handleStageSuccess"
     />
 
@@ -1256,6 +1498,9 @@ const tableColumns = [
 </template>
 
 <style scoped>
+.action-buttons {
+  margin-top: 0.5rem;
+}
 .tags-page {
   min-height: 100vh;
 }
