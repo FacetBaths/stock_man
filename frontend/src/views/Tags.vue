@@ -30,6 +30,7 @@ const showFulfillDialog = ref(false);
 const showStageDialog = ref(false);
 const tagToStage = ref<Tag | null>(null);
 const selectedTags = ref<Tag[]>([]);
+const sendingReadyList = ref(false);
 
 // Expansion state for tags
 const expandedTags = ref(new Set<string>());
@@ -321,6 +322,27 @@ const handleUnstageTag = async (tag: Tag) => {
       });
     }
   });
+};
+
+// Send ready list to Discord
+const handleSendReadyList = async () => {
+  try {
+    sendingReadyList.value = true;
+    const result = await tagApi.notifyReady();
+    $q.notify({
+      type: result.count > 0 ? 'positive' : 'info',
+      message: result.message,
+      timeout: 3000,
+    });
+  } catch (err: any) {
+    $q.notify({
+      type: 'negative',
+      message: err.response?.data?.message || 'Failed to send ready list',
+      timeout: 3000,
+    });
+  } finally {
+    sendingReadyList.value = false;
+  }
 };
 
 const handleStageSuccess = async () => {
@@ -752,6 +774,18 @@ const tableColumns = [
                 class="add-btn"
                 no-caps
               />
+              <!-- Send Ready List -->
+              <q-btn
+                @click="handleSendReadyList"
+                :loading="sendingReadyList"
+                color="deep-purple"
+                icon="send"
+                label="Send Ready List"
+                class="add-btn"
+                no-caps
+              >
+                <q-tooltip>Send all complete tags to Discord</q-tooltip>
+              </q-btn>
             </div>
           </div>
         </div>

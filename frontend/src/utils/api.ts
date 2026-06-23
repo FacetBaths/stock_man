@@ -823,6 +823,12 @@ export const tagApi = {
     return response.data
   },
 
+  // Send ready list to Discord
+  notifyReady: async (): Promise<{ message: string; count: number }> => {
+    const response = await api.post('/tags/notify-ready')
+    return response.data
+  },
+
   // Unstage tag items (revert staging)
   unstageTag: async (id: string, data: {
     unstage_items?: Array<{ sku_id: string; instance_ids?: string[] }>

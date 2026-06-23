@@ -9,7 +9,7 @@ const Category = require('../models/Category');
 const Inventory = require('../models/Inventory');
 const { auth, requireRole, requireWriteAccess, logSecurityEvent } = require('../middleware/authEnhanced');
 const AuditLog = require('../models/AuditLog');
-const { notifyTagComplete, notifyTagIncomplete } = require('../utils/discord');
+const { notifyTagComplete, notifyTagIncomplete, notifyReadyList } = require('../utils/discord');
 
 // ===== NOTES THREAD HELPERS =====
 
@@ -387,6 +387,44 @@ router.get('/stats',
       res.status(500).json({ 
         message: 'Failed to fetch tag statistics', 
         error: error.message 
+      });
+    }
+  }
+);
+
+// POST /api/tags/notify-ready - Send ready list to Discord
+router.post('/notify-ready',
+  auth,
+  requireWriteAccess,
+  async (req, res) => {
+    try {
+      // Find all active tags marked as complete
+      const readyTags = await Tag.find({
+        status: 'active',
+        is_complete: true
+      }).populate({
+        path: 'sku_items.sku_id',
+        select: 'sku_code name'
+      }).sort({ customer_name: 1 });
+
+      const result = await notifyReadyList(readyTags);
+
+      if (result.sent) {
+        res.json({
+          message: `Ready list sent to Discord (${result.count} tags)`,
+          count: result.count
+        });
+      } else {
+        res.json({
+          message: result.reason || 'No complete tags to send',
+          count: 0
+        });
+      }
+    } catch (error) {
+      console.error('Notify ready list error:', error);
+      res.status(500).json({
+        message: 'Failed to send ready list',
+        error: error.message
       });
     }
   }

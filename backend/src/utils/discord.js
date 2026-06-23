@@ -116,4 +116,28 @@ async function notifyTagIncomplete(tag, unmarkedBy) {
   });
 }
 
-module.exports = { sendDiscordNotification, notifyTagComplete, notifyTagIncomplete };
+/**
+ * Send a summary of all ready-to-schedule tags to Discord.
+ */
+async function notifyReadyList(tags) {
+  if (!tags || tags.length === 0) {
+    return { sent: false, reason: 'No complete tags to report' };
+  }
+
+  const lines = tags.map(tag => {
+    const itemCount = tag.sku_items?.length || 0;
+    const project = tag.project_name ? ` — ${tag.project_name}` : '';
+    return `• **${tag.customer_name}**${project} (${itemCount} SKUs)`;
+  });
+
+  await sendDiscordNotification({
+    title: `📋 Ready to Schedule (${tags.length} tag${tags.length === 1 ? '' : 's'})`,
+    description: lines.join('\n'),
+    color: 0x1976d2, // blue
+    footer: 'Stock Manager'
+  });
+
+  return { sent: true, count: tags.length };
+}
+
+module.exports = { sendDiscordNotification, notifyTagComplete, notifyTagIncomplete, notifyReadyList };
