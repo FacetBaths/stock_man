@@ -28,6 +28,7 @@ const tagToEdit = ref<Tag | null>(null);
 const tagToEditItems = ref<Tag | null>(null);
 const showFulfillDialog = ref(false);
 const showStageDialog = ref(false);
+const tagToStage = ref<Tag | null>(null);
 const selectedTags = ref<Tag[]>([]);
 
 // Expansion state for tags
@@ -286,6 +287,13 @@ const handleFulfillTags = () => {
 
 // Stage Tags workflow
 const handleStageTags = () => {
+  tagToStage.value = null;
+  showStageDialog.value = true;
+};
+
+// Stage a specific tag directly
+const handleStageTag = (tag: Tag) => {
+  tagToStage.value = tag;
   showStageDialog.value = true;
 };
 
@@ -317,6 +325,7 @@ const handleUnstageTag = async (tag: Tag) => {
 
 const handleStageSuccess = async () => {
   showStageDialog.value = false;
+  tagToStage.value = null;
   await Promise.all([loadTags(), loadStats()]);
   $q.notify({
     type: "positive",
@@ -868,6 +877,18 @@ const tableColumns = [
                         <q-tooltip>Edit Items</q-tooltip>
                       </q-btn>
                       <q-btn
+                        v-if="authStore.canWrite && tag.status === 'active'"
+                        @click="handleStageTag(tag)"
+                        color="amber-8"
+                        icon="local_shipping"
+                        size="sm"
+                        round
+                        flat
+                        dense
+                      >
+                        <q-tooltip>Stage this tag</q-tooltip>
+                      </q-btn>
+                      <q-btn
                         v-if="authStore.canWrite && hasAnyStagingData(tag.sku_items)"
                         @click="handleUnstageTag(tag)"
                         color="amber-8"
@@ -1186,7 +1207,8 @@ const tableColumns = [
     <!-- Stage Tags Dialog -->
     <StageTagsDialog
       :show="showStageDialog"
-      @close="showStageDialog = false"
+      :preselected-tag="tagToStage"
+      @close="showStageDialog = false; tagToStage = null"
       @success="handleStageSuccess"
     />
 

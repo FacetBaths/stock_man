@@ -434,6 +434,7 @@ import type { Tag } from '@/types'
 
 interface Props {
   show: boolean
+  preselectedTag?: Tag | null
 }
 
 const props = defineProps<Props>()
@@ -717,13 +718,27 @@ const close = () => {
 }
 
 // Watchers
-watch(() => props.show, (newValue) => {
+watch(() => props.show, async (newValue) => {
   showDialog.value = newValue
   if (newValue) {
-    currentStep.value = 1
     selectedTag.value = null
     checklistItems.value = []
-    loadActiveTags()
+
+    if (props.preselectedTag) {
+      // Fetch full tag with populated items
+      try {
+        const response = await tagApi.getTag(props.preselectedTag._id, true)
+        selectTag(response.tag)
+        currentStep.value = 2 // Skip to checklist
+      } catch {
+        // Fallback: use the tag as-is
+        selectTag(props.preselectedTag)
+        currentStep.value = 2
+      }
+    } else {
+      currentStep.value = 1
+      loadActiveTags()
+    }
   }
 })
 
