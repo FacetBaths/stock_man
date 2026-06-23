@@ -60,18 +60,30 @@ const customerFilter = computed({
   },
 });
 
+// Completeness filter (local, not sent to backend)
+const completenessFilter = ref<'all' | 'complete' | 'incomplete'>('all');
+
 // Use store tags, but hide broken/imperfect from default view
 // They only show when explicitly filtered by type
 const hiddenTypesInDefaultView = ['broken', 'imperfect'] as const;
 
 const filteredTags = computed(() => {
+  let tags = tagStore.tags;
+
   const activeTypeFilter = tagStore.filters.tag_type;
-  // If user explicitly selected a type (including broken/imperfect), show all
-  if (activeTypeFilter && activeTypeFilter !== '') {
-    return tagStore.tags;
+  // Default view: hide broken and imperfect unless explicitly filtered
+  if (!activeTypeFilter || activeTypeFilter === '') {
+    tags = tags.filter(tag => !hiddenTypesInDefaultView.includes(tag.tag_type as any));
   }
-  // Default view: hide broken and imperfect
-  return tagStore.tags.filter(tag => !hiddenTypesInDefaultView.includes(tag.tag_type as any));
+
+  // Apply completeness filter
+  if (completenessFilter.value === 'complete') {
+    tags = tags.filter(tag => tag.is_complete);
+  } else if (completenessFilter.value === 'incomplete') {
+    tags = tags.filter(tag => !tag.is_complete);
+  }
+
+  return tags;
 });
 
 // Group tags by tag_type for sectioned display
@@ -663,6 +675,25 @@ const tableColumns = [
                       label: t.label,
                       value: t.value,
                     })),
+                  ]"
+                  option-value="value"
+                  option-label="label"
+                  emit-value
+                  map-options
+                  class="filter-select"
+                  style="min-width: 140px;"
+                />
+              </div>
+
+              <!-- Completeness Filter -->
+              <div class="col-auto">
+                <q-select
+                  v-model="completenessFilter"
+                  filled
+                  :options="[
+                    { label: 'All Tags', value: 'all' },
+                    { label: 'Complete', value: 'complete' },
+                    { label: 'Incomplete', value: 'incomplete' },
                   ]"
                   option-value="value"
                   option-label="label"
