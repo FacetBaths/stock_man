@@ -152,6 +152,15 @@ const handleSearch = () => {
   }, 10);
 };
 
+const handleClearFilters = () => {
+  searchQuery.value = '';
+  selectedCategory.value = '';
+  activeFilter.value = 'in_stock';
+  nextTick(() => {
+    inventoryTableRef.value?.refreshInventory(getCurrentFilters());
+  });
+};
+
 const handleAddItem = () => {
   showAddModal.value = true;
 };
@@ -525,6 +534,15 @@ onMounted(async () => {
         </div>
         <div class="col-auto">
           <div class="row q-gutter-sm justify-around btn-group">
+            <q-btn
+              @click="handleClearFilters"
+              flat
+              color="grey-7"
+              icon="filter_alt_off"
+              label="Clear Filters"
+              class="action-btn"
+              no-caps
+            />
             <q-btn
               @click="
                 () => inventoryTableRef?.refreshInventory(getCurrentFilters())
