@@ -527,22 +527,26 @@ onMounted(async () => {
                 </q-select>
               </div>
 
+              <!-- Clear Filters -->
+              <div class="col-auto">
+                <q-btn
+                  @click="handleClearFilters"
+                  flat
+                  color="grey-7"
+                  icon="filter_alt_off"
+                  label="Clear"
+                  no-caps
+                  dense
+                />
+              </div>
+
             </div>
           </div>
 
           <!-- Action Buttons -->
         </div>
         <div class="col-auto">
-          <div class="row q-gutter-sm justify-around btn-group" style="flex-wrap: nowrap;">
-            <q-btn
-              @click="handleClearFilters"
-              flat
-              color="grey-7"
-              icon="filter_alt_off"
-              label="Clear Filters"
-              class="action-btn"
-              no-caps
-            />
+          <div class="row q-gutter-sm justify-around btn-group">
             <q-btn
               @click="
                 () => inventoryTableRef?.refreshInventory(getCurrentFilters())
