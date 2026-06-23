@@ -533,7 +533,7 @@ onMounted(async () => {
           <!-- Action Buttons -->
         </div>
         <div class="col-auto">
-          <div class="row q-gutter-sm justify-around btn-group">
+          <div class="row q-gutter-sm justify-around btn-group" style="flex-wrap: nowrap;">
             <q-btn
               @click="handleClearFilters"
               flat
