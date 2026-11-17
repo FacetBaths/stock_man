@@ -4,6 +4,7 @@ import { ref, computed } from 'vue'
 import type { Tag, TagNote, CreateTagRequest, UpdateTagRequest, StageTagRequest } from '@/types'
 import { tagApi } from '@/utils/api'
 import { useAuthStore } from '@/stores/auth'
+import { matchesTagSearch } from '@/utils/search'
 
 export const useTagStore = defineStore('tag', () => {
   // State
@@ -408,8 +409,7 @@ export const useTagStore = defineStore('tag', () => {
 
     const searchTerm = query.toLowerCase()
     return tags.value.filter(tag => {
-      if (tag.customer_name.toLowerCase().includes(searchTerm)) return true
-      if (tag.project_name?.toLowerCase().includes(searchTerm)) return true
+      if (matchesTagSearch(tag, searchTerm)) return true
       // `notes` is now a thread of entries; search across every message body.
       const notesText = Array.isArray(tag.notes)
         ? tag.notes.map(note => note?.message || '').join(' ').toLowerCase()

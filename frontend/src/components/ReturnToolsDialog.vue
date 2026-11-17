@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { toolsApi } from '@/utils/api'
 import type { Tag } from '@/types'
 import { useQuasar } from 'quasar'
+import { matchesTagSearch } from '@/utils/search'
 
 interface Props {
   modelValue: boolean
@@ -38,11 +39,7 @@ const error = ref<string | null>(null)
 const filteredLoans = computed(() => {
   const term = search.value.trim().toLowerCase()
   if (!term) return props.loans
-  return props.loans.filter(l =>
-    l.customer_name?.toLowerCase().includes(term) ||
-    l.project_name?.toLowerCase().includes(term) ||
-    l.sku_items?.some(si => typeof si.sku_id === 'object' && si.sku_id.name?.toLowerCase().includes(term))
-  )
+  return props.loans.filter(loan => matchesTagSearch(loan, term))
 })
 
 const selectedLoan = computed(() => props.loans.find(l => l._id === selectedLoanId.value) || null)

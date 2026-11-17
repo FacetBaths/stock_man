@@ -9,6 +9,7 @@
     "build": "echo 'No build step needed for backend'",
     "test": "echo '⚠️  Running tests - ensure MONGODB_TEST_URI points to TEST database only!' && jest --detectOpenHandles",
     "test:watch": "jest --watch --detectOpenHandles",
+    "test:barcode": "jest --config jest.barcode.config.js --runInBand",
     "kill": "./kill-server.sh",
     "restart": "./kill-server.sh && npm run dev",
     "drop-ttl-index": "node scripts/drop-ttl-index.js"

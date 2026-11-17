@@ -24,6 +24,7 @@ export interface ToolInventoryItem {
   _id: string;
   sku_id: string;
   sku_code: string;
+  barcode?: string;
   name: string;
   description?: string;
   brand: string;
@@ -118,6 +119,7 @@ export const useToolsStore = defineStore('tools', {
         const search = state.searchTerm.toLowerCase();
         filtered = filtered.filter(tool => 
           tool.sku_code.toLowerCase().includes(search) ||
+          tool.barcode?.toLowerCase().includes(search) ||
           tool.name.toLowerCase().includes(search) ||
           tool.brand.toLowerCase().includes(search) ||
           tool.model.toLowerCase().includes(search) ||

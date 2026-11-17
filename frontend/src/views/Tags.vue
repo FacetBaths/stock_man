@@ -56,9 +56,9 @@ const tagTypeFilter = computed({
 });
 
 const customerFilter = computed({
-  get: () => tagStore.filters.customer_name || "",
+  get: () => tagStore.filters.search || "",
   set: (value) => {
-    tagStore.updateFilters({ customer_name: value.trim() });
+    tagStore.updateFilters({ search: (value || "").trim(), customer_name: "" });
   },
 });
 
@@ -677,7 +677,7 @@ const tableColumns = [
                   v-model="customerFilter"
                   @update:model-value="loadTags"
                   filled
-                  placeholder="Search by customer..."
+                  placeholder="Search customer, project, SKU, or barcode..."
                   class="search-input"
                   style="min-width: 250px"
                 >

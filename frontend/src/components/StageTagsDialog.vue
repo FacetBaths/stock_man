@@ -33,7 +33,7 @@
           <!-- Customer Filter -->
           <q-input
             v-model="customerFilter"
-            label="Filter by Customer (Optional)"
+            label="Search customer, project, SKU, or barcode"
             filled
             clearable
             :disable="processing"
@@ -125,7 +125,7 @@
           <div v-else-if="!loadingTags" class="q-mb-md">
             <q-banner class="bg-yellow-1 text-orange-8">
               <template v-if="customerFilter">
-                No active tags found for customer "{{ customerFilter }}".
+                No active tags match "{{ customerFilter }}".
               </template>
               <template v-else>
                 No active tags available for staging.
@@ -431,6 +431,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { tagApi } from '@/utils/api'
 import { TAG_TYPES } from '@/types'
 import type { Tag } from '@/types'
+import { matchesSKUIdentifier, matchesTagSearch } from '@/utils/search'
 
 interface Props {
   show: boolean
@@ -461,6 +462,7 @@ const barcodeInput = ref()
 interface ChecklistItem {
   sku_id: string
   sku_code: string
+  barcode?: string
   name?: string
   instance_ids: string[]
   instance_count: number
@@ -472,12 +474,7 @@ const checklistItems = ref<ChecklistItem[]>([])
 
 // Computed
 const filteredTags = computed(() => {
-  if (!customerFilter.value.trim()) return tags.value
-  const filter = customerFilter.value.toLowerCase().trim()
-  return tags.value.filter(tag => 
-    tag.customer_name.toLowerCase().includes(filter) ||
-    (tag.project_name && tag.project_name.toLowerCase().includes(filter))
-  )
+  return tags.value.filter(tag => matchesTagSearch(tag, customerFilter.value || ''))
 })
 
 const stagedChecklistItems = computed(() => 
@@ -580,6 +577,7 @@ const initializeChecklist = () => {
     return {
       sku_id: skuId,
       sku_code: skuCode,
+      barcode: typeof skuItem.sku_id === 'object' ? skuItem.sku_id.barcode : undefined,
       name,
       instance_ids: instanceIds,
       instance_count: instanceIds.length,
@@ -595,7 +593,7 @@ const processScan = () => {
   
   const code = scannedBarcode.value.trim()
   const matchingItem = checklistItems.value.find(item => 
-    item.sku_code.toLowerCase() === code.toLowerCase()
+    matchesSKUIdentifier(item, code)
   )
   
   if (matchingItem) {

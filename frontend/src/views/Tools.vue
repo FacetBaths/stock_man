@@ -11,6 +11,7 @@ import AddToolModal from "@/components/AddToolModal.vue";
 import StatsCarousel from "@/components/StatsCarousel.vue";
 import ReturnToolsDialog from "@/components/ReturnToolsDialog.vue";
 import { useToolsStore } from "@/stores/tools";
+import { matchesSKUIdentifier, matchesSKUSearch, matchesTagSearch } from "@/utils/search";
 
 // Dashboard statistics
 const dashboardStats = ref({
@@ -98,16 +99,7 @@ const filteredLoans = computed(() => {
   if (!searchTerm.value) return activeLoans.value;
 
   const term = searchTerm.value.toLowerCase();
-  return activeLoans.value.filter(
-    (loan) =>
-      loan.customer_name.toLowerCase().includes(term) ||
-      (loan.project_name && loan.project_name.toLowerCase().includes(term)) ||
-      loan.sku_items?.some(
-        (item) =>
-          typeof item.sku_id === "object" &&
-          item.sku_id.name.toLowerCase().includes(term)
-      )
-  );
+  return activeLoans.value.filter(loan => matchesTagSearch(loan, term));
 });
 
 const totalLoans = computed(() => filteredLoans.value.length);
@@ -409,6 +401,7 @@ const loadAvailableTools = async (search = "") => {
       response.inventory?.map((inv) => ({
         _id: inv.sku_id || inv.sku?._id,
         sku_code: inv.sku_code || inv.sku?.sku_code,
+        barcode: inv.barcode || inv.sku?.barcode,
         name: inv.name || inv.sku?.name,
         description: inv.description || inv.sku?.description,
         category_id: inv.category || inv.sku?.category_id,
@@ -507,12 +500,9 @@ const filteredTools = computed(() => {
     const beforeSearchFilter = filtered.length;
     const query = toolSearchQuery.value.toLowerCase().trim();
     filtered = filtered.filter((tool) => {
-      const toolName = getToolDisplayName(tool).toLowerCase();
-      const toolCode = tool.sku_code?.toLowerCase() || "";
       const category = tool.category_id?.name?.toLowerCase() || "";
       return (
-        toolName.includes(query) ||
-        toolCode.includes(query) ||
+        matchesSKUSearch(tool, query) ||
         category.includes(query)
       );
     });
@@ -615,7 +605,7 @@ const handleToolInput = async () => {
 
     // Check if tool already selected
     const existingIndex = selectedTools.value.findIndex(
-      (selected) => selected.tool.sku_code === toolCode
+      (selected) => matchesSKUIdentifier(selected.tool, toolCode)
     );
 
     if (existingIndex >= 0) {
@@ -634,7 +624,7 @@ const handleToolInput = async () => {
     // Look up tool in available tools
     const matchingTool = availableTools.value.find(
       (tool) =>
-        tool.sku_code === toolCode && tool.inventory?.available_quantity > 0
+        matchesSKUIdentifier(tool, toolCode) && tool.inventory?.available_quantity > 0
     );
 
     if (!matchingTool) {

@@ -455,6 +455,7 @@ const filterSKUs = (val, update) => {
       skuOptions.value = allSKUs.value
         .filter(sku => 
           sku.sku_code.toLowerCase().includes(needle) ||
+          sku.barcode?.toLowerCase().includes(needle) ||
           (sku.name && sku.name.toLowerCase().includes(needle)) ||
           (sku.description && sku.description.toLowerCase().includes(needle))
         )

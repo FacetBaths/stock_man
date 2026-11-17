@@ -582,9 +582,18 @@ router.get('/',
       
       if (req.query.search && req.query.search.trim()) {
         const searchRegex = new RegExp(req.query.search.trim(), 'i');
+        const matchingSKUs = await SKU.find({
+          $or: [
+            { sku_code: searchRegex },
+            { barcode: searchRegex },
+            { name: searchRegex },
+            { description: searchRegex }
+          ]
+        }).select('_id');
         filter.$or = [
           { customer_name: searchRegex },
           { project_name: searchRegex },
+          { 'sku_items.sku_id': { $in: matchingSKUs.map(sku => sku._id) } },
           // `notes` is now a thread of subdocuments; match on any entry body
           { 'notes.message': searchRegex }
         ];

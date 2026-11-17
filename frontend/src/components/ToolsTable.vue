@@ -85,6 +85,7 @@ const filteredTools = computed(() => {
     filtered = filtered.filter(tool => 
       tool.name.toLowerCase().includes(query) ||
       tool.sku_code.toLowerCase().includes(query) ||
+      tool.barcode?.toLowerCase().includes(query) ||
       tool.brand?.toLowerCase().includes(query) ||
       tool.model?.toLowerCase().includes(query) ||
       tool.details?.manufacturer?.toLowerCase().includes(query) ||

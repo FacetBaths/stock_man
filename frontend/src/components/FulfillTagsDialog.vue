@@ -33,7 +33,7 @@
           <!-- Customer Filter (Optional) -->
           <q-input
             v-model="customerFilter"
-            label="Filter by Customer (Optional)"
+            label="Search customer, project, SKU, or barcode"
             filled
             clearable
             :disable="processing"
@@ -120,7 +120,7 @@
           <div v-else-if="!loadingTags" class="q-mb-md">
             <q-banner class="bg-yellow-1 text-orange-8">
               <template v-if="customerFilter">
-                No active tags found for customer "{{ customerFilter }}".
+                No active tags match "{{ customerFilter }}".
               </template>
               <template v-else>
                 No active tags available for fulfillment.
@@ -370,6 +370,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { tagApi } from '@/utils/api'
 import { TAG_TYPES } from '@/types'
+import { matchesSKUIdentifier, matchesTagSearch } from '@/utils/search'
 
 interface Props {
   show: boolean
@@ -388,6 +389,7 @@ interface Tag {
     sku_id: {
       _id: string
       sku_code: string
+      barcode?: string
       description?: string
     }
     selected_instance_ids: string[]
@@ -437,6 +439,7 @@ const barcodeInput = ref()
 interface FulfillmentItem {
   sku_id: string
   sku_code: string
+  barcode?: string
   description?: string
   available_quantity: number
   fulfill_quantity: number
@@ -447,13 +450,7 @@ const fulfillmentItems = ref<FulfillmentItem[]>([])
 
 // Computed properties
 const filteredTags = computed(() => {
-  if (!customerFilter.value.trim()) return tags.value
-  
-  const filter = customerFilter.value.toLowerCase().trim()
-  return tags.value.filter(tag => 
-    tag.customer_name.toLowerCase().includes(filter) ||
-    (tag.project_name && tag.project_name.toLowerCase().includes(filter))
-  )
+  return tags.value.filter(tag => matchesTagSearch(tag, customerFilter.value || ''))
 })
 
 const selectedFulfillmentItems = computed(() => {
@@ -554,6 +551,7 @@ const initializeFulfillmentItems = () => {
     return {
       sku_id: skuId,
       sku_code: skuCode,
+      barcode: typeof skuItem.sku_id === 'object' ? skuItem.sku_id.barcode : undefined,
       description: description,
       available_quantity: availableQuantity,
       fulfill_quantity: availableQuantity, // Default to fulfill all available
@@ -592,7 +590,7 @@ const processScan = async () => {
   
   // Find matching SKU item by barcode or SKU code
   const matchingItem = fulfillmentItems.value.find(item => 
-    item.sku_code === scannedBarcode.value.trim()
+    matchesSKUIdentifier(item, scannedBarcode.value)
   )
   
   if (matchingItem) {

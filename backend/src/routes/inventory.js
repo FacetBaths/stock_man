@@ -396,6 +396,7 @@ router.get('/', auth, async (req, res) => {
         $match: {
           $or: [
             { 'sku_code': { $regex: searchTerm, $options: 'i' } },
+            { 'barcode': { $regex: searchTerm, $options: 'i' } },
             { 'description': { $regex: searchTerm, $options: 'i' } },
             { 'name': { $regex: searchTerm, $options: 'i' } },
             { 'category.name': { $regex: searchTerm, $options: 'i' } }

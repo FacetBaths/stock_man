@@ -259,6 +259,7 @@ router.get('/inventory', auth, async (req, res) => {
         $match: {
           $or: [
             { sku_code: searchRegex },
+            { barcode: searchRegex },
             { name: searchRegex },
             { description: searchRegex },
             { 'category.name': searchRegex }
@@ -592,9 +593,18 @@ router.get('/tags',
       
       if (req.query.search && req.query.search.trim()) {
         const searchRegex = new RegExp(req.query.search.trim(), 'i');
+        const matchingSKUs = await SKU.find({
+          $or: [
+            { sku_code: searchRegex },
+            { barcode: searchRegex },
+            { name: searchRegex },
+            { description: searchRegex }
+          ]
+        }).select('_id');
         filter.$or = [
           { customer_name: searchRegex },
           { project_name: searchRegex },
+          { 'sku_items.sku_id': { $in: matchingSKUs.map(sku => sku._id) } },
           { notes: searchRegex }
         ];
       }

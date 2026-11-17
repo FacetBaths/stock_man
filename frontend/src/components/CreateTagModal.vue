@@ -5,6 +5,7 @@ import { useCategoryStore } from '@/stores/category'
 import { tagApi, inventoryApi, skuApi } from '@/utils/api'
 import { TAG_TYPES } from '@/types'
 import { formatCategoryName } from '@/utils/formatting'
+import { matchesSKUIdentifier, matchesSKUSearch } from '@/utils/search'
 import type { SKU, CreateTagRequest } from '@/types'
 
 const emit = defineEmits<{
@@ -148,11 +149,9 @@ const filteredSKUs = computed(() => {
   if (skuSearchQuery.value.trim()) {
     const query = skuSearchQuery.value.toLowerCase().trim()
     filtered = filtered.filter(item => {
-      const skuName = getSKUDisplayName(item.sku).toLowerCase()
       const location = item.primary_location?.toLowerCase() || ''
-      const skuCode = item.sku.sku_code?.toLowerCase() || ''
       const categoryName = getSKUCategoryName(item.sku)?.toLowerCase() || ''
-      return skuName.includes(query) || location.includes(query) || skuCode.includes(query) || categoryName.includes(query)
+      return matchesSKUSearch(item.sku, query) || location.includes(query) || categoryName.includes(query)
     })
   }
   
@@ -239,7 +238,7 @@ const handleSkuInput = async () => {
 
     // Check if SKU already added
     const existingIndex = taggedSKUs.value.findIndex(ts => 
-      ts.sku.sku_code === skuCode
+      matchesSKUIdentifier(ts.sku, skuCode)
     )
 
     if (existingIndex >= 0) {
@@ -257,11 +256,11 @@ const handleSkuInput = async () => {
 
     // Look up SKU in available inventory
     const matchingSKU = availableSKUs.value.find(inv => 
-      inv.sku.sku_code === skuCode && inv.available_quantity > 0
+      matchesSKUIdentifier(inv.sku, skuCode) && inv.available_quantity > 0
     )
 
     if (!matchingSKU) {
-      error.value = `No available inventory found for SKU: ${skuCode}`
+      error.value = `No available inventory found for SKU or barcode: ${skuCode}`
       setTimeout(() => error.value = null, 3000)
       return
     }
@@ -606,7 +605,7 @@ onMounted(async () => {
               <div class="form-group">
                 <label for="sku-input" class="form-label">
                   <q-icon name="qr_code_scanner" class="q-mr-sm" />
-                  Scan or Enter SKU Code
+                  Scan or Enter SKU Code / Barcode
                 </label>
                 <div class="sku-input-container">
                   <input
@@ -664,7 +663,7 @@ onMounted(async () => {
                         v-model="skuSearchQuery"
                         type="text"
                         class="form-control search-input"
-                        placeholder="Search SKUs by code, name, or location..."
+                        placeholder="Search SKUs by code, barcode, name, or location..."
                       />
                       <q-icon name="search" class="search-icon" />
                     </div>

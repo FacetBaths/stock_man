@@ -416,6 +416,7 @@ export interface Tag {
     sku_id: string | {
       _id: string
       sku_code: string
+      barcode?: string
       name: string
       description: string
     }

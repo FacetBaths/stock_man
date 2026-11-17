@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { tagApi, skuApi } from '@/utils/api'
 import type { Tag, SKU } from '@/types'
+import { matchesSKUSearch } from '@/utils/search'
 
 interface Props {
   tag: Tag
@@ -43,9 +44,7 @@ const filteredSKUs = computed(() => {
   
   // When searching, show all matching results (up to 100 for performance)
   const filtered = availableSKUs.value.filter(sku => 
-    sku.sku_code.toLowerCase().includes(search) ||
-    sku.name?.toLowerCase().includes(search) ||
-    sku.description?.toLowerCase().includes(search) ||
+    matchesSKUSearch(sku, search) ||
     sku.brand?.toLowerCase().includes(search)
   )
   
