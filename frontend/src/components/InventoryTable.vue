@@ -7,6 +7,7 @@ import { getProductTypeColor, getCategoryColorFromData } from '@/utils/colors'
 import type { Inventory } from '@/types'
 import { TAG_TYPES } from '@/types'
 import StockStatusChip from '@/components/StockStatusChip.vue'
+import InventoryLocations from '@/components/InventoryLocations.vue'
 
 interface Props {
   canWrite: boolean
@@ -815,13 +816,12 @@ const handlePageSizeChange = (size: number) => {
                       style="margin-bottom: 0.25rem;"
                     />
                     <div class="mobile-metric-label">Stock Status</div>
-                    <div
-                      v-if="item.location"
+                    <InventoryLocations
+                      :locations="item.location_summary"
+                      :total-quantity="item.total_quantity"
                       class="mobile-metric-label"
                       style="font-size: 0.6rem; margin-top: 2px;"
-                    >
-                      📍 {{ item.location }}
-                    </div>
+                    />
                   </q-card-section>
                 </q-card>
               </q-card-section>
@@ -970,10 +970,11 @@ const handlePageSizeChange = (size: number) => {
                 :quantity="getAvailableQuantityNew(item)"
                 :thresholds="item.sku?.stock_thresholds"
               />
-              <div class="location-label">
-                <q-icon name="place" size="xs" class="q-mr-xs" />
-                {{ item.location || "No location" }}
-              </div>
+              <InventoryLocations
+                :locations="item.location_summary"
+                :total-quantity="item.total_quantity"
+                class="location-label"
+              />
               <div class="date-label">
                 {{ formatDate(item.updatedAt) }}
               </div>

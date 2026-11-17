@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type {
   Instance,
+  InstanceLocation,
   InventoryStats,
   AddStockRequest,
   UpdateInstanceRequest,
@@ -332,6 +333,11 @@ export const useInventoryStore = defineStore('inventory', () => {
   }
 
   // ✅ Actions for instance management using instancesApi (correct backend endpoints)
+  // Keep dialog reads isolated from dashboard loading and shared instance lists.
+  const fetchInstanceLocations = async (skuId: string): Promise<InstanceLocation[]> => {
+    const response = await instancesApi.getInstances(skuId, { include_tagged: true })
+    return response.instances || []
+  }
   const fetchInstances = async (skuId: string, params?: {
     available_only?: boolean
     include_tagged?: boolean
@@ -647,6 +653,7 @@ export const useInventoryStore = defineStore('inventory', () => {
     removeStock,
 
     // Actions - Instances
+    fetchInstanceLocations,
     fetchInstances,
     addStock,
     updateInstance,

@@ -8,6 +8,7 @@ import { formatCategoryName } from '@/utils/formatting'
 import type { SKU, UpdateSKURequest } from '@/types'
 import { useRouter } from 'vue-router'
 import { useSKUStore } from '@/stores/sku' // Adjust path as needed
+import InstanceLocationEditor from '@/components/InstanceLocationEditor.vue'
 
 const router = useRouter()
 const skuStore = useSKUStore()
@@ -22,12 +23,14 @@ const props = defineProps<Props>()
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   success: []
+  'locations-updated': []
 }>()
 
 const $q = useQuasar()
 const authStore = useAuthStore()
 const categoryStore = useCategoryStore()
 const isUpdating = ref(false)
+const locationsSaving = ref(false)
 const error = ref<string | null>(null)
 
 // Dialog visibility
@@ -358,6 +361,7 @@ const initializeForm = () => {
 }
 
 const handleSubmit = async () => {
+  if (locationsSaving.value) return
   try {
     isUpdating.value = true
     error.value = null
@@ -446,6 +450,7 @@ const handleSubmit = async () => {
 }
 
 const handleClose = () => {
+  if (isUpdating.value || locationsSaving.value) return
   showDialog.value = false
 }
 
@@ -512,10 +517,10 @@ onMounted(() => {
       <q-card-section class="section-card row items-center">
         <div class="text-h6">
           <q-icon name="edit" class="q-mr-sm" />
-          Edit Product Info
+          Edit Inventory Item
         </div>
         <q-space />
-        <q-btn icon="close" flat round dense @click="handleClose" />
+        <q-btn icon="close" flat round dense :disable="isUpdating || locationsSaving" @click="handleClose" />
       </q-card-section>
 
       <q-separator />
@@ -562,10 +567,6 @@ onMounted(() => {
                       {{ item.total_quantity || 0 }}
                     </div>
                   </div>
-                  <div v-if="item.primary_location" class="col-12 col-sm-6">
-                    <div class="text-caption text-grey-6">Primary Location</div>
-                    <div class="text-body1">{{ item.primary_location }}</div>
-                  </div>
                   <div v-if="item.category" class="col-12 col-sm-6">
                     <div class="text-caption text-grey-6">Category</div>
                     <div class="text-body1">
@@ -574,6 +575,16 @@ onMounted(() => {
                   </div>
                 </div>
               </q-card>
+            </div>
+
+            <div v-if="showDialog && currentSkuId" class="col-12">
+              <InstanceLocationEditor
+                :key="currentSkuId"
+                :sku-id="currentSkuId"
+                :disabled="isUpdating"
+                @saved="emit('locations-updated')"
+                @saving-change="locationsSaving = $event"
+              />
             </div>
 
             <!-- Product Name -->
@@ -721,8 +732,8 @@ onMounted(() => {
         <q-separator />
 
         <q-card-actions align="right">
-          <q-btn flat color="grey-7" @click="handleClose">Cancel</q-btn>
-          <q-btn color="primary" type="submit" :loading="isUpdating">
+          <q-btn flat color="grey-7" :disable="isUpdating || locationsSaving" @click="handleClose">Cancel</q-btn>
+          <q-btn color="primary" type="submit" :loading="isUpdating" :disable="locationsSaving">
             Update SKU
           </q-btn>
         </q-card-actions>

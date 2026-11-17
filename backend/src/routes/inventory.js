@@ -5,6 +5,7 @@ const SKU = require('../models/SKU');
 const Tag = require('../models/Tag');
 const { auth, requireRole, requireWriteAccess } = require('../middleware/authEnhanced');
 const AuditLog = require('../models/AuditLog');
+const { summarizeInstanceLocations } = require('../utils/inventoryLocations');
 
 const router = express.Router();
 
@@ -352,6 +353,14 @@ router.get('/', auth, async (req, res) => {
       // Clean up temporary fields and rename SKU fields for compatibility
       {
         $addFields: {
+          // Preserve one location per instance, including missing locations.
+          _instance_locations: {
+            $map: {
+              input: '$all_instances',
+              as: 'instance',
+              in: { $ifNull: ['$$instance.location', null] }
+            }
+          },
           sku: {
             _id: '$_id',
             sku_code: '$sku_code',
@@ -441,7 +450,10 @@ router.get('/', auth, async (req, res) => {
     console.log(`✅ [Inventory API] Real-time calculation complete: ${inventory.length} SKUs processed`);
 
     res.json({
-      inventory,
+      inventory: inventory.map(({ _instance_locations, ...item }) => ({
+        ...item,
+        location_summary: summarizeInstanceLocations(_instance_locations)
+      })),
       pagination: {
         current_page: parseInt(page),
         total_pages: Math.ceil(totalItems / limit),

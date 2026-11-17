@@ -64,6 +64,15 @@ const toTitleCase = (str: string): string => {
   });
 };
 
+const handleLocationsUpdated = async () => {
+  try {
+    // Preserve the current filters/page without closing or resetting the dialog.
+    await inventoryStore.fetchInventory();
+  } catch (error) {
+    console.error('Failed to refresh instance location summaries:', error);
+  }
+};
+
 // Available categories for filtering (PRODUCTS ONLY - exclude tools)
 const availableCategories = computed(() => {
   // Uncomment for debugging category loading:
@@ -685,6 +694,7 @@ onMounted(async () => {
       v-model="showEditModal"
       :item="itemToEdit"
       @success="handleEditSuccess"
+      @locations-updated="handleLocationsUpdated"
     />
 
     <QuickScanModal

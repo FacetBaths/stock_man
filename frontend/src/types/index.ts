@@ -177,6 +177,22 @@ export interface Instance {
   updatedAt: string
 }
 
+export interface InstanceLocation {
+  _id: string
+  acquisition_date: string
+  location: string
+  tag_id: string | null | {
+    _id: string
+    tag_type: string
+    customer_name: string
+  }
+}
+
+export interface InventoryLocationSummary {
+  location: string | null
+  quantity: number
+}
+
 // ✅ Inventory model - matches BACKEND_API_REFERENCE.md EXACTLY
 export interface Inventory {
   _id: string
@@ -198,6 +214,9 @@ export interface Inventory {
   last_movement_date: string
   createdAt: string
   updatedAt: string
+
+  // Read-only breakdown calculated from all current instances (including tagged).
+  location_summary?: InventoryLocationSummary[]
 
   // ✅ Additional fields from API response (BACKEND_API_REFERENCE.md)
   sku?: {
