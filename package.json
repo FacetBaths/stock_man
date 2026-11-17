@@ -1,6 +1,6 @@
 {
   "name": "stock-manager",
-  "version": "2.3.2",
+  "version": "2.3.4",
   "description": "Full-stack inventory management system for Facet Renovations - Enhanced Architecture",
   "scripts": {
     "install": "npm install --prefix backend && npm install --prefix frontend",
@@ -16,6 +16,7 @@
     "postinstall": "cd backend && npm install",
     "build:frontend": "cd frontend && npm run build",
     "test": "echo \"No tests specified yet\"",
+    "test:release": "node --test scripts/test/release-version.test.js",
     "clean": "rm -rf backend/node_modules frontend/node_modules node_modules",
     "reset": "npm run clean && npm run install"
   },
